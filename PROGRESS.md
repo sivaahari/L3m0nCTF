@@ -10,7 +10,7 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 
 | When | Focus | Gate |
 |------|-------|------|
-| P-6 to P-5 | Tasks 1 and 2: platform analysis, CTF survey, five story chains | Story and base-platform decision approved |
+| P-6 to P-5 | Tasks 1 and 2: platform analysis, CTF survey, five story chains. A minimal public landing page, because CTFtime needs an official URL before it will list us | Story and base-platform decision approved; landing page live |
 | P-5 to P-4 | Task 3: layout brainstorm and visual direction. Architecture spec. Author kit v0 (challenge format, Docker template, CI check) so the 30 authors can start | Visual direction approved |
 | P-4 to P-2 | Task 4 build: theme, story overlay, instance orchestration, CTFtime feed, anti-cheat, ops. First staging on `pre-deployment` | Staging usable by authors |
 | P-2 to P-1 | Load test at 2x target, security review, challenge intake, bug fixing. Feature freeze at P-1 | Load test passes |
@@ -24,7 +24,8 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 |---|------|--------|--------|
 | 1 | Analyse CTFd core and last year's platform | done, option A approved | `docs/analysis/` |
 | 2 | Survey story-driven CTFs, propose five story chains | done, story chosen | `docs/research/` (public precedent survey); story pitches stay private in the private repo |
-| 3 | Layout and UX brainstorm | in progress | |
+| 3 | Layout and UX brainstorm | in progress: direction and shell approved, page concepts next | Private design record |
+| 3a | CTFtime hosting survey and compliance checklist | done | `docs/research/ctftime-requirements.md` |
 | 4 | Build and verify the platform | waiting on 3 | |
 
 ## Decisions
@@ -52,6 +53,9 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | D8 | Do the finals continue the same story as Part 2, or start a fresh episode | Story |
 | D9 | Confirm the cartoon pool excludes mythology and religious figures (inferred from an unselected option) | Story |
 | D10 | Hosting and budget, registration and eligibility, team size and brackets, who owns DevOps, finalist count, sponsors | Task 4 |
+| D11 | Create a CTFtime account (social login) and the organiser team. Which Amrita team will be the organiser? (An existing Amrita Coimbatore team may be reusable.) Only a team member can do this | CTFtime listing |
+| D12 | Send CTFtime the open questions in section 10 of the CTFtime survey (lead time, live feed, finals listing, organiser row, name matching, OAuth timing) | CTFtime listing |
+| D13 | Confirm the official domain and logo for the public landing page, and the confirmed prelims dates in UTC | CTFtime listing, landing page |
 
 ## Findings and issues
 
@@ -70,6 +74,10 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | F-011 | 2026-10-03 | Survey: story-as-flavour on an open board is the dominant pattern at scale (Cyber Apocalypse 2024: about 13,000 players, 5,730 teams, 67 challenges). No CTF themed on Indian cartoons and no shared progress meter across all teams was found | informs task 2 |
 | F-012 | 2026-10-03 | InCTF 2026 (Amrita with team bi0s) uses the "Operation VAJRA" space and cyber-warfare theme. Our story should avoid that territory | informs task 2 |
 | F-013 | 2026-10-03 | CTFtime rating needs a team-based event of at most 5 days and a scoreboard in its JSON feed format (`standings`, optional `tasks` and `taskStats`, polled every 60 s) | tracked as B12 |
+| F-014 | 2026-10-03 | CTFtime listing is a manual form behind a social login, needs an official site URL first, and publishes no lead time. The public landing page is on the critical path | B19, P0 |
+| F-015 | 2026-10-03 | CTFtime-listed events draw big fields: Pragyan CTF 2026 had 892 teams, bi0sCTF 2025 had 624. The capacity target moves from 600 to 1,000 teams | doc 03 updated |
+| F-016 | 2026-10-03 | The CTFtime feed identifies teams by name only, so results are matched by exact name or alias. First-time events are capped at weight 25. Only teams scoring above zero count. Hidden challenges must be kept out of the public feed | B12, B20 |
+| F-017 | 2026-10-03 | CTFtime OAuth2 can only be used after approval (client ID is the event ID). CTFd core has no CTFtime provider. It stays optional | B21 |
 
 ## Change log
 
@@ -80,3 +88,4 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | 2026-10-03 | Added Task 2 precedent survey: `docs/research/ctf-story-survey.md`. Story pitches written to the gitignored `private/story/` |
 | 2026-10-03 | Created the private repo `sivaahari/L3m0nCTF-challenges`, checked out at `private/`, and pushed the story pitches and decision record to its `pre-deployment` branch |
 | 2026-10-03 | Recorded the approvals: platform option A, story chosen, code-led visuals, private challenges repo. Started Task 3 |
+| 2026-10-03 | Layout direction and shell approved (details in the private repo). Added the CTFtime survey `docs/research/ctftime-requirements.md`; raised the capacity target to 1,000 teams and added backlog items B19 to B22 |

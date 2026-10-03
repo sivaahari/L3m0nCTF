@@ -14,10 +14,10 @@ Inputs: [01-ctfd-core.md](01-ctfd-core.md) and [02-last-year-fork.md](02-last-ye
 
 | Target | Value |
 |--------|-------|
-| Capacity | 600 teams, about 2,400 accounts, about 1,500 concurrent browsers |
-| Start-of-event burst | 1,000 challenge-list loads within 60 s |
-| Sustained mixed reads | 150 to 250 requests per second |
-| Flag submissions, peak | about 40 per second |
+| Capacity | 1,000 teams, about 4,000 accounts, about 2,500 concurrent browsers (CTFtime-listed events draw this: Pragyan CTF 2026 had 892 teams, see the [CTFtime survey](../research/ctftime-requirements.md)) |
+| Start-of-event burst | 2,000 challenge-list loads within 60 s |
+| Sustained mixed reads | 250 to 400 requests per second |
+| Flag submissions, peak | about 70 per second |
 | Latency | p95 under 300 ms and p99 under 1 s for reads |
 | Errors | under 0.1% |
 | Scoreboard freshness | within 5 s |
@@ -90,15 +90,19 @@ Effort is a rough single-developer estimate in working days and is unverified. P
 | B9 | Realtime gateway and domain events: solve, first blood, story unlock, global meter, announcements | L, S | 3 to 4 | P1 |
 | B10 | Story engine plugin: nodes, tokens, per-team progress, global meter, story-mode toggle, admin editor | S | 6 to 8 | P1, after story approval |
 | B11 | Custom theme from the Task 3 design | A | 10+ | P1 |
-| B12 | CTFtime feed, final export and public scoreboard | O | 1 | P1 |
+| B12 | CTFtime feed, final export and public scoreboard (spec and rules in the [CTFtime survey](../research/ctftime-requirements.md)) | O | 1 to 2 | P1 |
 | B13 | Observability: Prometheus, Grafana, Loki, alerts to Discord, status page, runbooks | L, H | 3 | P1 |
 | B14 | Dependency hygiene: `pip-audit` in CI, safe bumps, upstream tests plus ours, Dependabot | C | 2 | P1 |
 | B15 | Finals mode: round gating, finalist import and carry-over, per-round boards, campus-IP allowances | O | 2 to 3 | P1 |
 | B16 | Dynamic-score optimisation and first-blood bonus | L | 1 to 2 | P2 |
 | B17 | In-character LLM hint buddy (rate-limited, cannot leak flags) | S | 3 | P2, optional |
 | B18 | Post-event static archive export | O | 1 | P2 |
+| B19 | Public landing page and event info: the official site CTFtime needs before it will list us (name, dates in UTC and IST, format, rules, prizes, registration, scoreboard link, contact, Open Graph tags, schema.org `Event`) | O | 2 to 3 | **P0, critical path** |
+| B20 | Team-name policy and CTFtime fields: case-insensitive unique names, a "use your CTFtime name" hint, an optional CTFtime team ID, Unicode handled in the feed | C, O | 1 | P1 |
+| B21 | "Login with CTFtime" plugin (OAuth2 Authorization Code, scopes `profile` and `team`), optional, usable only after approval | O | 2 to 3 | P2 |
+| B22 | CTFtime tasks export after the event, so teams can post writeups | O | 1 | P2 |
 
-**Capacity warning.** P0 alone is roughly 30 to 36 working days and P1 roughly 25 to 30 more, against about 30 working days available. Ways to compress, in order of preference:
+**Capacity warning.** P0 alone is roughly 32 to 39 working days and P1 roughly 27 to 33 more, against about 30 working days available. Ways to compress, in order of preference:
 1. Adopt rather than build: an existing instancer, an existing CTFtime endpoint, a CDN for edge caching and DDoS protection.
 2. Reuse last year's plugin code, with permission.
 3. Cut P2 entirely, and split P1 so the theme and story ship first.

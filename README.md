@@ -46,6 +46,7 @@ Headlines:
 Task 2 (story research) has a public precedent survey in [docs/research](docs/research):
 
 - [Story-driven CTFs: a survey](docs/research/ctf-story-survey.md). About 25 events and formats, the patterns the field has converged on, lessons for an open-board overlay, and the gaps where an original story can stand out.
+- [Hosting on CTFtime: requirements and what we must build](docs/research/ctftime-requirements.md). How listing works, the eligibility rules, the JSON scoreboard feed, OAuth2, rating and weight, a compliance checklist mapped to backlog items, and the questions to put to CTFtime.
 - The five story pitches contain the plot, so they stay out of this public repo.
 
 ## Repository conventions
