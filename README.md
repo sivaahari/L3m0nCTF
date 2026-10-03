@@ -25,7 +25,7 @@ A CTFd-derived platform that keeps what CTFd already does well (teams, scoring, 
 | # | Task | Status |
 |---|------|--------|
 | 1 | Analyse CTFd core and last year's platform | written, recommendation awaiting approval |
-| 2 | Survey story-driven CTFs, propose five story chains | in progress |
+| 2 | Survey story-driven CTFs, propose five story chains | survey written, pitches ready for review |
 | 3 | Layout and UX brainstorm | waiting on task 2 |
 | 4 | Build and verify the platform | waiting on task 3 |
 
@@ -42,6 +42,11 @@ Headlines:
 - Upstream CTFd is at 3.8.8 (2026-10-02, Apache-2.0). It is a sound engine to extend. The strains sit around it: single-worker defaults, a scoreboard cache cleared on every solve, IP-keyed rate limits, no event stream and no per-team instances.
 - Last year's fork left core untouched and shipped four themes and seven plugins. It ran one worker behind an nginx that served every asset through Python, and gave the web container the Docker socket.
 - Recommendation: keep CTFd as the engine, extend it by plugin and theme only, and build a hardened deployment, an external instancer, an event stream and an abuse layer around it.
+
+Task 2 (story research) has a public precedent survey in [docs/research](docs/research):
+
+- [Story-driven CTFs: a survey](docs/research/ctf-story-survey.md). About 25 events and formats, the patterns the field has converged on, lessons for an open-board overlay, and the gaps where an original story can stand out.
+- The five story pitches contain the plot, so they stay out of this public repo.
 
 ## Repository conventions
 

@@ -4,7 +4,7 @@ Last updated: 2026-10-03
 
 ## Snapshot
 
-Phase: research and design. Task 1 is written up and waiting on approval of its recommendation. Task 2 (CTF survey and story chains) is in progress. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
+Phase: research and design. Task 1 is written up and waiting on approval of its recommendation. Task 2 is written up: a public precedent survey, and five story pitches kept private. Both wait on your decisions below. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
 
 ## Plan
 
@@ -23,7 +23,7 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 | # | Task | Status | Output |
 |---|------|--------|--------|
 | 1 | Analyse CTFd core and last year's platform | written, recommendation awaiting approval | `docs/analysis/` |
-| 2 | Survey story-driven CTFs, propose five story chains | in progress | `docs/research/` (public precedent survey); story pitches stay private |
+| 2 | Survey story-driven CTFs, propose five story chains | written, awaiting story choice | `docs/research/` (public precedent survey); story pitches stay private in `private/story/` |
 | 3 | Layout and UX brainstorm | waiting on 2 | |
 | 4 | Build and verify the platform | waiting on 3 | |
 
@@ -48,6 +48,10 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 | D3 | Create a private repo for challenges and story (for example `L3m0nCTF-challenges`) | Authors, story |
 | D4 | Keep this repo public, or make it private until the event | Repo hygiene |
 | D5 | Ask last year's plugin authors for permission to reuse their code | Task 4 |
+| D6 | Choose a story (or a blend) from the five pitches | Tasks 3 and 4 |
+| D7 | Art resources: is there an illustrator or designer, or should the look lean on CSS, SVG and generated textures | Task 3 |
+| D8 | Do the finals continue the same story as Part 2, or start a fresh episode | Story |
+| D9 | Confirm the cartoon pool excludes mythology and religious figures (inferred from the unselected option) | Story |
 
 ## Findings and issues
 
@@ -63,6 +67,9 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 | F-008 | 2026-10-03 | Last year's deployment: one worker, nginx serving every asset through Python with no caching, Docker socket mounted in a root web container, spawned containers without resource limits | informs B1, B5 |
 | F-009 | 2026-10-03 | Last year's public repo history contains database backups and dumps and a cookie jar. Details given privately to the project owner | owner to purge |
 | F-010 | 2026-10-03 | Capacity: P0 backlog is roughly 30 to 36 working days and P1 roughly 25 to 30 more, against about 30 available. Needs adopt-over-build and scope cuts | see doc 03 section 4 |
+| F-011 | 2026-10-03 | Survey: story-as-flavour on an open board is the dominant pattern at scale (Cyber Apocalypse 2024: about 13,000 players, 5,730 teams, 67 challenges). No CTF themed on Indian cartoons and no shared progress meter across all teams was found | informs task 2 |
+| F-012 | 2026-10-03 | InCTF 2026 (Amrita with team bi0s) uses the "Operation VAJRA" space and cyber-warfare theme. Our story should avoid that territory | informs task 2 |
+| F-013 | 2026-10-03 | CTFtime rating needs a team-based event of at most 5 days and a scoreboard in its JSON feed format (`standings`, optional `tasks` and `taskStats`, polled every 60 s) | tracked as B12 |
 
 ## Change log
 
@@ -70,3 +77,4 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 |------|--------|
 | 2026-10-03 | Repository initialised on `pre-deployment` with README and this tracker |
 | 2026-10-03 | Added Task 1 analysis: `docs/analysis/01-ctfd-core.md`, `02-last-year-fork.md`, `03-options-and-recommendation.md` |
+| 2026-10-03 | Added Task 2 precedent survey: `docs/research/ctf-story-survey.md`. Story pitches written to the gitignored `private/story/` |
