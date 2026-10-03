@@ -1,0 +1,33 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Story and challenge material (spoilers, flags): keep out of this public repo
+private/
+
+# Data dumps and backups (never commit these)
+backups/
+*.dump
+*.sql.gz
+*.sqlite3
+*.db
+.data/
+
+# Local tooling and build output
+.claude/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
