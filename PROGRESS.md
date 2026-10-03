@@ -1,10 +1,10 @@
 # L3m0nCTF 2026: Progress
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
 
 ## Snapshot
 
-Phase: design. Tasks 1 and 2 are done and approved (platform option A, story chosen with details kept private). Task 3, the layout and look brainstorm, is in progress. Nothing is built until its design is approved. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
+Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved (platform option A, story chosen with details kept private, layout direction, shell and all eleven page concepts approved, then a visual polish pass). The CTFtime OAuth and live-feed research is also done. Next is the design spec for Task 4. Nothing is built until that design is approved. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
 
 ## Plan
 
@@ -24,9 +24,10 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 |---|------|--------|--------|
 | 1 | Analyse CTFd core and last year's platform | done, option A approved | `docs/analysis/` |
 | 2 | Survey story-driven CTFs, propose five story chains | done, story chosen | `docs/research/` (public precedent survey); story pitches stay private in the private repo |
-| 3 | Layout and UX brainstorm | in progress: direction and shell approved; page concepts and engineering guardrails presented, awaiting review | Private design record |
+| 3 | Layout and UX brainstorm | done: direction, shell and all eleven page concepts approved, polish pass (v3) complete | Private design record and mockups |
 | 3a | CTFtime hosting survey and compliance checklist | done | `docs/research/ctftime-requirements.md` |
-| 4 | Build and verify the platform | waiting on 3 | |
+| 3b | CTFtime OAuth and live JSON feed research | done | `docs/research/ctftime-oauth-and-live-feed.md` |
+| 4 | Build and verify the platform | next: design spec, then implementation plan | |
 
 ## Decisions
 
@@ -43,6 +44,8 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | 2026-10-03 | A story was chosen from five pitches. Its details stay in the private repo until the event |
 | 2026-10-03 | Visuals are code-led: CSS, SVG and generated textures, with a few key illustrations only |
 | 2026-10-03 | This repo stays public for platform code. Story, challenges and flags live in the private repo `sivaahari/L3m0nCTF-challenges`, checked out locally at `private/` |
+| 2026-10-03 | Layout direction and shell approved (details in the private repo) |
+| 2026-10-04 | All eleven page concepts reviewed and approved. A final visual polish pass (v3) was requested and done. Details and mockups are in the private repo |
 
 ## Pending decisions
 
@@ -94,3 +97,5 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | 2026-10-03 | Recorded the approvals: platform option A, story chosen, code-led visuals, private challenges repo. Started Task 3 |
 | 2026-10-03 | Layout direction and shell approved (details in the private repo). Added the CTFtime survey `docs/research/ctftime-requirements.md`; raised the capacity target to 1,000 teams and added backlog items B19 to B22 |
 | 2026-10-03 | Presented eleven page concepts (startup, login, registration, teams, scoreboard, programme, text mode, error slates, live wall) with performance and delivery guardrails. Mockups and decisions are in the private repo |
+| 2026-10-03 | Added `docs/research/ctftime-oauth-and-live-feed.md`: what CTFtime's OAuth2 and JSON feeds really offer, a plan for a static live feed and a "Login with CTFtime" plugin, and the questions to put to CTFtime. Backlog B12 split into B12a to B12c, B21 raised to P1, B23 added |
+| 2026-10-04 | Page concepts approved. Visual polish pass (v3) done and checked on all eleven pages at 375, 414, 640, 820 and 1180 px with no horizontal overflow. Mockup stored in the private repo |

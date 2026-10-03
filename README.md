@@ -2,7 +2,7 @@
 
 Platform, infrastructure and documentation for **L3m0nCTF**, the annual flagship Capture-The-Flag event of Amrita Vishwa Vidyapeetham, Coimbatore Campus, hosted by TIFAC-CORE in Cyber Security.
 
-> **Status: research and design.** There is no platform code yet. Live status and the decision log are in [PROGRESS.md](PROGRESS.md).
+> **Status: research and design, moving to the build spec.** There is no platform code yet. Live status and the decision log are in [PROGRESS.md](PROGRESS.md).
 
 ## The event
 
@@ -26,8 +26,8 @@ A CTFd-derived platform that keeps what CTFd already does well (teams, scoring, 
 |---|------|--------|
 | 1 | Analyse CTFd core and last year's platform | done, option A approved |
 | 2 | Survey story-driven CTFs, propose five story chains | done, story chosen (details private) |
-| 3 | Layout and UX brainstorm | in progress |
-| 4 | Build and verify the platform | waiting on task 3 |
+| 3 | Layout and UX brainstorm | done: direction, shell and all eleven page concepts approved (details private) |
+| 4 | Build and verify the platform | next: design spec, then implementation plan |
 
 ## Findings
 
