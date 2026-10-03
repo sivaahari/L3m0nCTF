@@ -27,7 +27,7 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | 3 | Layout and UX brainstorm | done: direction, shell and all eleven page concepts approved, polish pass (v3) complete | Private design record and mockups |
 | 3a | CTFtime hosting survey and compliance checklist | done | `docs/research/ctftime-requirements.md` |
 | 3b | CTFtime OAuth and live JSON feed research | done | `docs/research/ctftime-oauth-and-live-feed.md` |
-| 4 | Build and verify the platform | next: design spec, then implementation plan | |
+| 4 | Build and verify the platform | build design drafted, awaiting review (D15, D16); first plan covers SP0 to SP2 | `docs/superpowers/specs/2026-10-04-platform-build-design.md` |
 
 ## Decisions
 
@@ -60,6 +60,10 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | D12 | Send CTFtime the open questions in section 10 of the CTFtime survey (lead time, live feed, finals listing, organiser row, name matching, OAuth timing) | CTFtime listing |
 | D13 | Confirm the official domain and logo for the public landing page, and the confirmed prelims dates in UTC. A public page with the event details is enough to submit to CTFtime, so an interim page works | CTFtime listing, landing page |
 | D14 | Put the OAuth and feed questions (section 6 of the OAuth and live-feed research) to CTFtime on their issue tracker, and send our stable server IP for the token-endpoint allow-list once it is known | CTFtime OAuth, feed |
+| D15 | Approve the build design (`docs/superpowers/specs/2026-10-04-platform-build-design.md`), including Centrifugo as the realtime gateway, S3-compatible file storage and Cloudflare in front | Task 4 |
+| D16 | Approve pulling official container images and packages from their registries (list in section 11 of the build design) | Task 4 |
+| D17 | Accept the scope tiers in the build design and the rule that the freeze date wins over features | Task 4 |
+| D18 | Allow parallel sub-agents, each in its own git worktree, for independent sub-projects (SP0, SP1, SP2 first) | Task 4 schedule |
 
 ## Findings and issues
 
@@ -67,14 +71,14 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 |----|------|---------|--------|
 | F-001 | 2026-10-03 | Upstream CTFd latest is 3.8.8 (released 2026-10-02), Apache-2.0 | recorded |
 | F-002 | 2026-10-03 | Last year's pain points, per the organisers: load and outages, challenge hosting, cheating and abuse, look and authoring | drives task 1 |
-| F-003 | 2026-10-03 | Docker Desktop's engine is not running on the dev machine; it is needed for local runs and load tests | open |
+| F-003 | 2026-10-03 | Docker Desktop's engine was not running on the dev machine. On 2026-10-04 it is running (4 CPUs and about 7.7 GB allotted, Compose v5), so local stacks and reduced-scale load tests are possible. Real load tests still need the staging hosts | resolved locally |
 | F-004 | 2026-10-03 | This repo is public. Story pitches, flags and challenge sources must stay out of it. Story material lives in a gitignored `private/` folder until a private home is chosen | open |
 | F-005 | 2026-10-03 | `pip-audit` on CTFd 3.8.8's pins: 73 advisories in 10 of 66 packages (Pillow, Werkzeug, cryptography, urllib3 and others). Several are bumpable now | tracked as B14 |
 | F-006 | 2026-10-03 | CTFd rate-limits login, register, team-join, email confirm, password reset and SSE per client IP. Flag submission is per account. A campus NAT makes the IP limits and IP-based abuse rules misfire | designed around in B6, B15 |
-| F-007 | 2026-10-03 | CTFd clears the standings and challenge caches on every solve, and dynamic scoring commits the challenge row per solve. Both are load-test targets | hypothesis, test in B4 |
+| F-007 | 2026-10-03 | CTFd clears the standings and challenge caches on every flag submission (correct, partial and wrong, re-read in source on 2026-10-04), and dynamic scoring commits the challenge row per solve. Both are load-test targets | invalidation verified in source, impact to test in B4 |
 | F-008 | 2026-10-03 | Last year's deployment: one worker, nginx serving every asset through Python with no caching, Docker socket mounted in a root web container, spawned containers without resource limits | informs B1, B5 |
 | F-009 | 2026-10-03 | Last year's public repo history contains database backups and dumps and a cookie jar. Details given privately to the project owner | owner to purge |
-| F-010 | 2026-10-03 | Capacity: P0 backlog is roughly 30 to 36 working days and P1 roughly 25 to 30 more, against about 30 available. Needs adopt-over-build and scope cuts | see doc 03 section 4 |
+| F-010 | 2026-10-03 | Capacity: P0 backlog is roughly 30 to 36 working days and P1 roughly 25 to 30 more, against about 30 available. Needs adopt-over-build and scope cuts. Update 2026-10-04: with the full theme, the sub-project estimates total about 58 to 75 builder-days and tier A alone about 37 to 46, against about 25 weekdays to a 2026-11-07 freeze | see doc 03 section 4 and build design section 7 |
 | F-011 | 2026-10-03 | Survey: story-as-flavour on an open board is the dominant pattern at scale (Cyber Apocalypse 2024: about 13,000 players, 5,730 teams, 67 challenges). No CTF themed on Indian cartoons and no shared progress meter across all teams was found | informs task 2 |
 | F-012 | 2026-10-03 | InCTF 2026 (Amrita with team bi0s) uses the "Operation VAJRA" space and cyber-warfare theme. Our story should avoid that territory | informs task 2 |
 | F-013 | 2026-10-03 | CTFtime rating needs a team-based event of at most 5 days and a scoreboard in its JSON feed format (`standings`, optional `tasks` and `taskStats`, polled every 60 s) | tracked as B12 |
@@ -99,3 +103,5 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | 2026-10-03 | Presented eleven page concepts (startup, login, registration, teams, scoreboard, programme, text mode, error slates, live wall) with performance and delivery guardrails. Mockups and decisions are in the private repo |
 | 2026-10-03 | Added `docs/research/ctftime-oauth-and-live-feed.md`: what CTFtime's OAuth2 and JSON feeds really offer, a plan for a static live feed and a "Login with CTFtime" plugin, and the questions to put to CTFtime. Backlog B12 split into B12a to B12c, B21 raised to P1, B23 added |
 | 2026-10-04 | Page concepts approved. Visual polish pass (v3) done and checked on all eleven pages at 375, 414, 640, 820 and 1180 px with no horizontal overflow. Mockup stored in the private repo |
+| 2026-10-04 | Re-read CTFd 3.8.8's submission path: the standings and challenge caches are cleared on wrong submissions too, not only on solves. Docs 01, README and F-007 corrected |
+| 2026-10-04 | Drafted the build design: architecture, eleven sub-projects (SP0 to SP10), calendar to a 2026-11-14 prelims, scope tiers, end-to-end verification definition, risks and decisions D15, D16 |

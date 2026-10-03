@@ -39,7 +39,7 @@ Task 1 (platform analysis) is written up in [docs/analysis](docs/analysis):
 
 Headlines:
 
-- Upstream CTFd is at 3.8.8 (2026-10-02, Apache-2.0). It is a sound engine to extend. The strains sit around it: single-worker defaults, a scoreboard cache cleared on every solve, IP-keyed rate limits, no event stream and no per-team instances.
+- Upstream CTFd is at 3.8.8 (2026-10-02, Apache-2.0). It is a sound engine to extend. The strains sit around it: single-worker defaults, a scoreboard cache cleared on every flag submission, IP-keyed rate limits, no event stream and no per-team instances.
 - Last year's fork left core untouched and shipped four themes and seven plugins. It ran one worker behind an nginx that served every asset through Python, and gave the web container the Docker socket.
 - Recommendation: keep CTFd as the engine, extend it by plugin and theme only, and build a hardened deployment, an external instancer, an event stream and an abuse layer around it.
 
@@ -49,6 +49,10 @@ Task 2 (story research) has a public precedent survey in [docs/research](docs/re
 - [Hosting on CTFtime: requirements and what we must build](docs/research/ctftime-requirements.md). How listing works, the eligibility rules, the JSON scoreboard feed, OAuth2, rating and weight, a compliance checklist mapped to backlog items, and the questions to put to CTFtime.
 - [CTFtime OAuth and the live JSON feed](docs/research/ctftime-oauth-and-live-feed.md). What CTFtime offers and what is real, what stock CTFd does, the plan for a static live feed and a "Login with CTFtime" plugin, operational gotchas, and the questions to ask CTFtime.
 - The five story pitches contain the plot, so they stay out of this public repo.
+
+Task 4 (build) starts from a design spec:
+
+- [Platform build design](docs/superpowers/specs/2026-10-04-platform-build-design.md). Architecture, sub-projects SP0 to SP10, build calendar, scope tiers, how "verified end to end" is defined, risks and the decisions needed. Draft, awaiting review.
 
 ## Repository conventions
 
