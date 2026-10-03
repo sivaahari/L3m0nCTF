@@ -4,7 +4,7 @@ Last updated: 2026-10-03
 
 ## Snapshot
 
-Phase: research and design (tasks 1 and 2). Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
+Phase: research and design. Task 1 is written up and waiting on approval of its recommendation. Task 2 (CTF survey and story chains) is in progress. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
 
 ## Plan
 
@@ -22,7 +22,7 @@ Phase: research and design (tasks 1 and 2). Prelims are about six weeks out, so 
 
 | # | Task | Status | Output |
 |---|------|--------|--------|
-| 1 | Analyse CTFd core and last year's platform | in progress | `docs/analysis/` |
+| 1 | Analyse CTFd core and last year's platform | written, recommendation awaiting approval | `docs/analysis/` |
 | 2 | Survey story-driven CTFs, propose five story chains | in progress | `docs/research/` (public precedent survey); story pitches stay private |
 | 3 | Layout and UX brainstorm | waiting on 2 | |
 | 4 | Build and verify the platform | waiting on 3 | |
@@ -39,6 +39,16 @@ Phase: research and design (tasks 1 and 2). Prelims are about six weeks out, so 
 | 2026-10-03 | Niche tracks in scope: AI/LLM security, blockchain/Web3, hardware/IoT/RF |
 | 2026-10-03 | Work goes to `pre-deployment` first; `main` only after testing and approval |
 
+## Pending decisions
+
+| ID | Decision | Needed for |
+|----|----------|------------|
+| D1 | Approve option A (CTFd 3.8.x extended) as the base platform | Task 4 |
+| D2 | Instancer: adopt (`ctfd-chall-manager`, `ctfd-whale`) or build thin on Docker hosts. Needs hosting info and permission to reuse last year's code | Task 4 |
+| D3 | Create a private repo for challenges and story (for example `L3m0nCTF-challenges`) | Authors, story |
+| D4 | Keep this repo public, or make it private until the event | Repo hygiene |
+| D5 | Ask last year's plugin authors for permission to reuse their code | Task 4 |
+
 ## Findings and issues
 
 | ID | Date | Finding | Status |
@@ -47,9 +57,16 @@ Phase: research and design (tasks 1 and 2). Prelims are about six weeks out, so 
 | F-002 | 2026-10-03 | Last year's pain points, per the organisers: load and outages, challenge hosting, cheating and abuse, look and authoring | drives task 1 |
 | F-003 | 2026-10-03 | Docker Desktop's engine is not running on the dev machine; it is needed for local runs and load tests | open |
 | F-004 | 2026-10-03 | This repo is public. Story pitches, flags and challenge sources must stay out of it. Story material lives in a gitignored `private/` folder until a private home is chosen | open |
+| F-005 | 2026-10-03 | `pip-audit` on CTFd 3.8.8's pins: 73 advisories in 10 of 66 packages (Pillow, Werkzeug, cryptography, urllib3 and others). Several are bumpable now | tracked as B14 |
+| F-006 | 2026-10-03 | CTFd rate-limits login, register, team-join, email confirm, password reset and SSE per client IP. Flag submission is per account. A campus NAT makes the IP limits and IP-based abuse rules misfire | designed around in B6, B15 |
+| F-007 | 2026-10-03 | CTFd clears the standings and challenge caches on every solve, and dynamic scoring commits the challenge row per solve. Both are load-test targets | hypothesis, test in B4 |
+| F-008 | 2026-10-03 | Last year's deployment: one worker, nginx serving every asset through Python with no caching, Docker socket mounted in a root web container, spawned containers without resource limits | informs B1, B5 |
+| F-009 | 2026-10-03 | Last year's public repo history contains database backups and dumps and a cookie jar. Details given privately to the project owner | owner to purge |
+| F-010 | 2026-10-03 | Capacity: P0 backlog is roughly 30 to 36 working days and P1 roughly 25 to 30 more, against about 30 available. Needs adopt-over-build and scope cuts | see doc 03 section 4 |
 
 ## Change log
 
 | Date | Change |
 |------|--------|
 | 2026-10-03 | Repository initialised on `pre-deployment` with README and this tracker |
+| 2026-10-03 | Added Task 1 analysis: `docs/analysis/01-ctfd-core.md`, `02-last-year-fork.md`, `03-options-and-recommendation.md` |

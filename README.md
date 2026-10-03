@@ -24,16 +24,24 @@ A CTFd-derived platform that keeps what CTFd already does well (teams, scoring, 
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | Analyse CTFd core and last year's platform | in progress |
+| 1 | Analyse CTFd core and last year's platform | written, recommendation awaiting approval |
 | 2 | Survey story-driven CTFs, propose five story chains | in progress |
 | 3 | Layout and UX brainstorm | waiting on task 2 |
 | 4 | Build and verify the platform | waiting on task 3 |
 
 ## Findings
 
-Findings are linked here as they land. Baseline facts so far:
+Task 1 (platform analysis) is written up in [docs/analysis](docs/analysis):
 
-- Upstream CTFd's latest release is 3.8.8 (2026-10-02), licensed Apache-2.0.
+- [CTFd 3.8.x: how it works and where it strains](docs/analysis/01-ctfd-core.md)
+- [Last year's platform: what was built and what hurt](docs/analysis/02-last-year-fork.md)
+- [Platform options and recommendation](docs/analysis/03-options-and-recommendation.md) (proposal, awaiting approval)
+
+Headlines:
+
+- Upstream CTFd is at 3.8.8 (2026-10-02, Apache-2.0). It is a sound engine to extend. The strains sit around it: single-worker defaults, a scoreboard cache cleared on every solve, IP-keyed rate limits, no event stream and no per-team instances.
+- Last year's fork left core untouched and shipped four themes and seven plugins. It ran one worker behind an nginx that served every asset through Python, and gave the web container the Docker socket.
+- Recommendation: keep CTFd as the engine, extend it by plugin and theme only, and build a hardened deployment, an external instancer, an event stream and an abuse layer around it.
 
 ## Repository conventions
 
