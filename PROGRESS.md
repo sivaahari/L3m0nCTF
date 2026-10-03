@@ -55,7 +55,8 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | D10 | Hosting and budget, registration and eligibility, team size and brackets, who owns DevOps, finalist count, sponsors | Task 4 |
 | D11 | Create a CTFtime account (social login) and the organiser team. Which Amrita team will be the organiser? (An existing Amrita Coimbatore team may be reusable.) Only a team member can do this | CTFtime listing |
 | D12 | Send CTFtime the open questions in section 10 of the CTFtime survey (lead time, live feed, finals listing, organiser row, name matching, OAuth timing) | CTFtime listing |
-| D13 | Confirm the official domain and logo for the public landing page, and the confirmed prelims dates in UTC | CTFtime listing, landing page |
+| D13 | Confirm the official domain and logo for the public landing page, and the confirmed prelims dates in UTC. A public page with the event details is enough to submit to CTFtime, so an interim page works | CTFtime listing, landing page |
+| D14 | Put the OAuth and feed questions (section 6 of the OAuth and live-feed research) to CTFtime on their issue tracker, and send our stable server IP for the token-endpoint allow-list once it is known | CTFtime OAuth, feed |
 
 ## Findings and issues
 
@@ -78,6 +79,9 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | F-015 | 2026-10-03 | CTFtime-listed events draw big fields: Pragyan CTF 2026 had 892 teams, bi0sCTF 2025 had 624. The capacity target moves from 600 to 1,000 teams | doc 03 updated |
 | F-016 | 2026-10-03 | The CTFtime feed identifies teams by name only, so results are matched by exact name or alias. First-time events are capped at weight 25. Only teams scoring above zero count. Hidden challenges must be kept out of the public feed | B12, B20 |
 | F-017 | 2026-10-03 | CTFtime OAuth2 can only be used after approval (client ID is the event ID). CTFd core has no CTFtime provider. It stays optional | B21 |
+| F-018 | 2026-10-03 | CTFtime has two feeds (standings, and a capture log polled with `?lastId=`), warns against "maximal" feeds, and has called the real-time feature "in progress" since about 2016. No running event I checked shows a live scoreboard. The final results upload is what matters for rating. Plan: static file, minimal feed first | B12a to B12c |
+| F-019 | 2026-10-03 | CTFtime OAuth gotchas: it works only for upcoming or running events, the token endpoint has returned 403 until the server IP was allow-listed, and over-long `state` values failed. Stock CTFd's OAuth needs `email`, sends no `redirect_uri` and rate-limits per IP, so we write a plugin | B21, B23 |
+| F-020 | 2026-10-03 | A two-round Indian CTF (Hacker's Gambit 2026) is listed on CTFtime as two events, an online qualifier and a prequalified finale, with a third-party page as its official URL. Prequalified finals can carry weight (SAS CTF Finals 49.50) | informs the listing |
 
 ## Change log
 

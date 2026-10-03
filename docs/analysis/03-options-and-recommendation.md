@@ -90,7 +90,9 @@ Effort is a rough single-developer estimate in working days and is unverified. P
 | B9 | Realtime gateway and domain events: solve, first blood, story unlock, global meter, announcements | L, S | 3 to 4 | P1 |
 | B10 | Story engine plugin: nodes, tokens, per-team progress, global meter, story-mode toggle, admin editor | S | 6 to 8 | P1, after story approval |
 | B11 | Custom theme from the Task 3 design | A | 10+ | P1 |
-| B12 | CTFtime feed, final export and public scoreboard (spec and rules in the [CTFtime survey](../research/ctftime-requirements.md)) | O | 1 to 2 | P1 |
+| B12a | CTFtime live minimal standings feed: a worker writes a static file every 15 s, nginx serves it (plan in [CTFtime OAuth and the live feed](../research/ctftime-oauth-and-live-feed.md)) | O | 1 | P1 |
+| B12b | CTFtime final results export in the feed format, plus the public scoreboard page | O | 1 | **P0** |
+| B12c | CTFtime capture-log feed and maximal standings (`tasks`, `taskStats`, `lastAccept`), only after CTFtime confirms them | O | 2 | P2 |
 | B13 | Observability: Prometheus, Grafana, Loki, alerts to Discord, status page, runbooks | L, H | 3 | P1 |
 | B14 | Dependency hygiene: `pip-audit` in CI, safe bumps, upstream tests plus ours, Dependabot | C | 2 | P1 |
 | B15 | Finals mode: round gating, finalist import and carry-over, per-round boards, campus-IP allowances | O | 2 to 3 | P1 |
@@ -99,7 +101,8 @@ Effort is a rough single-developer estimate in working days and is unverified. P
 | B18 | Post-event static archive export | O | 1 | P2 |
 | B19 | Public landing page and event info: the official site CTFtime needs before it will list us (name, dates in UTC and IST, format, rules, prizes, registration, scoreboard link, contact, Open Graph tags, schema.org `Event`) | O | 2 to 3 | **P0, critical path** |
 | B20 | Team-name policy and CTFtime fields: case-insensitive unique names, a "use your CTFtime name" hint, an optional CTFtime team ID, Unicode handled in the feed | C, O | 1 | P1 |
-| B21 | "Login with CTFtime" plugin (OAuth2 Authorization Code, scopes `profile` and `team`), optional, usable only after approval | O | 2 to 3 | P2 |
+| B21 | "Login with CTFtime" plugin (OAuth2 Authorization Code, scopes `profile:read team:read`), plus "Link CTFtime" from My Team. Optional, and usable only after the event is approved | O, C | 2 to 3 | P1 |
+| B23 | A single stable egress IP for the server (sent to CTFtime for the token-endpoint allow-list) and a mock CTFtime OAuth provider for CI | O | 1 | P1 |
 | B22 | CTFtime tasks export after the event, so teams can post writeups | O | 1 | P2 |
 
 **Capacity warning.** P0 alone is roughly 32 to 39 working days and P1 roughly 27 to 33 more, against about 30 working days available. Ways to compress, in order of preference:

@@ -30,7 +30,8 @@ CTFtime's event filters are: **Location** (On-line, On-site) and **Restrictions*
 
 - **Prelims:** online, Jeopardy, **Open**. Keeping it open is what makes a rating plausible.
 - **Finals:** Jeopardy-style, on campus, invited teams. This is naturally **Prequalified** or **Invited only**.
-- On the upcoming list, Prequalified and Academic events often show a weight of 0.00 or none. One two-round Indian CTF lists its second round as "Prequalified teams only" with a weight of 0.00. So a rating for the finals is unlikely, but a listing still gives visibility. **Ask CTFtime** (section 10).
+- Restrictions do not decide rating, the weight does. On the upcoming list, prequalified finals include SAS CTF Finals at 49.50 and Srdnlen CTF Finals at 25.00, while several Indian finals show 0.00 pending votes (H7CTF Finals, Hacker's Gambit Round 2). A two-round Indian CTF, Hacker's Gambit 2026, is listed as two separate events: an [online qualifier](https://ctftime.org/event/3380) and a prequalified [Grand Finale](https://ctftime.org/event/3381). That is the same shape as ours. **Ask CTFtime** (section 10).
+- That precedent's official URL is a third-party event page, so the listing does not need our own domain. A public page with the event details is enough to submit.
 - If we mark our teams "Academic" on CTFtime, that only concerns CTFtime's team flag (university students only). It does not change how our event is listed.
 
 ## 4. Listing fields
@@ -72,7 +73,7 @@ Rules we will implement:
 - A **final export** (same format) after the freeze lifts, kept as a file for the record.
 - In real events, CTFtime shows `Place | Team | CTF points | Rating points`, for example bi0sCTF 2025 with 624 teams. Organisers appear in some scoreboards as a team named "organizers", and organisers earn rating points for their own events. Optional for us.
 
-The organiser page says the real-time feed feature is "in progress". Treat that as stale until CTFtime confirms, and be ready to hand over the final scoreboard in the same format.
+The organiser page says the real-time feed feature is "in progress", and the feed page warns against implementing "maximal" feeds before an official announcement. So ship the minimal feed, be ready to hand over the final scoreboard in the same format, and see [CTFtime OAuth and the live feed](ctftime-oauth-and-live-feed.md) for the full plan, including the second (capture log) feed.
 
 ## 6. Team identity and names
 
