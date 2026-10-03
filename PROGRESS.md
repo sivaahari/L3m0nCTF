@@ -4,7 +4,7 @@ Last updated: 2026-10-03
 
 ## Snapshot
 
-Phase: research and design. Task 1 is written up and waiting on approval of its recommendation. Task 2 is written up: a public precedent survey, and five story pitches kept private. Both wait on your decisions below. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
+Phase: design. Tasks 1 and 2 are done and approved (platform option A, story chosen with details kept private). Task 3, the layout and look brainstorm, is in progress. Nothing is built until its design is approved. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
 
 ## Plan
 
@@ -22,9 +22,9 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 
 | # | Task | Status | Output |
 |---|------|--------|--------|
-| 1 | Analyse CTFd core and last year's platform | written, recommendation awaiting approval | `docs/analysis/` |
-| 2 | Survey story-driven CTFs, propose five story chains | written, awaiting story choice | `docs/research/` (public precedent survey); story pitches stay private in `private/story/` |
-| 3 | Layout and UX brainstorm | waiting on 2 | |
+| 1 | Analyse CTFd core and last year's platform | done, option A approved | `docs/analysis/` |
+| 2 | Survey story-driven CTFs, propose five story chains | done, story chosen | `docs/research/` (public precedent survey); story pitches stay private in the private repo |
+| 3 | Layout and UX brainstorm | in progress | |
 | 4 | Build and verify the platform | waiting on 3 | |
 
 ## Decisions
@@ -38,20 +38,20 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 | 2026-10-03 | Story is an overlay on an open board: every challenge stays independently solvable, solves unlock lore and move a progress meter |
 | 2026-10-03 | Niche tracks in scope: AI/LLM security, blockchain/Web3, hardware/IoT/RF |
 | 2026-10-03 | Work goes to `pre-deployment` first; `main` only after testing and approval |
+| 2026-10-03 | **Base platform: option A.** CTFd 3.8.x as the engine, extended by plugin and theme only, with no core edits |
+| 2026-10-03 | A story was chosen from five pitches. Its details stay in the private repo until the event |
+| 2026-10-03 | Visuals are code-led: CSS, SVG and generated textures, with a few key illustrations only |
+| 2026-10-03 | This repo stays public for platform code. Story, challenges and flags live in the private repo `sivaahari/L3m0nCTF-challenges`, checked out locally at `private/` |
 
 ## Pending decisions
 
 | ID | Decision | Needed for |
 |----|----------|------------|
-| D1 | Approve option A (CTFd 3.8.x extended) as the base platform | Task 4 |
 | D2 | Instancer: adopt (`ctfd-chall-manager`, `ctfd-whale`) or build thin on Docker hosts. Needs hosting info and permission to reuse last year's code | Task 4 |
-| D3 | Create a private repo for challenges and story (for example `L3m0nCTF-challenges`) | Authors, story |
-| D4 | Keep this repo public, or make it private until the event | Repo hygiene |
 | D5 | Ask last year's plugin authors for permission to reuse their code | Task 4 |
-| D6 | Choose a story (or a blend) from the five pitches | Tasks 3 and 4 |
-| D7 | Art resources: is there an illustrator or designer, or should the look lean on CSS, SVG and generated textures | Task 3 |
 | D8 | Do the finals continue the same story as Part 2, or start a fresh episode | Story |
-| D9 | Confirm the cartoon pool excludes mythology and religious figures (inferred from the unselected option) | Story |
+| D9 | Confirm the cartoon pool excludes mythology and religious figures (inferred from an unselected option) | Story |
+| D10 | Hosting and budget, registration and eligibility, team size and brackets, who owns DevOps, finalist count, sponsors | Task 4 |
 
 ## Findings and issues
 
@@ -78,3 +78,5 @@ Phase: research and design. Task 1 is written up and waiting on approval of its 
 | 2026-10-03 | Repository initialised on `pre-deployment` with README and this tracker |
 | 2026-10-03 | Added Task 1 analysis: `docs/analysis/01-ctfd-core.md`, `02-last-year-fork.md`, `03-options-and-recommendation.md` |
 | 2026-10-03 | Added Task 2 precedent survey: `docs/research/ctf-story-survey.md`. Story pitches written to the gitignored `private/story/` |
+| 2026-10-03 | Created the private repo `sivaahari/L3m0nCTF-challenges`, checked out at `private/`, and pushed the story pitches and decision record to its `pre-deployment` branch |
+| 2026-10-03 | Recorded the approvals: platform option A, story chosen, code-led visuals, private challenges repo. Started Task 3 |

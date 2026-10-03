@@ -24,9 +24,9 @@ A CTFd-derived platform that keeps what CTFd already does well (teams, scoring, 
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | Analyse CTFd core and last year's platform | written, recommendation awaiting approval |
-| 2 | Survey story-driven CTFs, propose five story chains | survey written, pitches ready for review |
-| 3 | Layout and UX brainstorm | waiting on task 2 |
+| 1 | Analyse CTFd core and last year's platform | done, option A approved |
+| 2 | Survey story-driven CTFs, propose five story chains | done, story chosen (details private) |
+| 3 | Layout and UX brainstorm | in progress |
 | 4 | Build and verify the platform | waiting on task 3 |
 
 ## Findings
@@ -35,7 +35,7 @@ Task 1 (platform analysis) is written up in [docs/analysis](docs/analysis):
 
 - [CTFd 3.8.x: how it works and where it strains](docs/analysis/01-ctfd-core.md)
 - [Last year's platform: what was built and what hurt](docs/analysis/02-last-year-fork.md)
-- [Platform options and recommendation](docs/analysis/03-options-and-recommendation.md) (proposal, awaiting approval)
+- [Platform options and recommendation](docs/analysis/03-options-and-recommendation.md) (option A, CTFd 3.8.x extended, approved)
 
 Headlines:
 
@@ -51,4 +51,4 @@ Task 2 (story research) has a public precedent survey in [docs/research](docs/re
 ## Repository conventions
 
 - Every change lands on `pre-deployment` first. `main` only receives work that has been tested there and approved.
-- This repository is public. It must never contain flags, challenge solutions, secrets, database dumps or unreleased story material.
+- This repository is public. It must never contain flags, challenge solutions, secrets, database dumps or unreleased story material. Those live in the private repository `sivaahari/L3m0nCTF-challenges`, which is checked out locally at `private/` (ignored here).

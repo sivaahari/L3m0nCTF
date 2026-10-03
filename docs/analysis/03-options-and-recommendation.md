@@ -1,6 +1,6 @@
 # Platform options and recommendation
 
-Inputs: [01-ctfd-core.md](01-ctfd-core.md) and [02-last-year-fork.md](02-last-year-fork.md). Status: **proposal, awaiting approval.**
+Inputs: [01-ctfd-core.md](01-ctfd-core.md) and [02-last-year-fork.md](02-last-year-fork.md). Status: **option A approved on 2026-10-03.** The instancer sub-decision (section 2) and the remaining items in section 6 are still open.
 
 ## 1. Requirements that drive the choice
 
