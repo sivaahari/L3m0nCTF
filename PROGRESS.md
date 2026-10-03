@@ -24,7 +24,7 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 |---|------|--------|--------|
 | 1 | Analyse CTFd core and last year's platform | done, option A approved | `docs/analysis/` |
 | 2 | Survey story-driven CTFs, propose five story chains | done, story chosen | `docs/research/` (public precedent survey); story pitches stay private in the private repo |
-| 3 | Layout and UX brainstorm | in progress: direction and shell approved, page concepts next | Private design record |
+| 3 | Layout and UX brainstorm | in progress: direction and shell approved; page concepts and engineering guardrails presented, awaiting review | Private design record |
 | 3a | CTFtime hosting survey and compliance checklist | done | `docs/research/ctftime-requirements.md` |
 | 4 | Build and verify the platform | waiting on 3 | |
 
@@ -89,3 +89,4 @@ Phase: design. Tasks 1 and 2 are done and approved (platform option A, story cho
 | 2026-10-03 | Created the private repo `sivaahari/L3m0nCTF-challenges`, checked out at `private/`, and pushed the story pitches and decision record to its `pre-deployment` branch |
 | 2026-10-03 | Recorded the approvals: platform option A, story chosen, code-led visuals, private challenges repo. Started Task 3 |
 | 2026-10-03 | Layout direction and shell approved (details in the private repo). Added the CTFtime survey `docs/research/ctftime-requirements.md`; raised the capacity target to 1,000 teams and added backlog items B19 to B22 |
+| 2026-10-03 | Presented eleven page concepts (startup, login, registration, teams, scoreboard, programme, text mode, error slates, live wall) with performance and delivery guardrails. Mockups and decisions are in the private repo |
