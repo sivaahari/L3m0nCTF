@@ -4,7 +4,7 @@ Status: **draft, 2026-10-04, revised the same day with the site essentials.** It
 
 **The technology choices here are a proposal.** The project owner cannot approve a stack: the department's leadership decides. The four-page proposal PDF (private repo, `proposal/`) is the short version written for them. Until they decide, work continues only on parts that do not depend on the stack: the landing page, the author-kit documents, design assets and this documentation.
 
-Inputs: [01 CTFd core](../../analysis/01-ctfd-core.md), [02 last year's fork](../../analysis/02-last-year-fork.md), [03 options](../../analysis/03-options-and-recommendation.md), [CTFtime requirements](../../research/ctftime-requirements.md), [CTFtime OAuth and live feed](../../research/ctftime-oauth-and-live-feed.md), and the approved page concepts (private).
+Inputs: [01 CTFd core](../../analysis/01-ctfd-core.md), [02 last year's fork](../../analysis/02-last-year-fork.md), [03 options](../../analysis/03-options-and-recommendation.md), [CTFtime requirements](../../research/ctftime-requirements.md), [CTFtime OAuth and live feed](../../research/ctftime-oauth-and-live-feed.md), [sign-in methods](../../research/sign-in-methods.md), and the approved page concepts (private).
 
 ## 1. Goal and non-goals
 
@@ -180,7 +180,7 @@ Each gets its own plan, then implementation on `pre-deployment`, then staging ve
 .
 ├─ deploy/       compose files, nginx, mariadb, centrifugo, prometheus, grafana, runbooks, scripts
 ├─ docker/ctfd/  Dockerfile: pinned CTFd, dependency bumps, plugins, built theme
-├─ plugins/      l3mon_core, l3mon_story, l3mon_guard, l3mon_ctftime, l3mon_instances
+├─ plugins/      l3mon_core, l3mon_story, l3mon_guard, l3mon_auth, l3mon_ctftime, l3mon_instances
 ├─ services/     worker, instancer
 ├─ ui/           theme sources (Vite, TypeScript), landing site, tile pipeline, design tokens
 ├─ config/       event.yaml (public example), JSON schemas for every config file
@@ -228,10 +228,10 @@ The private repo holds the real challenges, story, flags, channel grouping and s
 **Delivers.** `l3mon_story`: nodes with triggers (a given solve, a channel count, the global meter), per-team progress in the database with a Redis cache, a global meter computed by the worker, lore unlocks, fragments as secret shares (any K of N reveal the finale), a finale meta-challenge hook, an auto-air fallback at a set time so the story ends even if few teams solve, a story-mode toggle (a plain CTF mode with the story hidden), and an admin editor. The story content itself is private config synced by `l3mon story sync`.
 **Done when.** Meter and unlock events reach every client live, a team's unlocks are private to it, the K-of-N threshold and the fallback are covered by tests with a fake clock, and switching story mode off hides every story surface without breaking scoring.
 
-### SP8 CTFtime integration (4 to 5 days)
+### SP8 CTFtime integration and sign-in methods (6 to 7 days)
 
-**Delivers.** `l3mon_ctftime`, following the [research](../../research/ctftime-oauth-and-live-feed.md): the worker writes a minimal `standings.json` every 15 seconds (atomic, valid JSON, scored and visible teams only, freeze respected) which nginx serves directly (B12a); a final results export in the feed format after the freeze lifts (B12b, P0); a "Login with CTFtime" OAuth2 plugin with `profile:read team:read`, linking on CTFtime IDs, no stored tokens, never for admin accounts, and a "Link CTFtime" path from My Team (B21); a mock CTFtime provider for CI (B23); a stable egress IP to give CTFtime. The capture-log and maximal feeds wait for CTFtime's confirmation (B12c).
-**Done when.** The feed validates against the published schema including emoji, right-to-left and quote cases, the file is never older than 2 minutes (alert), OAuth passes the mock-provider cases (success, 403, bad state, name clash, size limit), and a real end-to-end test is run the day the event is approved.
+**Delivers.** `l3mon_ctftime`, following the [research](../../research/ctftime-oauth-and-live-feed.md): the worker writes a minimal `standings.json` every 15 seconds (atomic, valid JSON, scored and visible teams only, freeze respected) which nginx serves directly (B12a); a final results export in the feed format after the freeze lifts (B12b, P0); the sign-in plugin `l3mon_auth` (see [sign-in methods](../../research/sign-in-methods.md)), which offers three ways in: email and password (CTFd's own, with mandatory verification), "Continue with Google" (OpenID Connect, scopes `openid email profile`, B25) and "Login with CTFtime" (OAuth2, `profile:read team:read`, B21). Both buttons sit behind one provider interface, link accounts on the provider's stable ID and never by an unverified email, store no provider tokens, never sign in an admin account, and add "Link Google" and "Link CTFtime" paths in settings; a mock provider for CI (B23); a stable egress IP to give CTFtime. The capture-log and maximal feeds wait for CTFtime's confirmation (B12c).
+**Done when.** The feed validates against the published schema including emoji, right-to-left and quote cases, the file is never older than 2 minutes (alert), sign-in passes the mock-provider cases for both providers (success, 403, bad state, expired and replayed code, unverified email, the account-takeover case, name clash, size limit), and a real end-to-end test is run the day the event is approved.
 
 ### SP9 Operations (6 to 8 days, runs alongside)
 
@@ -277,7 +277,7 @@ gantt
   Staging open to authors :milestone, msa, 2026-10-18, 0d
   section Identity
   SP7 story engine :c1, 2026-10-20, 10d
-  SP8 CTFtime feed and OAuth :c2, 2026-10-22, 6d
+  SP8 CTFtime feed and sign-in :c2, 2026-10-22, 7d
   SP6 theme: scoreboard, teams, text, slates, wall :c3, 2026-10-22, 10d
   section Ship
   Production hosting, email, registration opens :d1, 2026-10-24, 7d
@@ -301,7 +301,7 @@ gantt
 
 **First implementation plan:** SP0, SP1 and SP2 together. They unblock the CTFtime listing, the authors and everything after them. Each later sub-project gets its own plan when its turn comes.
 
-**Capacity check.** Added up, the estimates in section 6 and the site essentials come to about 64 to 82 builder-days. There are about 25 weekdays (34 calendar days) from Oct 5 to the freeze, and the tier A work alone is about 42 to 52 days on the same scale. Code written with me is faster than a solo builder, but review, hosting, DNS, email, the authors' challenges and load testing take the same wall-clock time, so the plan cannot assume tier B ships. Ways to compress, in order:
+**Capacity check.** Added up, the estimates in section 6 and the site essentials come to about 66 to 84 builder-days. There are about 25 weekdays (34 calendar days) from Oct 5 to the freeze, and the tier A work alone is about 44 to 54 days on the same scale. Code written with me is faster than a solo builder, but review, hosting, DNS, email, the authors' challenges and load testing take the same wall-clock time, so the plan cannot assume tier B ships. Ways to compress, in order:
 1. Agree the tiers now, and agree that the freeze date wins over features (D17).
 2. Run independent sub-projects in parallel, each in its own git worktree, for example SP0, SP1 and SP2 in week one (needs your go-ahead to use sub-agents, D18).
 3. Bring in a DevOps owner for SP9 and production hosting, and one front-end helper for the secondary theme pages.
@@ -311,8 +311,8 @@ gantt
 
 | Tier | Contents |
 |------|----------|
-| **A: the prelims cannot run without it** | SP0, SP1, SP2, SP3 (snapshots, board, scoreboard, microcache), SP6 core pages (auth, board, panel, scoreboard, teams, slates), SP5 basics, SP4 for HTTP instances, SP9 basics (alerts, backups and a restore drill, load test, runbooks), the final results export, and the site essentials marked A in section 6: every error and busy slate, the account gates, rules, privacy, contact and FAQ pages, discovery files, announcements, the report form, the status page, health endpoints, accessibility basics and security headers |
-| **B: the event's identity, built right after A** | SP7 story overlay (meter, lore, finale), realtime ticks, text mode, the live minimal feed, OAuth, TCP and Web3 instances, dynamic-flag sharing detection, live wall, clarifications page, scheduled drops, the remaining info pages |
+| **A: the prelims cannot run without it** | SP0, SP1, SP2, SP3 (snapshots, board, scoreboard, microcache), SP6 core pages (auth, board, panel, scoreboard, teams, slates), SP5 basics, SP4 for HTTP instances, SP9 basics (alerts, backups and a restore drill, load test, runbooks), the final results export, Google sign-in (B25: it removes the email-delivery risk), and the site essentials marked A in section 6: every error and busy slate, the account gates, rules, privacy, contact and FAQ pages, discovery files, announcements, the report form, the status page, health endpoints, accessibility basics and security headers |
+| **B: the event's identity, built right after A** | SP7 story overlay (meter, lore, finale), realtime ticks, text mode, the live minimal feed, CTFtime login, TCP and Web3 instances, dynamic-flag sharing detection, live wall, clarifications page, scheduled drops, the remaining info pages |
 | **C: after the prelims** | SP10 finals mode, mascot shuffle, per-channel standings pages, the grid list view, the waiting room, certificates, winners page and writeups hub, post-event archive, optional LLM hint buddy, dynamic-score optimisation |
 
 ## 8. How "verified end to end" is defined
@@ -333,12 +333,13 @@ gantt
 | S8 | Story: meter advances, public unlock reaches all clients, private unlock reaches only one team, K-of-N finale and the fallback work under a fake clock, story mode off hides everything |
 | S9 | Kill the gateway: the page falls back to polling, then resumes |
 | S10 | Freeze and unfreeze, final export matches the CTFtime schema |
-| S11 | CTFtime OAuth against the mock provider (success, 403, bad state, name clash), and an admin account cannot be signed in through it |
+| S11 | Sign-in with the mock provider for both Google and CTFtime (success, 403, bad state, replayed code, unverified email, name clash). An unverified local account is never auto-linked to a provider identity, and an admin account cannot be signed in through either provider |
 | S12 | App down: nginx serves the static slate, and maintenance mode shows the countdown |
 | S13 | Busy mode: above the concurrency cap, page loads get the 503 slate and API calls get JSON with `Retry-After`, the client backs off with jitter, and flag submissions still succeed while pages are shed |
 | S14 | Error contract: every status in the table in section 5 shows its slate, and a 403 or 429 JSON reply from the submit call appears inline in the panel, never as a page |
 | S15 | Info and discovery bundle: `robots.txt`, `sitemap.xml`, `security.txt`, the web manifest, the icon set and the share card all resolve, and the `Event` markup validates |
 | S16 | Account gates: an unverified email lands on the gate, a suspended team on the off-air slate, and an expired session keeps the half-typed flag through sign-in |
+| S17 | Google sign-up: a verified Google account reaches step 3 of registration with no email step, while a CTFtime sign-up with an unverified email hits the verification gate |
 
 **Load gates (at twice the target in the table in doc 03).** About 5,000 concurrent browsers, 800 requests per second mixed, a 4,000-load burst in 60 seconds at start, 140 flag submissions per second. p95 under 300 ms and p99 under 1 s for reads, errors under 0.1%, scoreboard within 5 s, and as many live instances as the staging challenge hosts allow, up to the 500 target. Run on the real staging hardware; on a laptop only relative numbers are meaningful.
 
@@ -379,6 +380,7 @@ The first five block work in the next two weeks. IDs continue the list in [PROGR
 | D10 (cont.) | Registration eligibility, team size limit, finalist count, sponsors | Open to all teams, team size four, finalist count after the prelims |
 | D17 | Accept the scope tiers (section 7) and the rule that the freeze date wins over features | Accept |
 | D18 | May I run independent sub-projects in parallel with sub-agents, each in its own git worktree? | Yes for SP0, SP1 and SP2 in week one. I review and merge each before it lands on `pre-deployment`. It costs more tokens, so it is your call |
+| D21 | (organiser) Who creates and owns the Google Cloud project for "Continue with Google", and who asks the college's Google administrator whether students may use third-party sign-in? | An organiser account owns the project (not a personal one). Ask the administrator this week |
 
 ## 11. Environment and downloads
 

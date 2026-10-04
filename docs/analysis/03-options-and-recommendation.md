@@ -105,6 +105,7 @@ Effort is a rough single-developer estimate in working days and is unverified. P
 | B23 | A single stable egress IP for the server (sent to CTFtime for the token-endpoint allow-list) and a mock CTFtime OAuth provider for CI | O | 1 | P1 |
 | B22 | CTFtime tasks export after the event, so teams can post writeups | O | 1 | P2 |
 | B24 | Site essentials bundle: error and busy slates with a page-versus-API error contract, busy mode (concurrency caps, maintenance flag, waiting room later), account gates, info and legal pages, discovery files (`robots.txt`, `sitemap.xml`, `security.txt`, icons, share cards), announcements and a report-a-problem form, status page, health endpoints, audit log, accessibility and security-header basics (list and tiers in the [build design](../superpowers/specs/2026-10-04-platform-build-design.md)) | A, L, O | 6 | P0 for the A-tier items, P1 for the rest |
+| B25 | "Continue with Google" sign-in: OpenID Connect, scopes `openid email profile`, shared provider interface and linking rules with B21 (never link by an unverified email), "Link Google" in settings. Details in [sign-in methods](../research/sign-in-methods.md) | O, C | 2 | P0 (tier A: it removes the email-delivery risk) |
 
 **Capacity warning.** P0 alone is roughly 32 to 39 working days and P1 roughly 27 to 33 more, against about 30 working days available. Ways to compress, in order of preference:
 1. Adopt rather than build: an existing instancer, an existing CTFtime endpoint, a CDN for edge caching and DDoS protection.

@@ -4,7 +4,7 @@ Last updated: 2026-10-04
 
 ## Snapshot
 
-Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (platform option A preferred, story chosen with details kept private, layout direction, shell and all eleven page concepts approved, then a visual polish pass and a pass over the small parts of a complete site). The CTFtime OAuth and live-feed research is also done. The build design for Task 4 is written. The technology choices are a proposal: the project owner cannot approve a stack, so the department's leadership decides (D15), and a four-page proposal was written for them. Nothing is built until they decide; meanwhile work continues only on parts that do not depend on the stack. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
+Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (platform option A preferred, story chosen with details kept private, layout direction, shell and all eleven page concepts approved, then a visual polish pass and a pass over the small parts of a complete site). The CTFtime OAuth and live-feed research is also done. The build design for Task 4 is written. The technology choices are a proposal: the project owner cannot approve a stack, so the department's leadership decides (D15), and a four-page proposal was written for them. Nothing stack-dependent is built until they decide; meanwhile work continues only on parts that do not depend on the stack. The first of those, the public landing page (SP1), is built and tested in the private repo and waits for the organisers' facts (D19). No event dates are decided for either round, so the page says "Announced soon". The platform will offer three ways to sign in: email, Google and CTFtime. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
 
 ## Plan
 
@@ -27,6 +27,7 @@ Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (plat
 | 3 | Layout and UX brainstorm | done: direction, shell and all eleven page concepts approved, polish pass (v3) complete | Private design record and mockups |
 | 3a | CTFtime hosting survey and compliance checklist | done | `docs/research/ctftime-requirements.md` |
 | 3b | CTFtime OAuth and live JSON feed research | done | `docs/research/ctftime-oauth-and-live-feed.md` |
+| 4a | Public landing page (SP1): static and dependency-free, with the approved "The Set" look, hidden-lemon game, draft rules, privacy, 404, share card and a CTFtime submission pack | built and tested (unit tests plus an end-to-end browser suite, first load about 35 KB gzip of a 60 KB budget); independent Opus reviews re-running; waiting on organiser facts (D19) | private repo, `landing/` (README, plan and design records inside) |
 | 4 | Build and verify the platform | build design drafted with the site essentials; the stack is a proposal awaiting leadership (D15); first plan covers SP0 to SP2 | `docs/superpowers/specs/2026-10-04-platform-build-design.md`, and the leadership proposal PDF in the private repo |
 
 ## Decisions
@@ -46,6 +47,10 @@ Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (plat
 | 2026-10-03 | This repo stays public for platform code. Story, challenges and flags live in the private repo `sivaahari/L3m0nCTF-challenges`, checked out locally at `private/` |
 | 2026-10-03 | Layout direction and shell approved (details in the private repo) |
 | 2026-10-04 | All eleven page concepts reviewed and approved. A final visual polish pass (v3) was requested and done. Details and mockups are in the private repo |
+| 2026-10-04 | Sub-agents are allowed (resolves D18). Every build is Opus-monitored: an Opus design consult before building and independent Opus reviews before anything is committed. Standing quality bar from the owner: smooth and relevant motion on every page, cartoony sounds, a custom mouse pointer, hidden easter eggs, and builds verified bug free, efficient and attractive |
+| 2026-10-04 | **Plain English throughout.** No Hindi or Hinglish titles, names, signage, slate lines or placeholder data anywhere in the project. The story is called Prime Time and its apology slate says "Please stand by". Mapping and the current mockup (pages atlas v5) are in the private repo |
+| 2026-10-04 | **Three sign-in methods:** email and password, Continue with Google, and Login with CTFtime. Method, safety rules and plan: [sign-in methods](docs/research/sign-in-methods.md). Google is proposed for scope tier A because it removes the email-delivery risk; CTFtime login stays tier B |
+| 2026-10-04 | **No event dates are decided** for either round. The landing page says "Announced soon" and runs no countdown. Dates in the build plan are working assumptions |
 
 ## Pending decisions
 
@@ -63,7 +68,9 @@ Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (plat
 | D15 | (leadership) Approve the proposed stack in the build design (`docs/superpowers/specs/2026-10-04-platform-build-design.md`), including Centrifugo as the realtime gateway, S3-compatible file storage and Cloudflare in front. The project owner cannot approve a stack, so a four-page plain-language proposal PDF was written for leadership (private repo, `proposal/`). Decision requested by 2026-10-09 | Task 4 |
 | D16 | (leadership, covered by D15) Pulling official container images and packages from their registries (list in section 11 of the build design). Nothing is pulled before D15 | Task 4 |
 | D17 | Accept the scope tiers in the build design and the rule that the freeze date wins over features | Task 4 |
-| D18 | Allow parallel sub-agents, each in its own git worktree, for independent sub-projects (SP0, SP1, SP2 first) | Task 4 schedule |
+| D19 | (organisers) Decide the dates of both rounds, the registration link, a contact email, prizes and the final rules (eligibility, team size, AI-assistant policy), and the day the landing page goes public (plan: 2026-10-11). CTFtime also needs the dates to list the event, so the dates gate the listing. Until then the page says "Announced soon" and the Rules page is a marked draft | Landing page, CTFtime listing |
+| D20 | Approve moving the landing source from the private repo into this repo (`ui/landing/`) when it goes public. Until then it stays private because it shows the unreleased visual theme | Landing page |
+| D21 | (organiser) Who creates and owns the Google Cloud project for "Continue with Google", and who asks the college's Google administrator whether students may use third-party sign-in | Google sign-in |
 
 ## Findings and issues
 
@@ -108,3 +115,5 @@ Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (plat
 | 2026-10-04 | Drafted the build design: architecture, eleven sub-projects (SP0 to SP10), calendar to a 2026-11-14 prelims, scope tiers, end-to-end verification definition, risks and decisions D15, D16 |
 | 2026-10-04 | Thought through the small parts of a complete site and added them to the build design: an error contract (HTML slate for pages, JSON for API calls, inline messages for flag replies), busy mode in three levels (503 for overload, not 403), account gates, info and discovery pages, support and operations parts, with owners and tiers. Added backlog item B24. Estimates now total about 64 to 82 builder-days (tier A about 42 to 52). Four new end-to-end scenarios (S13 to S16) |
 | 2026-10-04 | The project owner cannot approve a stack, so the stack is now a proposal for leadership. Wrote a four-page plain-language proposal PDF with diagrams, screenshots and a dedicated CTFtime login and live-scores section (private repo, `proposal/`). Pages atlas v4 adds the twelve slates and a small-parts tab (private repo) |
+| 2026-10-04 | Built the public landing page (SP1) in the private repo: retro-TV hero, cartoon sounds (off by default), custom pointer, eight hidden lemons, Teletext rules, privacy and 404 pages, share card and icons, a zero-dependency build with a 60 KB gate, a zero-dependency Chrome test harness and a one-command local demo (`node tools/serve.mjs`). 24 unit tests and 326 browser checks pass. An Opus consult shaped it; two independent Opus reviews are being re-run before launch. A CTFtime submission pack is ready to fill in once D19 is answered |
+| 2026-10-04 | Owner instructions after the landing review: add Google sign-in beside email and CTFtime (new research note, backlog B25, plugin `l3mon_auth`, scenario S17, decision D21, SP8 now 6 to 7 days, totals now about 66 to 84 builder-days and tier A about 44 to 54), say "Announced soon" instead of dates, and write everything in plain English. Pages atlas v5 replaces v4 and the older mockups moved to an archive |

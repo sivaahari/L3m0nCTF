@@ -22,7 +22,7 @@ Survey of what CTFtime requires of an organiser and of the platform, read from C
 | Team competitions only. An event that implies individual participation cannot be listed | For organizers | Fine. Allow one-person teams, as Pragyan CTF 2026 does ("max 4 members or individual") |
 | An event lasting more than 5 days gets no rating points | For organizers | Prelims are 24 hours |
 | Organisers of events without a scoreboard, or that never provide the final scoreboard, get no rating points | For organizers | We publish a public scoreboard and a final export |
-| Event text must be in English | For organizers | The landing page and event description are in English, with Hinglish flavour only inside the UI |
+| Event text must be in English | For organizers | The landing page, the event description and the whole platform are in plain English |
 
 ## 3. Restrictions, and the two rounds
 
