@@ -1,6 +1,8 @@
 # L3m0nCTF 2026 platform: build design (Task 4)
 
-Status: **draft for owner review, 2026-10-04.** It turns the approved choices (CTFd 3.8.x extended by plugin and theme, code-led visuals, story overlay, the eleven page concepts, CTFtime listing) into a buildable design. It replaces the sketch in [doc 03](../../analysis/03-options-and-recommendation.md) section 3. Story and visual details stay in the private repo; this document carries no story material.
+Status: **draft, 2026-10-04, revised the same day with the site essentials.** It turns the preferred choices (CTFd 3.8.x extended by plugin and theme, code-led visuals, story overlay, the page concepts, CTFtime listing) into a buildable design. It replaces the sketch in [doc 03](../../analysis/03-options-and-recommendation.md) section 3. Story and visual details stay in the private repo; this document carries no story material.
+
+**The technology choices here are a proposal.** The project owner cannot approve a stack: the department's leadership decides. The four-page proposal PDF (private repo, `proposal/`) is the short version written for them. Until they decide, work continues only on parts that do not depend on the stack: the landing page, the author-kit documents, design assets and this documentation.
 
 Inputs: [01 CTFd core](../../analysis/01-ctfd-core.md), [02 last year's fork](../../analysis/02-last-year-fork.md), [03 options](../../analysis/03-options-and-recommendation.md), [CTFtime requirements](../../research/ctftime-requirements.md), [CTFtime OAuth and live feed](../../research/ctftime-oauth-and-live-feed.md), and the approved page concepts (private).
 
@@ -142,6 +144,28 @@ Stock `/api/v1/challenges`, `/scoreboard` and `/api/v1/scoreboard` stay availabl
 
 Clients are subscribed on the server side through the `channels` claim of the connection token, so there are no per-channel tokens. Fan-out is bounded by design: public channels carry coalesced ticks and rare events, never one message per solve. History only smooths short reconnects. After any reconnect the client refetches the board and scoreboard, so correctness never depends on message recovery.
 
+### Errors, busy mode and what the player sees
+
+The rule: a page load gets an HTML slate, an API call gets JSON with the same status and a `retry_after`, and the status code always says what is wrong.
+
+| Situation | Status | Page load | API call | Produced by |
+|-----------|--------|-----------|----------|-------------|
+| Server overloaded ("server busy") | 503 and `Retry-After` | Busy slate with a retry bar and a `meta refresh` | `{"error":"busy","retry_after":6}`. The client waits a random 2 to 8 s and never retries faster | nginx concurrency cap |
+| One person or address going too fast | 429 and `Retry-After` | "Too many requests" slate with a countdown | Inline message with a countdown | nginx and CTFd |
+| Not allowed (admin area, hidden page, blocked address) | 403 | "Restricted" slate with a way back | `{"error":"forbidden"}` | CTFd and nginx |
+| Not found | 404 | Slate linking to the board and the rules | 404 JSON | theme |
+| App error | 500 | Slate with a request ID and a "report this" button | JSON with the request ID | theme and nginx |
+| App restarting or down | 502 or 504 | Static slate with auto-retry | `{"error":"restarting"}` | nginx, with the app fully off |
+| Planned maintenance | 503 | Static slate with a countdown | As for busy | nginx reading a flag file |
+| Before the start, after the end, frozen scoreboard | 200 with a banner, or the not-started, ended or frozen slate | Slates and banners | Normal data with a `phase` field | theme and config |
+| Suspended team or account | 403 | "Off air" slate with a contact and an appeal route | JSON | theme |
+
+- **Why busy is 503, not 403.** 403 means "you may not", and browsers, CDNs and monitoring treat it as final. 503 means "try again later": it is retried, never cached, and is what an overloaded server should say. 429 is for one person going too fast. We still ship a 403 slate for real permission problems.
+- **Flag submission is a special case.** CTFd 3.8.8 answers some submission problems with 403 or 429 and a JSON body (for example "another submission is already being processed" and "no tries left"). The programme panel therefore shows any JSON reply from the submit call as an inline message, never as a page error.
+- **Busy mode has three levels.** (1) Shed, automatic: nginx caps concurrent requests to the app, gives flag submissions their own cap so submitting never starves, and answers the excess with the busy slate or JSON. (2) Waiting room, an admin switch, built later or bought: new sign-ins are admitted at a set rate and everyone else sees a "you are in line" page that checks back by itself, while existing sessions bypass it. (3) Maintenance, an admin switch: nginx serves the static slate from a flag file, so the app can be off.
+- **Smoothing the start.** The landing page releases "Enter" after a random 0 to 20 s per visitor, so two thousand teams do not arrive in the same second. Hashed assets come from the edge cache, and the first board load is one cached request per team.
+- **Every error slate** carries a request ID, `Cache-Control: no-store` and, where it applies, `Retry-After`. The 5xx, busy and maintenance slates are static files served by nginx, so they appear even when the app is completely down.
+
 ## 6. Sub-projects
 
 Each gets its own plan, then implementation on `pre-deployment`, then staging verification and your approval. Effort is a rough estimate in working days for one builder and will be reviewed in each plan.
@@ -168,7 +192,7 @@ The private repo holds the real challenges, story, flags, channel grouping and s
 
 ### SP1 Public landing page and CTFtime pack (2 to 3 days, first)
 
-**Delivers.** The static landing page from the approved startup concept: name, dates in UTC and IST, format, rules, prizes, registration link, scoreboard link, contact, organiser, Open Graph tags, schema.org `Event`, a countdown, and the rules and FAQ pages. Deployed separately (Cloudflare Pages with `pre-deployment` previews, or GitHub Pages) so it survives platform outages. A one-page CTFtime submission pack (event text, logo, links, restrictions to tick).
+**Delivers.** The static landing page from the approved startup concept: name, dates in UTC and IST, format, rules, prizes, registration link, scoreboard link, contact, organiser, Open Graph tags, schema.org `Event`, a countdown, the rules, FAQ, privacy and contact pages, `robots.txt`, `sitemap.xml`, `security.txt`, and the icon and share-card set (see site essentials). Deployed separately (Cloudflare Pages with `pre-deployment` previews, or GitHub Pages) so it survives platform outages. A one-page CTFtime submission pack (event text, logo, links, restrictions to tick).
 **Done when.** It is public, under 60 KB on first load, passes accessibility checks, and the CTFtime submission can be filed. This unblocks listing, which has an unknown lead time.
 
 ### SP2 Author kit and challenge pipeline (4 to 5 days, first)
@@ -194,7 +218,7 @@ The private repo holds the real challenges, story, flags, channel grouping and s
 
 ### SP6 Theme and tile pipeline (15 to 20 days in two phases, the largest)
 
-**Delivers.** The `l3mon` theme for every player page in the approved concepts: landing mirror, login, four-step registration, board, programme panel, teams and team pages, scoreboard, text mode, error slates, live wall, notifications. Sources in `ui/` (Vite, TypeScript, small web components, no framework runtime), design tokens shared with the landing site, and a build-time **tile pipeline** that slices each channel picture into tiles and writes two WebP variants per tile (clear about 6 KB, distorted about 2 KB) plus a manifest. No filters run in the browser in production.
+**Delivers.** The `l3mon` theme for every player page in the approved concepts: landing mirror, login, four-step registration, board, programme panel, teams and team pages, scoreboard, text mode, live wall, notifications, plus the error and state slates, account gates, announcements, report-a-problem form and accessibility parts listed under site essentials. Sources in `ui/` (Vite, TypeScript, small web components, no framework runtime), design tokens shared with the landing site, and a build-time **tile pipeline** that slices each channel picture into tiles and writes two WebP variants per tile (clear about 6 KB, distorted about 2 KB) plus a manifest. No filters run in the browser in production.
 **Mapping to CTFd.** Templates override CTFd's by name (`base`, `challenges`, `scoreboard`, `teams/*`, `users/*`, `settings`, `login`, `register`, `reset_password`, `confirm`, `page`, `errors/*`). CTFd's auth and team logic and rate limits stay as they are. The admin theme is untouched.
 **Budgets (CI gates).** Landing 60 KB or less on first load. Board JavaScript 120 KB gzipped or less, CSS 40 KB or less, fonts 90 KB or less. Scoreboard under 30 KB gzipped for 100 rows. Text mode 15 KB or less per page. WCAG AA, keyboard everywhere, reduced motion honoured, a CLEAN switch, state never carried by colour or blur alone, no runtime third-party CDNs.
 **Done when.** Every page works at 375, 640, 820 and 1180 px, works without JavaScript where it should, passes axe and the Lighthouse budgets in CI, and the end-to-end scenarios in section 8 pass against it.
@@ -211,12 +235,29 @@ The private repo holds the real challenges, story, flags, channel grouping and s
 
 ### SP9 Operations (6 to 8 days, runs alongside)
 
-**Delivers.** Prometheus, Grafana and Loki with dashboards (event, database, hosts, instances), alerts to Discord (5xx rate, p95 latency, database connections, Redis memory, disk, feed staleness, instancer errors, worker lag), a status page, off-host backups (a full dump every 30 minutes plus binary logs shipped every minute, so about 5 minutes of data at risk) with a restore drill, a mail relay container with a queue so registration never waits on the provider, `/admin` restricted to a VPN or allow-list, secrets handling, runbooks (start-of-event, outage, DDoS, database failover, freeze scoreboard, emergency announcement, kill instances, rotate secrets, roll back a deploy), the k6 load suite, a security review (threat model, configuration checklist, instancer test), and a dress rehearsal.
+**Delivers.** Prometheus, Grafana and Loki with dashboards (event, database, hosts, instances), alerts to Discord (5xx rate, p95 latency, database connections, Redis memory, disk, feed staleness, instancer errors, worker lag), busy mode (nginx concurrency caps, the flag-file maintenance slate and the admin switches), a public status page, `/healthz` and `/readyz`, an admin audit log, security headers, off-host backups (a full dump every 30 minutes plus binary logs shipped every minute, so about 5 minutes of data at risk) with a restore drill, a mail relay container with a queue so registration never waits on the provider, `/admin` restricted to a VPN or allow-list, secrets handling, runbooks (start-of-event, outage, DDoS, database failover, freeze scoreboard, emergency announcement, kill instances, rotate secrets, roll back a deploy), the k6 load suite, a security review (threat model, configuration checklist, instancer test), and a dress rehearsal.
 **Done when.** The load test passes at twice target (section 8), the restore drill meets RTO 15 minutes, every alert has fired once on purpose, and the runbooks have been followed by someone other than their author.
 
 ### SP10 Finals mode (2 to 3 days, after the prelims)
 
 Round gating, finalist import and carry-over, per-round boards, campus-IP allowances, and a second CTFtime event. Specified after the prelims, once finalist count and format are known.
+
+### Cross-cutting: site essentials (about 6 builder-days, spread over SP1, SP6, SP9 and SP5)
+
+The small parts that make a site feel finished. Pictures of the main ones are in the pages atlas (private repo, tabs 9 and 12; tab 12 is new and not yet reviewed). Each has an owner and a tier (section 7).
+
+| Group | Items | Owner | Tier |
+|-------|-------|-------|------|
+| Error and state pages | 403, 404, 429, 500, 502 and 504, server busy, waiting room, maintenance, not started, ended, frozen, suspended, registration closed. Contract in section 5 | SP6 and nginx | A, except the waiting room (C) |
+| Account gates | Email not verified (resend with a cool-down), team required, session ended (the typed flag survives the sign-in), password reset sent or expired, invite-link join page | SP6 | A |
+| Info and legal pages | Rules, code of conduct, privacy notice (what we collect, how long, what CTFtime sees), essential-cookies notice, terms, contact, FAQ, prizes, sponsors, credits, accessibility statement, press kit | SP1 | A for rules, privacy, contact and FAQ, B for the rest |
+| Discovery and sharing | Favicon and app-icon set, web manifest, Open Graph and Twitter cards, schema.org `Event`, `robots.txt`, `sitemap.xml`, `security.txt` with a disclosure policy (the platform is out of scope for players), `humans.txt` | SP1 | A |
+| Help and communication | Announcements bar and a notifications page, emergency banner, a "report a problem" form prefilled with team, programme, browser and request ID, a "report an issue" button on each programme, clarifications page, email templates (verify, reset, invite, welcome, reminders), prepared incident messages, Discord link | SP6 and SP9 | A for announcements, the report form and the email templates, B for clarifications |
+| Gameplay details | Flag-format helper, copy buttons, file checksums, hint-cost confirmation, locked-until messages, scheduled drops with a "new programme airing" event, first-blood banner, challenge ratings, claim-a-challenge for teammates | SP6, SP3 and SP7 | A for the first four, B for the rest |
+| Operations and trust | Public status page, `/healthz` and `/readyz`, version stamp, request IDs in logs and slates, admin audit log, staff test accounts hidden from the scoreboard, time sync on every host, log access limits (logs hold flag attempts) | SP9 and SP5 | A |
+| Accessibility and comfort | Skip link, focus rings, live-region announcements, high-contrast CLEAN mode, reduced motion, shortcut help, UTC or IST toggle, clock-skew warning, notices for no JavaScript, blocked cookies and old browsers | SP6 | A |
+| Security headers and edge | CSP, HSTS, referrer and permissions policy, Cloudflare WAF and bot rules, rate rules on login and register, `/admin` allow-list, DNS records for email (SPF, DKIM, DMARC) | SP9 | A |
+| After the event | Final results page, CTFtime final upload, certificates with a verify link, winners page, writeups hub, archive, personal-data retention and deletion | SP8 and SP10 | C |
 
 ## 7. Build order and calendar
 
@@ -260,7 +301,7 @@ gantt
 
 **First implementation plan:** SP0, SP1 and SP2 together. They unblock the CTFtime listing, the authors and everything after them. Each later sub-project gets its own plan when its turn comes.
 
-**Capacity check.** Added up, the estimates in section 6 come to about 58 to 75 builder-days. There are about 25 weekdays (34 calendar days) from Oct 5 to the freeze, and the tier A work alone is about 37 to 46 days on the same scale. Code written with me is faster than a solo builder, but review, hosting, DNS, email, the authors' challenges and load testing take the same wall-clock time, so the plan cannot assume tier B ships. Ways to compress, in order:
+**Capacity check.** Added up, the estimates in section 6 and the site essentials come to about 64 to 82 builder-days. There are about 25 weekdays (34 calendar days) from Oct 5 to the freeze, and the tier A work alone is about 42 to 52 days on the same scale. Code written with me is faster than a solo builder, but review, hosting, DNS, email, the authors' challenges and load testing take the same wall-clock time, so the plan cannot assume tier B ships. Ways to compress, in order:
 1. Agree the tiers now, and agree that the freeze date wins over features (D17).
 2. Run independent sub-projects in parallel, each in its own git worktree, for example SP0, SP1 and SP2 in week one (needs your go-ahead to use sub-agents, D18).
 3. Bring in a DevOps owner for SP9 and production hosting, and one front-end helper for the secondary theme pages.
@@ -270,9 +311,9 @@ gantt
 
 | Tier | Contents |
 |------|----------|
-| **A: the prelims cannot run without it** | SP0, SP1, SP2, SP3 (snapshots, board, scoreboard, microcache), SP6 core pages (auth, board, panel, scoreboard, teams, slates), SP5 basics, SP4 for HTTP instances, SP9 basics (alerts, backups and a restore drill, load test, runbooks), the final results export |
-| **B: the event's identity, built right after A** | SP7 story overlay (meter, lore, finale), realtime ticks, text mode, the live minimal feed, OAuth, TCP and Web3 instances, dynamic-flag sharing detection, live wall |
-| **C: after the prelims** | SP10 finals mode, mascot shuffle, per-channel standings pages, the grid list view, post-event archive, optional LLM hint buddy, dynamic-score optimisation |
+| **A: the prelims cannot run without it** | SP0, SP1, SP2, SP3 (snapshots, board, scoreboard, microcache), SP6 core pages (auth, board, panel, scoreboard, teams, slates), SP5 basics, SP4 for HTTP instances, SP9 basics (alerts, backups and a restore drill, load test, runbooks), the final results export, and the site essentials marked A in section 6: every error and busy slate, the account gates, rules, privacy, contact and FAQ pages, discovery files, announcements, the report form, the status page, health endpoints, accessibility basics and security headers |
+| **B: the event's identity, built right after A** | SP7 story overlay (meter, lore, finale), realtime ticks, text mode, the live minimal feed, OAuth, TCP and Web3 instances, dynamic-flag sharing detection, live wall, clarifications page, scheduled drops, the remaining info pages |
+| **C: after the prelims** | SP10 finals mode, mascot shuffle, per-channel standings pages, the grid list view, the waiting room, certificates, winners page and writeups hub, post-event archive, optional LLM hint buddy, dynamic-score optimisation |
 
 ## 8. How "verified end to end" is defined
 
@@ -294,6 +335,10 @@ gantt
 | S10 | Freeze and unfreeze, final export matches the CTFtime schema |
 | S11 | CTFtime OAuth against the mock provider (success, 403, bad state, name clash), and an admin account cannot be signed in through it |
 | S12 | App down: nginx serves the static slate, and maintenance mode shows the countdown |
+| S13 | Busy mode: above the concurrency cap, page loads get the 503 slate and API calls get JSON with `Retry-After`, the client backs off with jitter, and flag submissions still succeed while pages are shed |
+| S14 | Error contract: every status in the table in section 5 shows its slate, and a 403 or 429 JSON reply from the submit call appears inline in the panel, never as a page |
+| S15 | Info and discovery bundle: `robots.txt`, `sitemap.xml`, `security.txt`, the web manifest, the icon set and the share card all resolve, and the `Event` markup validates |
+| S16 | Account gates: an unverified email lands on the gate, a suspended team on the off-air slate, and an expired session keeps the half-typed flag through sign-in |
 
 **Load gates (at twice the target in the table in doc 03).** About 5,000 concurrent browsers, 800 requests per second mixed, a 4,000-load burst in 60 seconds at start, 140 flag submissions per second. p95 under 300 ms and p99 under 1 s for reads, errors under 0.1%, scoreboard within 5 s, and as many live instances as the staging challenge hosts allow, up to the 500 target. Run on the real staging hardware; on a laptop only relative numbers are meaningful.
 
@@ -311,17 +356,19 @@ gantt
 | Instancer security | Separate hosts, socket proxy, hard limits, egress control, a review before M4 |
 | Contract drift between our endpoints and stock CTFd | Contract tests, a version-pinned startup check, CTFd's own suite in CI |
 | Load assumptions are wrong | Measure early: a first load run on staging by M1 |
+| Overload at the start, or an attack | Busy mode in three levels (section 5), Cloudflare in front, the start-of-event smoothing, and a runbook rehearsed in the dress rehearsal |
+| Sign-up emails land in spam or are delayed | Sending domain with SPF, DKIM and DMARC, a queueing mail relay, delivery tested to the common providers and to campus mail before M2 |
 | One bad deploy during the event | Blue/green, rollbacks rehearsed, change freeze from M4 |
 | Story or answers leaking | Private repo only, public repo hygiene scan in CI |
 
 ## 10. Decisions for you
 
-The first five block work in the next two weeks. IDs continue the list in [PROGRESS.md](../../../PROGRESS.md).
+The first five block work in the next two weeks. IDs continue the list in [PROGRESS.md](../../../PROGRESS.md). Rows marked (leadership) are taken by the department's leadership, not by the project owner, which is what the four-page proposal PDF is for.
 
 | ID | Decision | My recommendation |
 |----|----------|-------------------|
-| D15 | Approve this design, including Centrifugo, S3-compatible file storage and Cloudflare in front | Approve |
-| D16 | Approve pulling the official images and packages listed in section 11 | Approve |
+| D15 | (leadership) Approve the proposed stack, including Centrifugo, S3-compatible file storage and Cloudflare in front | Approve |
+| D16 | (leadership, covered by D15) Pulling the official images and packages listed in section 11 | Part of approving the stack. Nothing is pulled before D15 |
 | D10 | Hosting provider, budget, who has root and who is on call during the event | The layout in A2. Needed by about Oct 14 to provision M2's production stack |
 | D13 | Official domain, email sending domain, logo, confirmed dates in UTC | A domain this week. Until then the interim page is public on Pages |
 | D11 | Create the CTFtime account and organiser team (only a team member can) | Do it as soon as the landing page is live |
@@ -337,4 +384,4 @@ The first five block work in the next two weeks. IDs continue the list in [PROGR
 
 The machine has 8 cores, about 16 GB RAM and Docker Desktop running (4 CPUs and about 7.7 GB allotted to Docker), so the whole stack can be built and tested locally, at reduced load.
 
-Approving D16 covers pulling from their official registries only: container images (CTFd or its Python base, MariaDB, Redis, nginx, Centrifugo, a mail catcher, Prometheus, Grafana, Loki, k6, MinIO), Python packages for the plugins, worker and instancer, Node packages for the theme build, and Playwright's browser builds for the end-to-end tests. Nothing is downloaded from other sources, and nothing is installed outside the project and Docker.
+Once the stack is approved (D15, which covers D16), pulling happens from the official registries only: container images (CTFd or its Python base, MariaDB, Redis, nginx, Centrifugo, a mail catcher, Prometheus, Grafana, Loki, k6, MinIO), Python packages for the plugins, worker and instancer, Node packages for the theme build, and Playwright's browser builds for the end-to-end tests. Nothing is downloaded from other sources, and nothing is installed outside the project and Docker.

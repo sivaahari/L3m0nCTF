@@ -4,7 +4,7 @@ Last updated: 2026-10-04
 
 ## Snapshot
 
-Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved (platform option A, story chosen with details kept private, layout direction, shell and all eleven page concepts approved, then a visual polish pass). The CTFtime OAuth and live-feed research is also done. Next is the design spec for Task 4. Nothing is built until that design is approved. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
+Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (platform option A preferred, story chosen with details kept private, layout direction, shell and all eleven page concepts approved, then a visual polish pass and a pass over the small parts of a complete site). The CTFtime OAuth and live-feed research is also done. The build design for Task 4 is written. The technology choices are a proposal: the project owner cannot approve a stack, so the department's leadership decides (D15), and a four-page proposal was written for them. Nothing is built until they decide; meanwhile work continues only on parts that do not depend on the stack. Prelims are about six weeks out, so the plan below is built backwards from them. **P** is the prelims start; exact dates are not confirmed yet.
 
 ## Plan
 
@@ -27,7 +27,7 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | 3 | Layout and UX brainstorm | done: direction, shell and all eleven page concepts approved, polish pass (v3) complete | Private design record and mockups |
 | 3a | CTFtime hosting survey and compliance checklist | done | `docs/research/ctftime-requirements.md` |
 | 3b | CTFtime OAuth and live JSON feed research | done | `docs/research/ctftime-oauth-and-live-feed.md` |
-| 4 | Build and verify the platform | build design drafted, awaiting review (D15, D16); first plan covers SP0 to SP2 | `docs/superpowers/specs/2026-10-04-platform-build-design.md` |
+| 4 | Build and verify the platform | build design drafted with the site essentials; the stack is a proposal awaiting leadership (D15); first plan covers SP0 to SP2 | `docs/superpowers/specs/2026-10-04-platform-build-design.md`, and the leadership proposal PDF in the private repo |
 
 ## Decisions
 
@@ -60,8 +60,8 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | D12 | Send CTFtime the open questions in section 10 of the CTFtime survey (lead time, live feed, finals listing, organiser row, name matching, OAuth timing) | CTFtime listing |
 | D13 | Confirm the official domain and logo for the public landing page, and the confirmed prelims dates in UTC. A public page with the event details is enough to submit to CTFtime, so an interim page works | CTFtime listing, landing page |
 | D14 | Put the OAuth and feed questions (section 6 of the OAuth and live-feed research) to CTFtime on their issue tracker, and send our stable server IP for the token-endpoint allow-list once it is known | CTFtime OAuth, feed |
-| D15 | Approve the build design (`docs/superpowers/specs/2026-10-04-platform-build-design.md`), including Centrifugo as the realtime gateway, S3-compatible file storage and Cloudflare in front | Task 4 |
-| D16 | Approve pulling official container images and packages from their registries (list in section 11 of the build design) | Task 4 |
+| D15 | (leadership) Approve the proposed stack in the build design (`docs/superpowers/specs/2026-10-04-platform-build-design.md`), including Centrifugo as the realtime gateway, S3-compatible file storage and Cloudflare in front. The project owner cannot approve a stack, so a four-page plain-language proposal PDF was written for leadership (private repo, `proposal/`). Decision requested by 2026-10-09 | Task 4 |
+| D16 | (leadership, covered by D15) Pulling official container images and packages from their registries (list in section 11 of the build design). Nothing is pulled before D15 | Task 4 |
 | D17 | Accept the scope tiers in the build design and the rule that the freeze date wins over features | Task 4 |
 | D18 | Allow parallel sub-agents, each in its own git worktree, for independent sub-projects (SP0, SP1, SP2 first) | Task 4 schedule |
 
@@ -89,6 +89,7 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | F-018 | 2026-10-03 | CTFtime has two feeds (standings, and a capture log polled with `?lastId=`), warns against "maximal" feeds, and has called the real-time feature "in progress" since about 2016. No running event I checked shows a live scoreboard. The final results upload is what matters for rating. Plan: static file, minimal feed first | B12a to B12c |
 | F-019 | 2026-10-03 | CTFtime OAuth gotchas: it works only for upcoming or running events, the token endpoint has returned 403 until the server IP was allow-listed, and over-long `state` values failed. Stock CTFd's OAuth needs `email`, sends no `redirect_uri` and rate-limits per IP, so we write a plugin | B21, B23 |
 | F-020 | 2026-10-03 | A two-round Indian CTF (Hacker's Gambit 2026) is listed on CTFtime as two events, an online qualifier and a prequalified finale, with a third-party page as its official URL. Prequalified finals can carry weight (SAS CTF Finals 49.50) | informs the listing |
+| F-021 | 2026-10-04 | CTFd 3.8.8's flag-submission endpoint answers some problems with 403 or 429 and a JSON body ("another submission is already being processed", "no tries left"). The challenge panel must show any JSON reply from the submit call inline, never as a page error. A busy server should answer 503, not 403 | in the error contract, build design section 5 |
 
 ## Change log
 
@@ -105,3 +106,5 @@ Phase: design, moving to the build spec. Tasks 1, 2 and 3 are done and approved 
 | 2026-10-04 | Page concepts approved. Visual polish pass (v3) done and checked on all eleven pages at 375, 414, 640, 820 and 1180 px with no horizontal overflow. Mockup stored in the private repo |
 | 2026-10-04 | Re-read CTFd 3.8.8's submission path: the standings and challenge caches are cleared on wrong submissions too, not only on solves. Docs 01, README and F-007 corrected |
 | 2026-10-04 | Drafted the build design: architecture, eleven sub-projects (SP0 to SP10), calendar to a 2026-11-14 prelims, scope tiers, end-to-end verification definition, risks and decisions D15, D16 |
+| 2026-10-04 | Thought through the small parts of a complete site and added them to the build design: an error contract (HTML slate for pages, JSON for API calls, inline messages for flag replies), busy mode in three levels (503 for overload, not 403), account gates, info and discovery pages, support and operations parts, with owners and tiers. Added backlog item B24. Estimates now total about 64 to 82 builder-days (tier A about 42 to 52). Four new end-to-end scenarios (S13 to S16) |
+| 2026-10-04 | The project owner cannot approve a stack, so the stack is now a proposal for leadership. Wrote a four-page plain-language proposal PDF with diagrams, screenshots and a dedicated CTFtime login and live-scores section (private repo, `proposal/`). Pages atlas v4 adds the twelve slates and a small-parts tab (private repo) |

@@ -52,7 +52,8 @@ Task 2 (story research) has a public precedent survey in [docs/research](docs/re
 
 Task 4 (build) starts from a design spec:
 
-- [Platform build design](docs/superpowers/specs/2026-10-04-platform-build-design.md). Architecture, sub-projects SP0 to SP10, build calendar, scope tiers, how "verified end to end" is defined, risks and the decisions needed. Draft, awaiting review.
+- [Platform build design](docs/superpowers/specs/2026-10-04-platform-build-design.md). Architecture, sub-projects SP0 to SP10, the small parts of a complete site (error contract, busy mode, account gates, info pages), build calendar, scope tiers, how "verified end to end" is defined, risks and the decisions needed. The technology is a proposal: the department's leadership decides.
+- A four-page plain-language proposal for leadership, with diagrams and screenshots, lives in the private repo because the screenshots show the unreleased visual theme.
 
 ## Repository conventions
 
