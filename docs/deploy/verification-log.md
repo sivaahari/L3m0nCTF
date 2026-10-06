@@ -29,3 +29,21 @@ A dated record of every check that proves a piece of the platform works. A task 
 | `python -m l3mon secrets generate` | seven secret files, values never printed, second run refuses to overwrite without `--force` |
 | The settings are accepted by a real CTFd 3.8.8 | verified in Task 7 |
 
+### Tasks 3 and 5: the image, the plugin and the theme
+
+| Command | Result |
+|---------|--------|
+| `docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .` | built from `ghcr.io/ctfd/ctfd@sha256:07cc9788...aedd01` |
+| `tools/verify-image.sh l3mon/ctfd:dev` | 15 checks pass: runs as user 1001, health check present, `pip check` clean, plugin and theme in place, plugin files not writable by the running user, the seven upgraded packages at their pinned versions, no compiler in the image |
+| `pip-audit` on the CTFd 3.8.8 pins | 74 advisories in 10 packages |
+| The same after the isolated upgrades (`docker/ctfd/requirements.overrides.txt`) | 21 advisories left in 3 packages (flask 2.1.3, werkzeug 2.2.3, pydantic 1.6.2); see Task 4 |
+| `tools/run-ctfd-tests.sh ghcr.io/ctfd/ctfd:3.8.8` (CTFd's own suite, baseline, unmodified image) | 676 passed in 6 min 40 s |
+| The same with the isolated upgrades applied | 676 passed in 6 min 39 s: identical to the baseline |
+| `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests` | 7 passed: the health route, the route is absent when plugins are off, CTFd's own health check, the empty theme falls back to core, the bare address redirects, secure `__Host-` cookies switch on by environment and stay plain without it |
+
+### Tasks 6 and 7: the compose stack and its integration tests
+
+| Command | Result |
+|---------|--------|
+| `tools/compose.sh up -d --build --wait` | all four services healthy: CTFd (non-root 1001), MariaDB 10.11.19 (user 999), Redis 7.4.11 (user 999), nginx 1.30.5 unprivileged (user 101); all read-only root file systems, all capabilities dropped |
+| `python -m pytest tests/integration -q` | 22 passed in 50 s: health routes without cookie, unknown Host gets no answer, security headers once each and HSTS only over HTTPS, session cookie flags, bare address goes to sign-in, theme and event name, forwarded addresses not trusted, preset admin token and password work, every preset setting is in force inside CTFd, only nginx publishes a port (loopback only), every container unprivileged and limited, database and cache only on the internal network, code not writable, no secret in logs or in `docker inspect`, data survives an application restart, sign-in rate limit |

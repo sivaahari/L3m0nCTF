@@ -1,0 +1,11 @@
+# Upgrades of packages in CTFd 3.8.8's pinned requirements that carry known advisories.
+# Found with pip-audit on 2026-10-06 (74 advisories in 10 packages). Exact pins, so the image is reproducible.
+# Every change here is verified against CTFd's own test suite (tools/run-ctfd-tests.sh) and explained in
+# docs/security/dependency-bumps.md, including the advisories that remain.
+click==8.5.0
+cryptography==50.0.2
+idna==3.20
+pillow==12.3.0
+python-dotenv==1.2.4
+requests==2.34.2
+urllib3==2.8.0

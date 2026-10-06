@@ -1,0 +1,165 @@
+# The platform's services, shared by every environment (development, staging, production).
+# Run from the repository root through the helper in docs/deploy/local.md. Paths below are relative to this file.
+#
+# Hardening that applies to every container (and why):
+#   cap_drop: ALL            no Linux privileges beyond what a plain process has
+#   no-new-privileges        a program inside can never gain more rights than it started with
+#   read_only: true          the root file system cannot be changed; writable places are named volumes or tmpfs
+#   mem_limit, pids_limit    one runaway container cannot take the whole host down
+#   init: true               zombie processes are reaped
+# Only nginx is on a network that has a route to the outside. The database and the cache live on an internal network.
+
+name: l3mon
+
+x-hardening: &hardening
+  restart: unless-stopped
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  ctfd:
+    <<: *hardening
+    image: l3mon/ctfd:${L3MON_IMAGE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: docker/ctfd/Dockerfile
+    environment:
+      WORKERS: "${CTFD_WORKERS:-4}"
+      WORKER_CLASS: gevent
+      DATABASE_PROTOCOL: mysql+pymysql
+      DATABASE_HOST: db
+      DATABASE_PORT: "3306"
+      DATABASE_USER: ctfd
+      DATABASE_NAME: ctfd
+      REDIS_PROTOCOL: redis
+      REDIS_HOST: cache
+      REDIS_PORT: "6379"
+      REVERSE_PROXY: "true"
+      TRUSTED_HOSTS: "${PLATFORM_HOST}"
+      UPDATE_CHECK: "false"
+      SWAGGER_UI: "false"
+      SERVER_SENT_EVENTS: "true"
+      HTML_SANITIZATION: "true"
+      SESSION_COOKIE_HTTPONLY: "true"
+      SESSION_COOKIE_SAMESITE: Lax
+      PERMANENT_SESSION_LIFETIME: "28800"
+      UPLOAD_FOLDER: /var/uploads
+      LOG_FOLDER: /var/log/CTFd
+      ACCESS_LOG: "-"
+      ERROR_LOG: "-"
+      PRESET_ADMIN_NAME: "${PRESET_ADMIN_NAME}"
+      PRESET_ADMIN_EMAIL: "${PRESET_ADMIN_EMAIL}"
+    secrets: [SECRET_KEY, DATABASE_PASSWORD, REDIS_PASSWORD, PRESET_ADMIN_PASSWORD, PRESET_ADMIN_TOKEN]
+    configs:
+      - source: preset_configs
+        target: /run/config/preset_configs.json
+    volumes:
+      - uploads:/var/uploads
+    tmpfs:
+      - /tmp
+      - /var/log/CTFd:uid=1001,gid=1001
+    networks: [edge, internal]
+    depends_on:
+      db: { condition: service_healthy }
+      cache: { condition: service_healthy }
+    mem_limit: ${CTFD_MEM_LIMIT:-1536m}
+    pids_limit: 512
+
+  db:
+    <<: *hardening
+    image: mariadb:10.11@sha256:7db29378d4fdab73f8123bbc2b48905c90d1a4b00cf848b028f1e81e623257f2
+    # Starts as the unprivileged "mysql" user from the first moment (the image would otherwise start as root and drop down).
+    user: "999:999"
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/DATABASE_ROOT_PASSWORD
+      MARIADB_USER: ctfd
+      MARIADB_PASSWORD_FILE: /run/secrets/DATABASE_PASSWORD
+      MARIADB_DATABASE: ctfd
+      MARIADB_AUTO_UPGRADE: "1"
+    secrets: [DATABASE_ROOT_PASSWORD, DATABASE_PASSWORD]
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ../mariadb/l3mon.cnf:/etc/mysql/conf.d/l3mon.cnf:ro
+    tmpfs:
+      - /tmp
+      - /run/mysqld
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    mem_limit: ${DB_MEM_LIMIT:-1g}
+    pids_limit: 256
+
+  cache:
+    <<: *hardening
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    user: "999:1000"
+    # The password is read from the secret file when the server starts and never appears in a file or in `docker inspect`.
+    command:
+      - sh
+      - -c
+      - exec redis-server /usr/local/etc/redis/redis.conf --requirepass "$$(cat /run/secrets/REDIS_PASSWORD)"
+    secrets: [REDIS_PASSWORD]
+    volumes:
+      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    tmpfs: [/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$(cat /run/secrets/REDIS_PASSWORD)\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    mem_limit: ${CACHE_MEM_LIMIT:-640m}
+    pids_limit: 64
+
+  nginx:
+    <<: *hardening
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3
+    environment:
+      PLATFORM_HOST: "${PLATFORM_HOST}"
+      EXTRA_HOST: "${EXTRA_HOST:-${PLATFORM_HOST}}"
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/templates:/etc/nginx/templates:ro
+      - ../nginx/snippets:/etc/nginx/snippets:ro
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=755
+    networks: [edge]
+    depends_on:
+      ctfd: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "--header", "Host: ${PLATFORM_HOST}", "http://127.0.0.1:8080/__nginx_health"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+    mem_limit: ${NGINX_MEM_LIMIT:-256m}
+    pids_limit: 128
+
+networks:
+  edge: {}
+  internal:
+    internal: true
+
+volumes:
+  uploads: {}
+  dbdata: {}
+
+secrets:
+  SECRET_KEY: { file: ../../.secrets/SECRET_KEY }
+  DATABASE_PASSWORD: { file: ../../.secrets/DATABASE_PASSWORD }
+  DATABASE_ROOT_PASSWORD: { file: ../../.secrets/DATABASE_ROOT_PASSWORD }
+  REDIS_PASSWORD: { file: ../../.secrets/REDIS_PASSWORD }
+  PRESET_ADMIN_PASSWORD: { file: ../../.secrets/PRESET_ADMIN_PASSWORD }
+  PRESET_ADMIN_TOKEN: { file: ../../.secrets/PRESET_ADMIN_TOKEN }
+
+configs:
+  preset_configs:
+    file: ./generated/preset_configs.json

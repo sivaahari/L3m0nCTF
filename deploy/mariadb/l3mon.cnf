@@ -1,0 +1,25 @@
+# MariaDB for the platform. Mounted into /etc/mysql/conf.d/. Reachable only on the internal network.
+[mysqld]
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+skip-name-resolve
+
+# CTFd workers each keep a pool of connections; this must stay above workers x pool size (4 x 25 = 100 for now).
+max_connections = 400
+wait_timeout = 28800
+
+# Sized for the 8 GB laptop. Production sets about half of the host's memory in its own override file.
+innodb_buffer_pool_size = 384M
+innodb_flush_method = O_DIRECT
+innodb_flush_log_at_trx_commit = 1
+
+# Find slow queries early.
+slow_query_log = 1
+slow_query_log_file = /var/lib/mysql/slow.log
+long_query_time = 0.5
+
+# A client that sends a huge packet is a mistake or an attack.
+max_allowed_packet = 16M
+
+[client]
+default-character-set = utf8mb4

@@ -1,0 +1,12 @@
+# Only what the Dockerfile copies goes into the build context.
+*
+!docker/ctfd/requirements.overrides.txt
+!docker/ctfd/l3mon-entrypoint.sh
+!docker/ctfd/l3mon-env.sh
+!docker/ctfd/l3mon-run.sh
+!docker/ctfd/healthcheck.py
+!plugins/
+!ui/theme/l3mon/
+**/__pycache__
+**/*.pyc
+**/tests

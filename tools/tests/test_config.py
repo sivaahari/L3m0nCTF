@@ -57,6 +57,9 @@ def mutate(path: str, value) -> dict:
         ("visibility.challenges", "everyone", "visibility.challenges"),
         ("visibility.scores", "hidden", "visibility.scores"),
         ("accounts.verify_emails", "yes", "accounts.verify_emails"),
+        ("admin.name", "a", "admin.name"),
+        ("admin.name", "has space", "admin.name"),
+        ("admin.email", "not-an-email", "admin.email"),
     ],
 )
 def test_validate_rejects(path, value, needle):
@@ -106,3 +109,20 @@ def test_render_writes_one_line_of_json(tmp_path):
     text = out["preset_configs.json"].read_text(encoding="utf-8")
     assert "\n" not in text.strip()
     assert json.loads(text)["ctf_name"] == "L3m0nCTF 2026"
+
+
+def test_render_writes_the_compose_environment_without_any_secret(tmp_path):
+    out = config.render(example(), tmp_path)
+    env = out["compose.env"].read_text(encoding="utf-8")
+    values = dict(line.split("=", 1) for line in env.splitlines() if line and not line.startswith("#"))
+    assert values == {
+        "PLATFORM_HOST": "play.l3m0nctf.xyz",
+        "PRESET_ADMIN_NAME": "organiser",
+        "PRESET_ADMIN_EMAIL": "organiser@l3m0nctf.xyz",
+    }
+    assert "PASSWORD" not in env and "TOKEN" not in env and "SECRET" not in env
+
+
+def test_render_refuses_an_invalid_file(tmp_path):
+    with pytest.raises(ValueError):
+        config.render(mutate("teams.mode", "squads"), tmp_path)

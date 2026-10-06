@@ -22,3 +22,8 @@ registration = "public"
 
 [accounts]
 verify_emails = true
+
+[admin]
+# The preset organiser account CTFd creates at first sign-in. The password and token are secrets (see .secrets/).
+name = "organiser"
+email = "organiser@l3m0nctf.xyz"
