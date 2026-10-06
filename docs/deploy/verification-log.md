@@ -47,3 +47,11 @@ A dated record of every check that proves a piece of the platform works. A task 
 |---------|--------|
 | `tools/compose.sh up -d --build --wait` | all four services healthy: CTFd (non-root 1001), MariaDB 10.11.19 (user 999), Redis 7.4.11 (user 999), nginx 1.30.5 unprivileged (user 101); all read-only root file systems, all capabilities dropped |
 | `python -m pytest tests/integration -q` | 22 passed in 50 s: health routes without cookie, unknown Host gets no answer, security headers once each and HSTS only over HTTPS, session cookie flags, bare address goes to sign-in, theme and event name, forwarded addresses not trusted, preset admin token and password work, every preset setting is in force inside CTFd, only nginx publishes a port (loopback only), every container unprivileged and limited, database and cache only on the internal network, code not writable, no secret in logs or in `docker inspect`, data survives an application restart, sign-in rate limit |
+
+### Task 8: backup and restore, with a drill
+
+| Command | Result |
+|---------|--------|
+| `python -m pytest tests/integration/test_restore_drill.py -q --run-drill` | 3 passed. The drill creates a page and an uploaded file, backs up, **destroys the whole stack including its volumes**, starts an empty platform (the page and file are gone), restores, and checks the page, the file download and the administrator token. **Finished in 57 seconds** (budget 15 minutes). A backup with a damaged database file is refused with a checksum message and changes nothing; a restore into a database that already holds data is refused unless `--force` is given |
+| Known gap | The backup is not encrypted by the script; encrypted off-host copies and a scheduled backup belong to SP9 |
+
