@@ -1,0 +1,24 @@
+# The public example of the event settings. Copy it to config/event.toml (ignored by git) to change it.
+# Nothing secret belongs here: secrets are generated into .secrets/ by `python -m l3mon secrets generate`.
+
+[event]
+name = "L3m0nCTF 2026"
+description = "The capture-the-flag contest of Amrita Vishwa Vidyapeetham, Coimbatore."
+domain = "l3m0nctf.xyz"
+platform_host = "play.l3m0nctf.xyz"
+theme = "l3mon"
+start = "2026-11-28T03:30:00Z"   # 09:00 IST on 28 November 2026
+end = "2026-11-29T03:30:00Z"     # 09:00 IST on 29 November 2026
+
+[teams]
+mode = "teams"                   # "teams" or "users"
+size_max = 4
+
+[visibility]
+challenges = "private"           # only signed-in, verified players see the challenges
+accounts = "private"
+scores = "public"
+registration = "public"
+
+[accounts]
+verify_emails = true

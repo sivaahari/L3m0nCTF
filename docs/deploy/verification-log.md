@@ -19,3 +19,13 @@ A dated record of every check that proves a piece of the platform works. A task 
 |---------|--------|
 | `python -m pytest tools/tests/test_hygiene.py -q` | 11 passed (after first seeing the tests fail with the module missing) |
 | `cd tools && python -m l3mon hygiene --root ..` | 0 findings in the public repository |
+
+### Task 2: event configuration and secrets tool
+
+| Command | Result |
+|---------|--------|
+| `python -m pytest tools/tests -q` | 38 passed, 1 skipped (the POSIX permission-bit test does not apply on Windows); written test-first |
+| `python -m l3mon config validate config/event.example.toml` | valid; `config render` writes one-line `preset_configs.json` |
+| `python -m l3mon secrets generate` | seven secret files, values never printed, second run refuses to overwrite without `--force` |
+| The settings are accepted by a real CTFd 3.8.8 | verified in Task 7 |
+
