@@ -55,3 +55,25 @@ A dated record of every check that proves a piece of the platform works. A task 
 | `python -m pytest tests/integration/test_restore_drill.py -q --run-drill` | 3 passed. The drill creates a page and an uploaded file, backs up, **destroys the whole stack including its volumes**, starts an empty platform (the page and file are gone), restores, and checks the page, the file download and the administrator token. **Finished in 57 seconds** (budget 15 minutes). A backup with a damaged database file is refused with a checksum message and changes nothing; a restore into a database that already holds data is refused unless `--force` is given |
 | Known gap | The backup is not encrypted by the script; encrypted off-host copies and a scheduled backup belong to SP9 |
 
+
+### Task 4: dependency upgrades checked against CTFd's own tests
+
+Full analysis, with every remaining advisory explained: [dependency-bumps.md](../security/dependency-bumps.md).
+
+| Command | Result |
+|---------|--------|
+| `tools/run-ctfd-tests.sh ghcr.io/ctfd/ctfd:3.8.8 OVERRIDES` with Flask 2.3.3 and Werkzeug 3.0.6 | **636 failed**, 40 passed (`'CTFdFlask' object has no attribute 'session_cookie_name'`) |
+| The same with Flask 2.2.5, Werkzeug 2.3.8 and pydantic 1.10 | 9 failed, 667 passed |
+| The same with Flask 2.2.5 alone | 7 failed, 669 passed |
+| The same with Werkzeug 2.3.8 alone | fails (Flask 2.1.3's test client cannot use it) |
+| The isolated upgrades plus setuptools 84.0.0, pydantic 1.10.26 and pip 26.2.1 | 676 passed in 6 min 7 s |
+| **Decision** | Flask 2.1.3 and Werkzeug 2.2.3 stay; every other fixable advisory is upgraded; pip is removed from the image |
+| `docker build` of the final image, then `tools/verify-image.sh l3mon/ctfd:dev` | 23 checks pass, including: the 9 pinned packages, the base interpreter's setuptools, pip absent from both interpreters, the two Debian fixes (`libpcre2-8-0`, `perl-base`), no apt lists left behind |
+| `tools/run-ctfd-tests.sh l3mon/ctfd:dev` (CTFd's own suite on **our final image**) | **676 passed** in 6 min 11 s: identical to the unmodified image |
+| `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests` | 7 passed (the plugin's own tests) |
+| Trivy on the final image (`--scanners vuln`, all severities) | The only fixable HIGH or CRITICAL findings are Flask CVE-2023-30861 and Werkzeug CVE-2024-34069 (explained in the analysis). The two Debian packages that had 3 CRITICAL and 5 HIGH findings are clean |
+| pip-audit on the final image's packages | only Flask (2 advisories) and Werkzeug (about 9 advisories) remain |
+| `python -m pytest tests/integration -q` after recreating the stack on the final image | 25 passed, 3 skipped (the destructive drill). New: every proxied response carries `Vary: Cookie`; only `/admin` and `/api/v1/files` accept a body over 1 MB (a 2 MB body to `/login` is 413, 11 MB to the files API is 413, 2 MB to the files API reaches CTFd); `/console` and the debugger probe URL show no debugger |
+| `python -m pytest tools/tests -q` and `python -m l3mon hygiene --root ..` | 43 passed, 1 skipped; 0 findings |
+
+Changes made because of what was found: nginx now caps request bodies at 1 MB (10 MB only for the admin pages and the files API) and adds `Vary: Cookie` to every proxied response; the CTFd test runner restores pip inside its own throwaway container (the platform image has none).

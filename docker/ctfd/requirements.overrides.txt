@@ -1,7 +1,8 @@
 # Upgrades of packages in CTFd 3.8.8's pinned requirements that carry known advisories.
-# Found with pip-audit on 2026-10-06 (74 advisories in 10 packages). Exact pins, so the image is reproducible.
+# Found with pip-audit and Trivy on 2026-10-06. Exact pins, so the image is reproducible.
 # Every change here is verified against CTFd's own test suite (tools/run-ctfd-tests.sh) and explained in
-# docs/security/dependency-bumps.md, including the advisories that remain.
+# docs/security/dependency-bumps.md, including the advisories that remain (Flask and Werkzeug are NOT bumped:
+# every newer Flask breaks CTFd's own tests, and the advisories are not reachable here).
 click==8.5.0
 cryptography==50.0.2
 idna==3.20
@@ -9,3 +10,9 @@ pillow==12.3.0
 python-dotenv==1.2.4
 requests==2.34.2
 urllib3==2.8.0
+# pydantic 1.10.x is the same major version CTFd uses (it builds its API models with it); the fix is for a crafted-email
+# slowdown (CVE-2024-3772) that CTFd's models cannot reach, but staying current costs nothing: the whole suite passes.
+pydantic==1.10.26
+# Newer setuptools carries fixed copies of the wheel and jaraco.context code it bundles (Trivy: CVE-2026-24049,
+# CVE-2026-23949). pkg_resources is gone from it; CTFd does not use it (only passlib.pwd does, and CTFd never imports that).
+setuptools==84.0.0

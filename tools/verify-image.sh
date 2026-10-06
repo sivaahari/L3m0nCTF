@@ -23,7 +23,7 @@ user="$(docker image inspect "$image" --format '{{.Config.User}}')"
 hc="$(docker image inspect "$image" --format '{{json .Config.Healthcheck}}')"
 [[ "$hc" == *healthcheck* ]] && ok "has a health check on /healthcheck" || bad "no health check"
 
-check "pip reports no broken requirements" run "$image" /opt/venv/bin/pip check
+check "pip reports no broken requirements" docker run --rm --user root --entrypoint sh "$image" -c "/opt/venv/bin/python -m ensurepip --default-pip >/dev/null && /opt/venv/bin/pip check"
 check "the plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_core/__init__.py
 check "the theme is in place" run "$image" test -d /opt/CTFd/CTFd/themes/l3mon
 check "CTFd imports" run "$image" /opt/venv/bin/python -c "import CTFd"
@@ -36,6 +36,20 @@ while IFS= read -r line; do
   have="$(run "$image" /opt/venv/bin/python -c "import importlib.metadata as m; print(m.version('$name'))" 2>/dev/null | tr -d '\r')"
   [[ "$have" == "$want" ]] && ok "$name $want is installed" || bad "$name is $have, expected $want"
 done < "$(dirname "$0")/../docker/ctfd/requirements.overrides.txt"
+
+# the base interpreter (outside the virtual environment) carries the same fixed setuptools
+want="$(sed -n 's/^setuptools==//p' "$(dirname "$0")/../docker/ctfd/requirements.overrides.txt")"
+have="$(run "$image" /usr/local/bin/python -c "import importlib.metadata as m; print(m.version('setuptools'))" 2>/dev/null | tr -d '\r')"
+[[ -n "$want" && "$have" == "$want" ]] && ok "the base interpreter's setuptools is $want" || bad "the base interpreter's setuptools is '$have', expected '$want'"
+
+# no package manager in the image: pip is gone from both interpreters (a throwaway container can bring it back with ensurepip)
+check "pip is not in the virtual environment" run "$image" sh -c '! test -e /opt/venv/bin/pip && ! /opt/venv/bin/python -c "import pip"'
+check "pip is not in the base interpreter" run "$image" sh -c '! command -v pip && ! /usr/local/bin/python -c "import pip"'
+
+# operating-system fixes the upstream image lacks (Trivy, 2026-10-06)
+check "libpcre2-8-0 is at or above 10.42-1+deb12u2" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libpcre2-8-0)" ge 10.42-1+deb12u2'
+check "perl-base is at or above 5.36.0-7+deb12u4" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" perl-base)" ge 5.36.0-7+deb12u4'
+check "no package lists left behind" run "$image" sh -c '[ -z "$(ls /var/lib/apt/lists 2>/dev/null | grep -v "^partial$")" ]'
 
 # no build tools, no package manager caches left behind
 check "no compiler in the final image" run "$image" sh -c '! command -v gcc'

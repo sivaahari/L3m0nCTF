@@ -81,6 +81,16 @@ server {
   # The admin pages: only from the organisers' addresses (the list is a file that production replaces).
   location ^~ /admin {
     include /etc/nginx/snippets/admin-allow.conf;
+    client_max_body_size 10m;
+    limit_req zone=general burst=60 nodelay;
+    include /etc/nginx/snippets/security-headers.conf;
+    include /etc/nginx/snippets/proxy.conf;
+  }
+
+  # Uploading challenge files (administrators only; CTFd checks the token or session). The only place besides /admin
+  # where a body over 1m is accepted.
+  location = /api/v1/files {
+    client_max_body_size 10m;
     limit_req zone=general burst=60 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;

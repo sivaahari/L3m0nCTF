@@ -157,6 +157,32 @@ def test_security_headers_are_present_once_and_the_server_says_nothing_about_its
     assert header_values(https_pairs, "Strict-Transport-Security") == ["max-age=31536000; includeSubDomains"]
 
 
+def test_every_proxied_page_says_it_varies_by_cookie():
+    # CVE-2023-30861 (Flask 2.1.3 can omit the header); see docs/security/dependency-bumps.md
+    for path in ("/login", "/api/v1/challenges", "/themes/core/static/css/main.dev.css"):
+        _, pairs, _ = request(path)
+        assert any("cookie" in v.lower() for v in header_values(pairs, "Vary")), path
+
+
+def test_only_the_files_api_and_admin_take_bodies_over_one_megabyte():
+    # Werkzeug 2.2.3's multipart parser can be made to work hard on big bodies (CVE-2023-46136); the cap bounds that work
+    big = b"x" * (2 * 1024 * 1024)
+    status, _, _ = request("/login", method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, body=big)
+    assert status == 413
+    status, _, _ = request("/api/v1/files", method="POST", headers={"Content-Type": "application/json"}, body=big)
+    assert status != 413, "the files API must still reach CTFd (which then asks for a token)"
+    status, _, _ = request("/api/v1/files", method="POST", headers={"Content-Type": "application/json"}, body=b"x" * (11 * 1024 * 1024))
+    assert status == 413
+
+
+def test_the_werkzeug_debugger_is_not_there():
+    # CVE-2024-34069 needs the debugger, which exists only in Flask debug mode; production never runs in it
+    for path in ("/console", "/?__debugger__=yes&cmd=resource&f=style.css"):
+        status, _, body = request(path)
+        assert status in (302, 303, 404), (path, status)
+        assert b"Werkzeug" not in body and b"debugger" not in body.lower(), path
+
+
 def test_the_session_cookie_is_http_only_and_same_site():
     _, pairs, _ = request("/login")
     cookie = header_values(pairs, "Set-Cookie")[0]

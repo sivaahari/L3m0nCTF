@@ -35,6 +35,8 @@ if [[ -d "$repo_root/plugins/l3mon_core/tests" ]]; then mounts+=(-v "$repo_root/
 export MSYS_NO_PATHCONV=1
 docker run --rm --user root "${mounts[@]}" --entrypoint bash "$image" -c "
   set -e
+  # the platform image has no pip (it is removed on purpose); this throwaway container gets the bundled one back
+  /opt/venv/bin/python -m ensurepip --default-pip >/dev/null
   ${pip_overrides}
   /opt/venv/bin/pip install --no-cache-dir -q pytest==8.4.2 pytest-xdist==3.8.0 moto==4.1.11 Faker==4.1.0 psycopg2-binary==2.9.6 coverage==7.10.7
   cd /opt/CTFd
