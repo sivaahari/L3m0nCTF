@@ -77,3 +77,15 @@ Full analysis, with every remaining advisory explained: [dependency-bumps.md](..
 | `python -m pytest tools/tests -q` and `python -m l3mon hygiene --root ..` | 43 passed, 1 skipped; 0 findings |
 
 Changes made because of what was found: nginx now caps request bodies at 1 MB (10 MB only for the admin pages and the files API) and adds `Vary: Cookie` to every proxied response; the CTFd test runner restores pip inside its own throwaway container (the platform image has none).
+
+### Task 9: the full CI pipeline, on a clean Linux machine
+
+| Run | Result |
+|-----|--------|
+| First run ([37479796791](https://github.com/sivaahari/L3m0nCTF/actions/runs/37479796791)) | `hygiene`, `lint`, `image` and `third-party-images` passed; **`integration` failed**: MariaDB could not read its secret (`/run/secrets/DATABASE_PASSWORD: Permission denied`). On Linux, Compose mounts each secret file with the owner and mode it has on the host, and the services run as their own unprivileged users (CTFd 1001, MariaDB 999, Redis 999), so owner-only (0600) files are unreadable to them. Docker Desktop on Windows hides this. **A real defect that would have hit the first Linux deployment, found by CI** |
+| Fix | `secrets generate` now makes the folder private (0700) and the files readable (0644); `config render` makes `preset_configs.json` readable whatever the umask. Tests added for both (they run on Linux in CI) |
+| Second run ([37480189589](https://github.com/sivaahari/L3m0nCTF/actions/runs/37480189589)) | **All six jobs green**: `hygiene` 11 s, `lint` 15 s (actionlint, hadolint, shellcheck, compose files with generated settings), `image` 62 s (build, `verify-image.sh`, pip-audit with the reviewed list, Trivy against the reviewed list), `third-party-images` 36 s (MariaDB, Redis and nginx as pinned), `integration` 140 s (the stack started from a clean checkout, 25 integration tests, **and the restore drill on Linux**), `ctfd-suite` 509 s (CTFd's own 676 tests on our image) |
+
+The local checks behind these jobs were run first on Windows with Docker Desktop: hadolint 2.12.0 (one warning, now explained in the Dockerfile), shellcheck 0.10.0 (warnings and errors clean; the info-level notes are intended single quotes), actionlint 1.7.7, `docker compose config -q`, pip-audit 2.9.0 with the reviewed list (0 findings, 10 ignored), Trivy 0.75.0 on the platform image and on the three pinned third-party images (rc 0 with the reviewed lists).
+
+New and changed files: `.github/workflows/ci.yml`, `docker/ctfd/accepted-advisories.txt` and `deploy/compose/accepted-advisories.txt` (the reviewed lists, kept in step with [dependency-bumps.md](../security/dependency-bumps.md) by `tools/tests/test_advisories.py`), `docs/deploy/local.md`.
