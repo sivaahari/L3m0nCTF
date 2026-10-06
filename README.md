@@ -2,7 +2,7 @@
 
 Platform, infrastructure and documentation for **L3m0nCTF**, the annual flagship Capture-The-Flag event of Amrita Vishwa Vidyapeetham, Coimbatore Campus, hosted by TIFAC-CORE in Cyber Security.
 
-> **Status: research and design, moving to the build spec.** There is no platform code yet. Live status and the decision log are in [PROGRESS.md](PROGRESS.md).
+> **Status: the build is under way.** The platform foundation (SP0) is done and tested: the hardened CTFd 3.8.8 image, our plugin skeleton, the Docker Compose stack, backup and restore with a rehearsed drill, and a CI pipeline. Live status and the decision log are in [PROGRESS.md](PROGRESS.md); every check that was run is recorded in the [verification log](docs/deploy/verification-log.md).
 
 ## The event
 
@@ -27,7 +27,7 @@ A CTFd-derived platform that keeps what CTFd already does well (teams, scoring, 
 | 1 | Analyse CTFd core and last year's platform | done, option A approved |
 | 2 | Survey story-driven CTFs, propose five story chains | done, story chosen (details private) |
 | 3 | Layout and UX brainstorm | done: direction, shell and all eleven page concepts approved (details private) |
-| 4 | Build and verify the platform | next: design spec, then implementation plan |
+| 4 | Build and verify the platform | in progress: SP0 foundation done (see below); the sign-in, challenge and board pages, the story overlay, the instancer and the CTFtime sign-in and feed follow |
 
 ## Findings
 
@@ -56,6 +56,23 @@ Task 4 (build) starts from a design spec:
 - [Platform build design](docs/superpowers/specs/2026-10-04-platform-build-design.md). Architecture, sub-projects SP0 to SP10, the small parts of a complete site (error contract, busy mode, account gates, info pages), build calendar, scope tiers, how "verified end to end" is defined, risks and the decisions needed. The technology is a proposal: the department's leadership decides.
 - A four-page plain-language proposal for leadership, with diagrams and screenshots, lives in the private repo because the screenshots show the unreleased visual theme.
 - A challenge author kit (templates, a one-command checker, CI and guides for the roughly 30 authors) is built in the private repo, because it holds challenge sources. Nine challenges the owner wrote earlier were adapted to it.
+
+## Run it and check it
+
+- [Running the platform on your own computer](docs/deploy/local.md): from a fresh clone to a working stack, day-to-day commands, every check and what it proves.
+- [Dependency upgrades and the advisories that remain](docs/security/dependency-bumps.md): what we upgraded in the official CTFd image, what could not be upgraded and why, and what stops each remaining advisory.
+- [Verification log](docs/deploy/verification-log.md): a dated record of every check that was run, with its command and result.
+- [CTFtime endpoints](docs/ctftime-endpoints.md): the addresses and values for the CTFtime registration form.
+
+```
+docker/ctfd/      the platform image (official CTFd 3.8.8 + upgraded libraries + our plugin and theme)
+plugins/          our CTFd plugins            ui/theme/    our CTFd theme
+deploy/           Docker Compose stack, nginx, MariaDB and Redis settings
+tools/            the settings and secrets tool, the hygiene scanner, backup and restore, image checks
+tests/            integration tests of the running stack and the restore drill
+config/           the public example of the event settings
+docs/             research, analysis, the build design, plans, security notes, deployment notes
+```
 
 ## Repository conventions
 

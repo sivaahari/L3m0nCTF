@@ -123,6 +123,19 @@ def test_render_writes_the_compose_environment_without_any_secret(tmp_path):
     assert "PASSWORD" not in env and "TOKEN" not in env and "SECRET" not in env
 
 
+def test_render_output_is_readable_by_the_container_user_whatever_the_umask(tmp_path):
+    if sys.platform == "win32":
+        pytest.skip("POSIX permission bits do not apply on Windows")
+    import os
+
+    old = os.umask(0o077)
+    try:
+        made = config.render(example(), tmp_path / "out")
+    finally:
+        os.umask(old)
+    assert (made["preset_configs.json"].stat().st_mode & 0o044) == 0o044
+
+
 def test_render_refuses_an_invalid_file(tmp_path):
     with pytest.raises(ValueError):
         config.render(mutate("teams.mode", "squads"), tmp_path)

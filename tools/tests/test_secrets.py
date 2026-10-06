@@ -57,12 +57,14 @@ def test_it_refuses_to_overwrite_unless_forced(tmp_path):
     assert read(again["SECRET_KEY"]) != before
 
 
-def test_files_are_private_where_the_system_supports_it(tmp_path):
+def test_the_folder_is_private_and_the_files_are_readable_by_the_containers(tmp_path):
+    # 0600 files cannot be read by the services' own users on Linux (CI found it); the private folder is the protection
     made = secrets_gen.generate(tmp_path / "s")
     if sys.platform == "win32":
         pytest.skip("POSIX permission bits do not apply on Windows")
+    assert stat.S_IMODE((tmp_path / "s").stat().st_mode) == 0o700
     for path in made.values():
-        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(path.stat().st_mode) == 0o644
 
 
 def test_the_command_never_prints_a_value(tmp_path, capsys):
