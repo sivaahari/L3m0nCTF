@@ -8,9 +8,9 @@ Platform, infrastructure and documentation for **L3m0nCTF**, the annual flagship
 
 | | |
 |---|---|
-| Edition | 2026, tentatively November |
+| Edition | 2026 |
 | Theme | Popular Indian cartoons, told through an original "homage" cast (parody names, original art) |
-| Prelims | Online, Jeopardy-style, 24 hours, around mid-November |
+| Prelims | Online, Jeopardy-style, 24 hours, **28 to 29 November 2026** (confirmed 2026-10-06) |
 | Finals | Jeopardy-style for teams selected from the prelims; platform hosted online, finalists on campus |
 | Scale target | 250+ teams, 150 to 200 challenges across both rounds, about 30 challenge authors |
 | Rating | Listed on [CTFtime](https://ctftime.org/) |

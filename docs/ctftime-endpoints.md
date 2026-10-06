@@ -1,0 +1,69 @@
+# What to give CTFtime: the addresses and values for the event listing
+
+This is the one page for the people who register L3m0nCTF 2026 on CTFtime. It lists every value the form and the event's edit page ask for, which of them we can give today, and what is still missing. The reasoning behind each value is in [CTFtime OAuth and the live JSON feed](research/ctftime-oauth-and-live-feed.md) and [Hosting on CTFtime](research/ctftime-requirements.md).
+
+`<event-domain>` stands for the address the event will run on (for example `l3mon-ctf.example`). **The domain is the one input we still need.** Every address below is fixed except for that part, so once the domain is known they can be copied straight into CTFtime.
+
+## 1. The event listing form (`ctftime.org/event/mail/`)
+
+| CTFtime asks for | Value | Status |
+|------------------|-------|--------|
+| Name | L3m0nCTF 2026 | ready |
+| Official website | `https://<event-domain>/` (the public landing page) | needs the domain, and the page live |
+| Format | Jeopardy | ready |
+| Dates | **28 to 29 November 2026, 24 hours, online** (confirmed on 2026-10-06) | date ready, **the start and finish time is still needed, in UTC** (CTFtime wants exact times; IST is UTC plus 5 hours 30 minutes) |
+| Location | On-line for the online round. The finals are on campus in Coimbatore for selected teams | ready; finals dates are still to be announced |
+| Organiser team | A TIFAC-CORE team on CTFtime | needs a team member to create or pick it (decision D11) |
+| Logo | `https://<event-domain>/icon-512.png` | needs the domain |
+| Prizes, restrictions, contact | The organisers' decision | not decided yet |
+| Description | The paragraph in the landing repo's submission pack | ready (needs the registration and rules links) |
+
+## 2. The two addresses the platform must provide
+
+These are what CTFtime asks the organisers for once the event is approved. They are the "endpoints" for sign-in and for the live scores.
+
+| Purpose | Address | What it is |
+|---------|---------|------------|
+| **Login with CTFtime: the OAuth endpoint (callback URL)** | `https://<event-domain>/auth/ctftime/callback` | Where CTFtime sends a player back after they approve the sign-in. It is typed into the event's edit page, and it must match exactly (same scheme, domain, path, no trailing slash). CTFtime shows the **client ID** (it is the CTFtime event number) and the **client secret** on that same page once the event is approved; they go to the platform team, never into a document or chat. |
+| **Live scoreboard feed** | `https://<event-domain>/ctftime/standings.json` | A public file, no login. CTFtime reads it every 60 seconds. The platform rewrites it every 15 seconds from the same standings as the public scoreboard. |
+| Final results (after the 24 hours) | `https://<event-domain>/ctftime/final-standings.json` | The same format, taken once the scoreboard is unfrozen. It is uploaded to CTFtime by form. **This is the part that gives teams their rating points,** so it matters more than the live feed. |
+
+### What the live feed looks like
+
+The smallest format CTFtime documents, on purpose: CTFtime warns against bigger ones until it announces them.
+
+```json
+{
+  "standings": [
+    { "pos": 1, "team": "Team name exactly as registered", "score": 4200 },
+    { "pos": 2, "team": "Another team", "score": 3900 }
+  ]
+}
+```
+
+Rules we follow: only teams with a score above zero, no hidden, banned or staff teams, positions and ties exactly as the public scoreboard, the frozen standings while the scoreboard is frozen, correct escaping of every character in team names, and an alarm if the file is more than two minutes old.
+
+## 3. What CTFtime needs from the server side
+
+- **A fixed outgoing IP address** for the platform. CTFtime sits behind a firewall that has blocked sign-in token requests from unknown servers before; the address may need to be allow-listed on their side. We send it to CTFtime once the hosting is decided.
+- **Team names must match exactly** between our platform and CTFtime, or results cannot be matched. Login with CTFtime avoids the problem for teams that use it.
+- **Sign-in only works while the event is upcoming or running on CTFtime**, so it can only be tested for real after approval. We test against a stand-in CTFtime until then.
+
+## 4. Where each address stands today
+
+| Item | Today |
+|------|-------|
+| The three addresses and the feed format | **Decided, as above** |
+| The feed and the callback in the demo platform | Built and tested in the demo platform (`platform-ui`, private repo) against the documented format |
+| The real platform that serves them | Not deployed. It depends on the hosting and technology decision for the platform (decisions D10, D15, D16) |
+| The domain | **Needed** (decision D13) |
+| Start and finish time of the online round | **Needed** (decision D19) |
+| A CTFtime organiser account and team | **Needed** (decision D11) |
+
+## 5. Order of work once the domain is known
+
+1. Put the domain in the landing page's settings and publish the page (this is the "official website").
+2. File the event on CTFtime with the values in section 1. Approval is manual and its lead time is not published, so file the day the page is live.
+3. After approval: type the callback address and the feed address into the event's edit page, copy the client secret to the platform team, and send CTFtime the server's fixed IP address.
+4. Test Login with CTFtime for real, and watch the feed from the outside for a day.
+5. After the event: unfreeze, take the final file, and upload it.

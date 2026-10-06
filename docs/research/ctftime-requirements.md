@@ -40,7 +40,7 @@ CTFtime's event filters are: **Location** (On-line, On-site) and **Restrictions*
 |-------|--------------------|-------|
 | Full event and CTF name | "L3m0nCTF 2026" | Settled name |
 | Logo link | A hosted PNG or SVG | Public asset URL, from the landing site |
-| Start and finish (UTC) | Prelims ≈ mid-November, 24 h | Confirmed dates |
+| Start and finish (UTC) | Prelims 28 to 29 November 2026, 24 h (confirmed 2026-10-06); the start time of day is still needed | Exact start and finish time in UTC |
 | Official site URL | The public landing page | **Live site before submission** |
 | Format | Jeopardy | |
 | Online or on-site | Prelims on-line. Finals on-site, Coimbatore | |

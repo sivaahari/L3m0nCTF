@@ -52,7 +52,8 @@ Phase: design, waiting on a technology decision. Tasks 1, 2 and 3 are done (plat
 | 2026-10-04 | Sub-agents are allowed (resolves D18). Every build is Opus-monitored: an Opus design consult before building and independent Opus reviews before anything is committed. Standing quality bar from the owner: smooth and relevant motion on every page, cartoony sounds, a custom mouse pointer, hidden easter eggs, and builds verified bug free, efficient and attractive |
 | 2026-10-04 | **Plain English throughout.** No Hindi or Hinglish titles, names, signage, slate lines or placeholder data anywhere in the project. The story is called Prime Time and its apology slate says "Please stand by". Mapping and the current mockup (pages atlas v5) are in the private repo |
 | 2026-10-04 | **Three sign-in methods:** email and password, Continue with Google, and Login with CTFtime. Method, safety rules and plan: [sign-in methods](docs/research/sign-in-methods.md). Google is proposed for scope tier A because it removes the email-delivery risk; CTFtime login stays tier B |
-| 2026-10-04 | **No event dates are decided** for either round. The landing page says "Announced soon" and runs no countdown. Dates in the build plan are working assumptions |
+| 2026-10-04 | No event dates were decided yet. The landing page said "Announced soon" and ran no countdown |
+| 2026-10-06 | **The online round is confirmed: 28 to 29 November 2026, 24 hours, online.** Finals are still to be announced. The start time of day is not given yet, so the landing page shows the dates as text and still runs no countdown. The department's leadership approved the story line and the landing page. The build plan's freeze and load-test dates are recomputed from 2026-11-28 |
 
 ## Pending decisions
 

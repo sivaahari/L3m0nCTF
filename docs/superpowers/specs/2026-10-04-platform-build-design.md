@@ -23,7 +23,7 @@ Assumptions. Each one is a place where a different answer changes the design, so
 
 | # | Assumption | If it is wrong |
 |---|------------|----------------|
-| A1 | Prelims start Saturday 2026-11-14, freeze Saturday 2026-11-07 | The calendar in section 7 shifts. Nothing else changes |
+| A1 | The online round is **28 to 29 November 2026** (confirmed 2026-10-06; Saturday and Sunday, 24 hours, start time of day not yet given). Feature freeze Saturday 2026-11-21, one week before | The calendar in section 7 shifts. Nothing else changes. (The first draft assumed 2026-11-14 and a 2026-11-07 freeze; the date moved two weeks later) |
 | A2 | Hosting is plain Linux VMs with Docker: one app host (8 vCPU, 16 GB or more), two to four challenge hosts (8 vCPU, 16 GB each), one small ops host, a static IP for the app host, and wildcard DNS for instances. The challenge-host count follows the instance target: about 500 live instances at 128 MB each is about 64 GB of RAM | If you have Kubernetes, the instancer choice changes (section 6, SP4). If hosting is weaker, the load and instance targets drop |
 | A3 | An official domain exists or will exist within days | Email deliverability, TLS and the CTFtime URL all wait for it. A GitHub or Cloudflare Pages address works as the interim public page |
 | A4 | A transactional email provider, with SPF, DKIM and DMARC set up on our sending domain | Verification emails land in spam or are rejected, and registration stalls |
@@ -264,44 +264,44 @@ The small parts that make a site feel finished. Pictures of the main ones are in
 ```mermaid
 gantt
   dateFormat YYYY-MM-DD
-  title Build calendar, assuming prelims start on 2026-11-14
+  title Build calendar, prelims on 2026-11-28
   section Foundation
-  SP0 repo, image, compose, CI, staging :a1, 2026-10-05, 6d
-  SP1 landing page and CTFtime pack :a2, 2026-10-05, 6d
+  SP0 repo, image, compose, CI, staging :a1, 2026-10-06, 8d
+  SP1 landing page and CTFtime pack :a2, 2026-10-05, 8d
   SP2 author kit :a3, 2026-10-05, 7d
   section Core
-  SP3 pipeline and APIs :b1, 2026-10-11, 8d
-  SP6 theme: auth, board, panel :b2, 2026-10-11, 12d
-  SP4 instancer, HTTP first :b3, 2026-10-12, 10d
-  SP5 anti-abuse basics :b4, 2026-10-16, 6d
-  Staging open to authors :milestone, msa, 2026-10-18, 0d
+  SP3 pipeline and APIs :b1, 2026-10-12, 12d
+  SP6 theme: auth, board, panel :b2, 2026-10-12, 18d
+  SP4 instancer, HTTP first :b3, 2026-10-13, 14d
+  SP5 anti-abuse basics :b4, 2026-10-19, 8d
+  Staging open to authors :milestone, msa, 2026-10-24, 0d
   section Identity
-  SP7 story engine :c1, 2026-10-20, 10d
-  SP8 CTFtime feed and sign-in :c2, 2026-10-22, 7d
-  SP6 theme: scoreboard, teams, text, slates, wall :c3, 2026-10-22, 10d
+  SP7 story engine :c1, 2026-10-27, 10d
+  SP8 CTFtime feed and sign-in :c2, 2026-10-29, 8d
+  SP6 theme: scoreboard, teams, text, slates, wall :c3, 2026-10-29, 10d
   section Ship
-  Production hosting, email, registration opens :d1, 2026-10-24, 7d
-  SP9 observability, backups, runbooks :d2, 2026-10-26, 8d
-  Load test at 2x, fixes, security review :d3, 2026-11-02, 5d
-  Feature freeze :milestone, msf, 2026-11-07, 0d
-  Dress rehearsal :d4, 2026-11-08, 5d
-  Prelims :milestone, msp, 2026-11-14, 0d
+  Production hosting, email, registration opens :d1, 2026-11-02, 8d
+  SP9 observability, backups, runbooks :d2, 2026-10-30, 12d
+  Load test at 2x, fixes, security review :d3, 2026-11-10, 10d
+  Feature freeze :milestone, msf, 2026-11-21, 0d
+  Dress rehearsal :d4, 2026-11-21, 5d
+  Prelims :milestone, msp, 2026-11-28, 0d
 ```
 
 **Milestones**
 
 | | Date | What must be true |
 |---|------|-------------------|
-| M0 | Oct 11 | Landing page public, CTFtime submission filed, author kit v0 in the authors' hands, staging deploys on push |
-| M1 | Oct 18 | Staging works end to end with stock pages plus the new data APIs: register, team, sample challenges, solve, scoreboard from the snapshot. Authors are deploying to it. The new theme's login, board and panel follow by Oct 23 |
-| M2 | Oct 31 | **Registration is open on production.** Hosting is provisioned, email deliverability tested, anti-abuse basics live. Registration usually opens one to two weeks before a CTFtime event, so production must exist early |
-| M3 | Nov 1 | Feature complete on staging (tiers A and B). Load test at twice target begins on Nov 2 |
-| M4 | Nov 7 | Feature freeze. Security review done. Every challenge deployed on staging with a passing solver |
-| M5 | Nov 13 | Dress rehearsal complete, go or no-go |
+| M0 | Oct 13 | Landing page public (needs the domain), CTFtime submission filed (needs the start time and the organiser account), author kit v0 in the authors' hands, staging deploys on push |
+| M1 | Oct 24 | Staging works end to end with stock pages plus the new data APIs: register, team, sample challenges, solve, scoreboard from the snapshot. Authors are deploying to it. The new theme's login, board and panel follow by Oct 30 |
+| M2 | Nov 9 | **Registration is open on production.** Hosting is provisioned, email deliverability tested, anti-abuse basics live. Registration usually opens two to three weeks before a CTFtime event, so production must exist early |
+| M3 | Nov 10 | Feature complete on staging (tiers A and B). Load test at twice target begins on Nov 10 |
+| M4 | Nov 21 | Feature freeze. Security review done. Every challenge deployed on staging with a passing solver |
+| M5 | Nov 26 | Dress rehearsal complete, go or no-go |
 
 **First implementation plan:** SP0, SP1 and SP2 together. They unblock the CTFtime listing, the authors and everything after them. Each later sub-project gets its own plan when its turn comes.
 
-**Capacity check.** Added up, the estimates in section 6 and the site essentials come to about 66 to 84 builder-days. There are about 25 weekdays (34 calendar days) from Oct 5 to the freeze, and the tier A work alone is about 44 to 54 days on the same scale. Code written with me is faster than a solo builder, but review, hosting, DNS, email, the authors' challenges and load testing take the same wall-clock time, so the plan cannot assume tier B ships. Ways to compress, in order:
+**Capacity check.** Added up, the estimates in section 6 and the site essentials come to about 66 to 84 builder-days. There are about 33 weekdays (46 calendar days) from Oct 6 to the freeze on Nov 21, and the tier A work alone is about 44 to 54 days on the same scale. Code written with me is faster than a solo builder, but review, hosting, DNS, email, the authors' challenges and load testing take the same wall-clock time, so the plan cannot assume tier B ships. Ways to compress, in order:
 1. Agree the tiers now, and agree that the freeze date wins over features (D17).
 2. Run independent sub-projects in parallel, each in its own git worktree, for example SP0, SP1 and SP2 in week one (needs your go-ahead to use sub-agents, D18).
 3. Bring in a DevOps owner for SP9 and production hosting, and one front-end helper for the secondary theme pages.
