@@ -37,3 +37,6 @@ Thumbs.db
 .secrets/
 deploy/compose/.env
 deploy/compose/generated/
+
+# The penetration-test bundle (images, throwaway secrets, demo data): built on demand, never committed
+pentest-bundle/
