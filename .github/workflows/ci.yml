@@ -5,6 +5,9 @@ on:
     branches: [pre-deployment, main]
   pull_request:
     branches: [pre-deployment, main]
+  schedule:
+    # Mondays 04:17 UTC: new advisories appear without any change here, so the image is re-scanned every week.
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
@@ -13,9 +16,17 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The pinned versions of the checking tools (official images).
+  HADOLINT_IMAGE: hadolint/hadolint:v2.12.0
+  SHELLCHECK_IMAGE: koalaman/shellcheck:v0.10.0
+  TRIVY_IMAGE: aquasec/trivy:0.75.0
+  ACTIONLINT_IMAGE: rhysd/actionlint:1.7.7
+
 jobs:
   hygiene:
     # The first gate: this repository is public, so it must never hold a flag, a secret, a dump or story material.
+    # It also runs the tests of our own tools.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -29,3 +40,112 @@ jobs:
       - name: Scan the repository
         working-directory: tools
         run: python -m l3mon hygiene --root ..
+
+  lint:
+    # Static checks: the Dockerfile, every shell script, and the compose files with real (generated) settings.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: This workflow (actionlint)
+        run: docker run --rm -v "$PWD:/repo" -w /repo "$ACTIONLINT_IMAGE"
+      - name: Dockerfile (hadolint)
+        run: docker run --rm -i "$HADOLINT_IMAGE" < docker/ctfd/Dockerfile
+      - name: Shell scripts (shellcheck, warnings and errors)
+        run: >
+          docker run --rm -v "$PWD:/mnt" -w /mnt "$SHELLCHECK_IMAGE" --severity=warning -x
+          docker/ctfd/l3mon-entrypoint.sh docker/ctfd/l3mon-env.sh docker/ctfd/l3mon-run.sh
+          tools/backup.sh tools/compose.sh tools/restore.sh tools/run-ctfd-tests.sh tools/verify-image.sh
+      - name: Generate settings and secrets (throwaway, for this run only)
+        working-directory: tools
+        run: |
+          python -m l3mon secrets generate --dir ../.secrets
+          python -m l3mon config render ../config/event.example.toml --out ../deploy/compose/generated
+      - name: Compose files are valid
+        run: |
+          tools/compose.sh config -q
+          L3MON_ENV=dev tools/compose.sh config -q
+
+  image:
+    # The platform image: its properties, the packages inside it, and a vulnerability scan against the reviewed list.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
+      - name: Properties of the image
+        run: tools/verify-image.sh l3mon/ctfd:dev
+      - name: Python packages (pip-audit, minus the reviewed advisories)
+        run: |
+          ids="$(grep -vE '^[[:space:]]*(#|$)' docker/ctfd/accepted-advisories.txt | sed 's/^/--ignore-vuln /' | tr '\n' ' ')"
+          docker run --rm --user root --entrypoint sh l3mon/ctfd:dev -c \
+            "python -m venv /tmp/audit >/dev/null && /tmp/audit/bin/pip install -q pip-audit==2.9.0 && /tmp/audit/bin/pip-audit --path /opt/venv/lib/python3.11/site-packages --progress-spinner off $ids"
+      - name: Everything in the image (Trivy; fixable HIGH and CRITICAL only, minus the reviewed advisories)
+        run: |
+          docker save l3mon/ctfd:dev -o "$RUNNER_TEMP/ctfd.tar"
+          docker run --rm -v "$RUNNER_TEMP:/scan" -v "$PWD/docker/ctfd:/rules:ro" "$TRIVY_IMAGE" image \
+            --input /scan/ctfd.tar --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --ignorefile /rules/accepted-advisories.txt --exit-code 1 --no-progress
+
+  third-party-images:
+    # The three images we do not build (MariaDB, Redis, nginx), exactly as pinned in the compose file.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan the pinned images (fixable HIGH and CRITICAL only, minus the reviewed advisories)
+        run: |
+          # gosu is the image's default privilege-dropping helper; our containers start as an unprivileged user directly, so it never runs
+          images="$(grep -E '^[[:space:]]+image: .*@sha256' deploy/compose/compose.base.yml | awk '{print $2}')"
+          test -n "$images"
+          for image in $images; do
+            echo "== $image"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/deploy/compose:/rules:ro" "$TRIVY_IMAGE" image "$image" \
+              --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /rules/accepted-advisories.txt \
+              --skip-files usr/local/bin/gosu --exit-code 1 --no-progress
+          done
+
+  ctfd-suite:
+    # CTFd's own 676 tests, run on OUR image: proof that the upgraded libraries break nothing.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
+      - name: Our plugin's tests
+        run: tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests
+      - name: CTFd's whole suite
+        run: tools/run-ctfd-tests.sh l3mon/ctfd:dev
+
+  integration:
+    # The real stack (CTFd, MariaDB, Redis, nginx) started with Docker Compose, and the tests that probe it.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the test runner
+        run: python -m pip install pytest
+      - name: Build the image
+        run: docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
+      - name: Generate settings and secrets (throwaway, for this run only)
+        working-directory: tools
+        run: |
+          python -m l3mon secrets generate --dir ../.secrets
+          python -m l3mon config render ../config/event.example.toml --out ../deploy/compose/generated
+      - name: Start the stack
+        run: tools/compose.sh up -d --wait --wait-timeout 300
+      - name: Integration tests
+        run: python -m pytest tests/integration -q
+      - name: Restore drill (destroys this run's own data and proves a backup brings it back)
+        run: python -m pytest tests/integration/test_restore_drill.py -q --run-drill
+      - name: Logs, when something failed
+        if: failure()
+        run: tools/compose.sh logs --no-color --tail 200
+      - name: Remove the stack
+        if: always()
+        run: tools/compose.sh down -v

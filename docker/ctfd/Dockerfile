@@ -7,7 +7,10 @@ FROM ghcr.io/ctfd/ctfd@sha256:07cc9788d58b2a18ea4dc2103ff385c053ffc506f57d0c769a
 USER root
 
 # Operating-system fixes the upstream image does not have yet (Trivy, 2026-10-06): libpcre2 and perl-base.
-# Only these two are upgraded; nothing else is installed, and the package lists are removed again.
+# Only these two are upgraded; nothing else is installed, and the package lists are removed again. The versions are not
+# pinned on purpose: the point is to take whatever fixed version Debian's security archive has (verify-image.sh checks
+# the minimum).
+# hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base \
     && rm -rf /var/lib/apt/lists/*

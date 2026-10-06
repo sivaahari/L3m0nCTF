@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Sourced by l3mon-entrypoint and l3mon-run. Reads the platform's secrets from files and exports them as environment
 # variables. CTFd cannot read a secret from a file itself; this keeps every secret out of the compose file, out of
 # `docker inspect`, and out of the image.

@@ -73,6 +73,18 @@ These Debian 12 packages have **no fixed version in Debian yet** (Trivy, 2026-10
 
 What limits the damage in the meantime: the container runs as an unprivileged user with a read-only root file system, all capabilities dropped and `no-new-privileges`; its database and cache sit on an internal network; only nginx is reachable from outside; and our plugin does not call these tools or libraries directly. They are checked again at every build and again before the freeze (see below). If a fixed Debian package appears, the next build picks it up through the `apt-get ... --only-upgrade` step or a rebuild on a newer base image.
 
+## The other images in the stack (MariaDB, Redis, nginx)
+
+Scanned the same way on 2026-10-06 (`--ignore-unfixed`, HIGH and CRITICAL). The pinned digests in [`compose.base.yml`](../../deploy/compose/compose.base.yml) are the newest the projects publish for these tags; nothing newer exists to upgrade to.
+
+| Image | Result | Explanation |
+|-------|--------|-------------|
+| `nginxinc/nginx-unprivileged:stable-alpine` | clean | none |
+| `redis:7-alpine` | OpenSSL CVE-2026-84782 and CVE-2026-75804 (HIGH) | Fixed Alpine packages exist but are not in the image yet. Redis in our stack has **TLS switched off** and listens only on the private internal network, so it never starts a TLS or QUIC handshake. Accepted until upstream rebuilds the image |
+| `mariadb:10.11` | OpenSSL CVE-2026-84782 (HIGH), and 22 findings in `gosu` (a small Go helper whose standard library is old) | Same reasoning for OpenSSL: no TLS in our stack, private network only. `gosu` is how the image's default entrypoint drops privileges; **our container starts directly as user 999** (`user: "999:999"`), so it never runs. The scan skips that one file, and nothing else |
+
+The reviewed identifiers are in [`deploy/compose/accepted-advisories.txt`](../../deploy/compose/accepted-advisories.txt); the CI job `third-party-images` fails on any other fixable HIGH or CRITICAL finding. When upstream publishes a rebuilt image: update the digest, run the scan, the integration tests and the restore drill, and remove the identifiers it fixes.
+
 ## How to repeat this
 
 ```bash
@@ -80,10 +92,11 @@ docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
 tools/verify-image.sh l3mon/ctfd:dev                 # every pin and every property of the image
 tools/run-ctfd-tests.sh l3mon/ctfd:dev               # CTFd's own 676 tests on our image (about 7 minutes)
 docker save l3mon/ctfd:dev -o ctfd.tar               # then scan it
-docker run --rm -v "$PWD:/scan" aquasec/trivy image --input /scan/ctfd.tar --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL
+docker run --rm -v "$PWD:/scan" aquasec/trivy image --input /scan/ctfd.tar --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL \
+  --ignorefile /scan/docker/ctfd/accepted-advisories.txt
 ```
 
-Expected after this change: the only fixable HIGH or CRITICAL findings are Flask CVE-2023-30861 and Werkzeug CVE-2024-34069, both explained above. Anything else is a new finding and fails the pipeline (SP0 Task 9 turns this into a CI job with a reviewed ignore list that must match this page).
+Expected: no output other than the reviewed advisories (without `--ignorefile`, the only fixable HIGH or CRITICAL findings are Flask CVE-2023-30861 and Werkzeug CVE-2024-34069, both explained above). Anything else is a new finding and fails the CI job `image`, whose ignore list (`docker/ctfd/accepted-advisories.txt`) a test keeps in step with this page.
 
 ## When this page must be revisited
 

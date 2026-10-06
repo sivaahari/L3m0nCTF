@@ -1,0 +1,19 @@
+# Advisories we have reviewed and accepted in the platform image. One identifier per line; lines starting with # are comments.
+# Used as Trivy's ignore file and, through the CI job, as pip-audit's ignore list.
+# EVERY identifier here must be explained in docs/security/dependency-bumps.md (a test enforces it). A new advisory that is
+# not on this list fails the pipeline: read it, decide, and either upgrade the package or add it here with its explanation.
+#
+# Flask 2.1.3: responses may omit "Vary: Cookie" (matters only to a shared cache; we have none)
+CVE-2023-30861
+CVE-2026-27205
+# Werkzeug 2.2.3: debugger (never enabled), Windows-only path handling, multipart parsing (bounded by nginx limits)
+CVE-2024-34069
+CVE-2024-49766
+CVE-2025-66221
+CVE-2026-21860
+CVE-2026-27199
+CVE-2026-102598
+CVE-2023-46136
+CVE-2024-49767
+# Mako 1.3.12: Windows-only template path traversal
+CVE-2026-102991

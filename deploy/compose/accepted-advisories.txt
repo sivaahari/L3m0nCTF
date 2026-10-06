@@ -1,0 +1,11 @@
+# Advisories we have reviewed and accepted in the three third-party images of the stack (MariaDB, Redis, nginx).
+# Used as Trivy's ignore file by the CI job "third-party-images". One identifier per line; lines starting with # are comments.
+# EVERY identifier here must be explained in docs/security/dependency-bumps.md (a test enforces it). A new fixable HIGH or
+# CRITICAL finding that is not on this list fails the pipeline. The usual cure is a newer pinned image digest in
+# compose.base.yml (verify with the scan, the integration tests and the restore drill); this list is for the time until
+# the upstream project publishes one.
+#
+# OpenSSL in the MariaDB (Ubuntu) and Redis (Alpine) images: neither service has TLS switched on in our stack, they only
+# talk to CTFd over a private internal network. Fixed packages exist in the distributions but not yet in the images.
+CVE-2026-84782
+CVE-2026-75804
