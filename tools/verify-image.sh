@@ -25,6 +25,7 @@ hc="$(docker image inspect "$image" --format '{{json .Config.Healthcheck}}')"
 
 check "pip reports no broken requirements" docker run --rm --user root --entrypoint sh "$image" -c "/opt/venv/bin/python -m ensurepip --default-pip >/dev/null && /opt/venv/bin/pip check"
 check "the plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_core/__init__.py
+check "the CTFtime feed plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_ctftime/__init__.py
 check "the theme is in place" run "$image" test -d /opt/CTFd/CTFd/themes/l3mon
 check "CTFd imports" run "$image" /opt/venv/bin/python -c "import CTFd"
 check "the plugin files are not writable by the running user" run "$image" sh -c '! [ -w /opt/CTFd/CTFd/plugins/l3mon_core/__init__.py ] || [ "$(id -u)" = 0 ]'

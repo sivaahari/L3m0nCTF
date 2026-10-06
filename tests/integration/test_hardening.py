@@ -90,7 +90,7 @@ def test_the_writes_a_player_makes_still_reach_ctfd_from_anywhere(outside):
 
 
 def test_ordinary_pages_and_public_reads_still_work_from_anywhere(outside):
-    for path in ("/login", "/api/v1/challenges", "/api/v1/scoreboard", "/api/v1/users/me", "/api/v1/teams", "/api/v1/users"):
+    for path in ("/login", "/api/v1/challenges", "/api/v1/scoreboard", "/api/v1/users/me", "/api/v1/teams", "/api/v1/users", "/ctftime/standings.json"):
         status, _, body = t.request(path)
         assert NGINX_ERROR_PAGE not in body, (path, status)
     assert t.request("/login")[0] == 200
@@ -176,3 +176,23 @@ def test_the_redis_password_is_not_in_any_process_argument_list():
     for service in ("cache",):
         out = subprocess.run(["docker", "top", t.container_id(service), "-eo", "args"], capture_output=True, text=True).stdout
         assert t.secret("REDIS_PASSWORD") not in out
+
+
+# ------------------------------------------------ the public CTFtime feeds (plugin l3mon_ctftime)
+
+def test_the_ctftime_feeds_are_public_json_with_no_cookie_and_one_shared_cache_entry():
+    status, pairs, body = t.request("/ctftime/standings.json")
+    assert status == 200
+    data = json.loads(body)
+    assert list(data) == ["standings"] and isinstance(data["standings"], list)
+    for row in data["standings"]:
+        assert set(row) == {"pos", "team", "score"}
+    assert not t.header_values(pairs, "Set-Cookie"), "a cookie would be cached with the answer or leak a session"
+    assert not any("cookie" in v.lower() for v in t.header_values(pairs, "Vary")), "the feed is the same for everyone"
+    cache = " ".join(t.header_values(pairs, "Cache-Control"))
+    assert "public" in cache and "max-age=15" in cache
+    assert t.header_values(pairs, "Content-Type")[0].startswith("application/json")
+    # the final standings are not published until the event has ended and an organiser says so
+    status, pairs, body = t.request("/ctftime/final-standings.json")
+    assert status == 404 and json.loads(body)["error"] == "not_found"
+    assert "no-store" in " ".join(t.header_values(pairs, "Cache-Control"))

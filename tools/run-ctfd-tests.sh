@@ -28,9 +28,11 @@ if [[ -n "$overrides" ]]; then
   pip_overrides="/opt/venv/bin/pip install --no-cache-dir -q --upgrade -r /over/$(basename "$overrides") && /opt/venv/bin/pip check &&"
 fi
 
-# our own plugin tests are mounted read-only at /l3mon_tests, so `-- -q /l3mon_tests` runs only them
+# our own plugin tests are mounted read-only at /l3mon_tests/<plugin>, so `-- -q /l3mon_tests` runs only them
 repo_root="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
-if [[ -d "$repo_root/plugins/l3mon_core/tests" ]]; then mounts+=(-v "$repo_root/plugins/l3mon_core/tests:/l3mon_tests:ro"); fi
+for tests in "$repo_root"/plugins/l3mon_*/tests; do
+  [[ -d "$tests" ]] && mounts+=(-v "$tests:/l3mon_tests/$(basename "$(dirname "$tests")"):ro")
+done
 
 export MSYS_NO_PATHCONV=1
 docker run --rm --user root "${mounts[@]}" --entrypoint bash "$image" -c "

@@ -32,9 +32,9 @@ RUN /opt/venv/bin/pip install --no-cache-dir --upgrade -r /tmp/overrides.txt \
 # change the code it runs. The bytecode is compiled here because the process cannot write it later.
 COPY --chown=root:root plugins/ /opt/CTFd/CTFd/plugins/
 COPY --chown=root:root ui/theme/l3mon/ /opt/CTFd/CTFd/themes/l3mon/
-RUN find /opt/CTFd/CTFd/plugins/l3mon_core /opt/CTFd/CTFd/themes/l3mon -type d -exec chmod 755 {} + \
-    && find /opt/CTFd/CTFd/plugins/l3mon_core /opt/CTFd/CTFd/themes/l3mon -type f -exec chmod 644 {} + \
-    && /opt/venv/bin/python -m compileall -q /opt/CTFd/CTFd/plugins/l3mon_core
+RUN find /opt/CTFd/CTFd/plugins/l3mon_* /opt/CTFd/CTFd/themes/l3mon -type d -exec chmod 755 {} + \
+    && find /opt/CTFd/CTFd/plugins/l3mon_* /opt/CTFd/CTFd/themes/l3mon -type f -exec chmod 644 {} + \
+    && /opt/venv/bin/python -m compileall -q /opt/CTFd/CTFd/plugins/l3mon_*
 
 # Reads secrets from files before starting CTFd, and the container health check.
 COPY --chown=root:root --chmod=644 docker/ctfd/l3mon-env.sh /usr/local/lib/l3mon-env.sh

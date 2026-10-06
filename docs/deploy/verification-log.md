@@ -109,3 +109,12 @@ An independent Opus audit of the platform foundation (report in the private repo
 | **L5, Info** passwords in process arguments; MariaDB root reachable from the network; `.secrets` folder edge case | `REDISCLI_AUTH` and `MYSQL_PWD` instead of arguments; root only from inside the MariaDB container (`MARIADB_ROOT_HOST=localhost`); the secrets tool fails if it cannot make its folder private | tests: root cannot sign in from the CTFd container; the Redis password is in no process argument list |
 
 Local results after the round: tool tests 63 passed (2 skipped on Windows); integration tests 40 passed (4 skipped: the destructive drill, run separately and passed: 4 passed in 85 s); hygiene 0 findings in the files and in the history; hadolint, shellcheck (warnings and errors) and actionlint clean.
+
+### The CTFtime feeds (plugin `l3mon_ctftime`)
+
+| Command | Result |
+|---------|--------|
+| `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests` (now mounts every plugin's tests) | 18 passed (7 for `l3mon_core`, 11 for the feeds) inside a real CTFd: empty event, plugin off gives 404, ranking and tie-break exactly as CTFd's own (teams and users mode), exactly the keys `pos`, `team`, `score`, hidden, banned and non-positive accounts never appear and positions have no gaps, any characters in names round-trip as plain ASCII, no email or member name in the body, the live feed is frozen with the scoreboard and the final one is not, the final feed needs **both** the end of the event and the organisers' go-ahead, an account banned after the freeze is left out of the final file, identical answers with or without a cookie |
+| Mutation check: break the plugin five ways (final feed frozen, banned kept, non-positive kept, end-of-event check skipped, go-ahead check skipped) | each break made exactly the matching test fail |
+| `python -m pytest tests/integration -q` | 41 passed, 4 skipped (drill). New: through nginx the live feed is JSON of the documented shape with **no cookie, no `Vary: Cookie`**, `public, max-age=15`; the final feed is 404 with `no-store` until published; both feeds work from addresses that are not organisers' |
+| `tools/verify-image.sh` | the feed plugin is in the image |

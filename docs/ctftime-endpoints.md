@@ -25,7 +25,7 @@ These are what CTFtime asks the organisers for once the event is approved. They 
 | Purpose | Address | What it is |
 |---------|---------|------------|
 | **Login with CTFtime: the OAuth endpoint (callback URL)** | `https://play.l3m0nctf.xyz/auth/ctftime/callback` | Where CTFtime sends a player back after they approve the sign-in. It is typed into the event's edit page, and it must match exactly (same scheme, domain, path, no trailing slash). CTFtime shows the **client ID** (it is the CTFtime event number) and the **client secret** on that same page once the event is approved; they go to the platform team, never into a document or chat. |
-| **Live scoreboard feed** | `https://play.l3m0nctf.xyz/ctftime/standings.json` | A public file, no login. CTFtime reads it every 60 seconds. The platform rewrites it every 15 seconds from the same standings as the public scoreboard. |
+| **Live scoreboard feed** | `https://play.l3m0nctf.xyz/ctftime/standings.json` | A public address, no login. CTFtime reads it every 60 seconds. The platform answers from the same standings as the public scoreboard and lets caches keep the answer for 15 seconds. |
 | Final results (after the 24 hours) | `https://play.l3m0nctf.xyz/ctftime/final-standings.json` | The same format, taken once the scoreboard is unfrozen. It is uploaded to CTFtime by form. **This is the part that gives teams their rating points,** so it matters more than the live feed. |
 
 ### What the live feed looks like
@@ -54,8 +54,9 @@ Rules we follow: only teams with a score above zero, no hidden, banned or staff 
 | Item | Today |
 |------|-------|
 | The three addresses and the feed format | **Decided, as above** |
-| The feed and the callback in the demo platform | Built and tested in the demo platform (`platform-ui`, private repo) against the documented format |
-| The real platform that serves them | Not deployed. It depends on the hosting and technology decision for the platform (decisions D10, D15, D16) |
+| The live feed and the final results file in the real platform | **Built and tested** (plugin `l3mon_ctftime`, public repo): the exact format above, the platform's own standings and freeze, no cookie, a 15-second shared cache. The final file is served only after the event has ended **and** an organiser publishes it (after cheating cases are settled): `PATCH /api/v1/configs` with `{"l3mon_final_standings_published": true}`. 11 tests inside CTFd, every rule broken once on purpose to prove the tests notice, and an integration test through nginx |
+| The sign-in callback in the real platform | Built in the demo platform (`platform-ui`, private repo) only; the real plugin is sub-project SP8 |
+| The real platform that serves them | Runs on a laptop (development stack) and in CI; not deployed. It depends on the hosting and technology decision for the platform (decisions D10, D15, D16) |
 | The domain | **Known: `l3m0nctf.xyz`.** Still needed: DNS control (who can add the `play` name and the records for the landing page) and, later, the fixed IP of the server |
 | Start and finish time of the online round | **Known: 09:00 IST on 28 November to 09:00 IST on 29 November 2026** |
 | A CTFtime organiser account and team | **Needed** (decision D11) |

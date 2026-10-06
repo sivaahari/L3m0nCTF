@@ -50,6 +50,17 @@ server {
     access_log off;
   }
 
+  # The public CTFtime feeds (plugin l3mon_ctftime): the same answer for everybody, so no cookie (CTFd starts an anonymous
+  # session on every request, which must not be sent here or cached with the answer) and no "Vary: Cookie". The plugin
+  # sets the cache lifetime.
+  location /ctftime/ {
+    limit_req zone=general burst=200 nodelay;
+    include /etc/nginx/snippets/security-headers.conf;
+    include /etc/nginx/snippets/proxy.conf;
+    proxy_hide_header Set-Cookie;
+    proxy_hide_header Vary;
+  }
+
   # Sign-in, registration and password reset: slow down guessing from one address.
   location = /login {
     limit_req zone=general burst=200 nodelay;
