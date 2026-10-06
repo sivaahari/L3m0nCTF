@@ -32,3 +32,8 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated deployment files and per-machine secrets (see tools/l3mon secrets and config)
+.secrets/
+deploy/compose/.env
+deploy/compose/generated/

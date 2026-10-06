@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [pre-deployment, main]
+  pull_request:
+    branches: [pre-deployment, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    # The first gate: this repository is public, so it must never hold a flag, a secret, a dump or story material.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the test runner
+        run: python -m pip install pytest
+      - name: Tool tests
+        run: python -m pytest tools/tests -q
+      - name: Scan the repository
+        working-directory: tools
+        run: python -m l3mon hygiene --root ..

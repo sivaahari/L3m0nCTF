@@ -1,1 +1,10 @@
+# Scripts, configuration and Dockerfiles must keep Unix line endings, or they fail inside containers.
 * text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff2 binary
