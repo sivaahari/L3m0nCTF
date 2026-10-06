@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 import uuid
 
@@ -59,6 +60,13 @@ def test_a_destroyed_platform_comes_back_from_a_backup(tmp_path):
     status, _, body = t.request(f"/files/{location}")
     assert status == 200 and body == marker.encode(), "the uploaded file must be downloadable before the drill"
 
+    # a token that lives in the database (the preset administrator token is read from the environment and proves nothing here)
+    status, _, body = t.request("/api/v1/tokens", method="POST", headers=api, body=json.dumps({"expiration": "2099-01-01", "description": marker}).encode())
+    assert status == 200, body
+    db_token = json.loads(body)["data"]["value"]
+    status, _, _ = t.request("/api/v1/users/me", headers={"Authorization": f"Token {db_token}", "Content-Type": "application/json"})
+    assert status == 200
+
     # 2. back up
     backup = tmp_path / "backup"
     done = bash(str(t.ROOT / "tools" / "backup.sh"), str(backup))
@@ -72,6 +80,8 @@ def test_a_destroyed_platform_comes_back_from_a_backup(tmp_path):
     t.compose("up", "-d", "--wait", "--wait-timeout", "300", timeout=600)
     status, _, _ = t.request(f"/api/v1/pages/{page_id}", headers=api)
     assert status != 200, "a fresh platform must not have the page"
+    status, _, _ = t.request("/api/v1/users/me", headers={"Authorization": f"Token {db_token}", "Content-Type": "application/json"})
+    assert status in (401, 403), "a fresh platform must not know the database token"
     status, _, _ = t.request(f"/files/{location}")
     assert status == 404, "a fresh platform must not have the file"
 
@@ -87,6 +97,9 @@ def test_a_destroyed_platform_comes_back_from_a_backup(tmp_path):
     assert status == 200 and body == marker.encode()
     status, _, _ = t.request("/api/v1/users/me", headers=api)
     assert status == 200
+    # the token that only the restored database knows works again
+    status, _, body = t.request("/api/v1/users/me", headers={"Authorization": f"Token {db_token}", "Content-Type": "application/json"})
+    assert status == 200 and json.loads(body)["data"]["name"] == "organiser"
 
     elapsed = time.time() - started
     print(f"drill finished in {elapsed:.0f} s")
@@ -104,8 +117,22 @@ def test_a_damaged_backup_is_refused_and_changes_nothing(tmp_path):
     assert done.returncode != 0 and "Checksum mismatch" in done.stderr
 
 
-def test_restore_refuses_a_database_that_already_holds_data(tmp_path):
+def test_restore_always_needs_force_and_changes_nothing_without_it(tmp_path):
     backup = tmp_path / "backup"
     assert bash(str(t.ROOT / "tools" / "backup.sh"), str(backup)).returncode == 0
+    before = t.sql("SELECT COUNT(*) FROM users")
     done = bash(str(t.ROOT / "tools" / "restore.sh"), str(backup))
     assert done.returncode != 0 and "--force" in done.stderr
+    assert t.sql("SELECT COUNT(*) FROM users") == before
+    status, _, _ = t.request("/login")
+    assert status == 200, "the web side must still be up: nothing was stopped"
+
+
+def test_a_backup_is_private_to_its_owner(tmp_path):
+    import stat
+
+    backup = tmp_path / "backup"
+    assert bash(str(t.ROOT / "tools" / "backup.sh"), str(backup)).returncode == 0
+    if sys.platform != "win32":
+        assert stat.S_IMODE((backup / "db.sql.gz").stat().st_mode) & 0o077 == 0
+        assert stat.S_IMODE(backup.stat().st_mode) & 0o077 == 0

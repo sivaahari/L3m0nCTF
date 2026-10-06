@@ -34,8 +34,10 @@ def generate(directory: Path, force: bool = False) -> dict[str, Path]:
     directory.mkdir(parents=True, exist_ok=True)
     try:
         directory.chmod(PRIVATE_DIR)  # no effect on Windows, which does not use these bits
-    except OSError:
-        pass
+    except OSError as exc:
+        if os.name == "posix":
+            # a folder we cannot make private (someone else's, say) must not receive world-readable files
+            raise PermissionError(f"cannot make {directory} private (0700): {exc}") from exc
     existing = [name for name in MAKERS if (directory / name).exists()]
     if existing and not force:
         raise FileExistsError(f"{directory} already holds secrets ({', '.join(existing)}); use --force to replace them")

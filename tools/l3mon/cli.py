@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import config, hygiene, secrets_gen
+from . import api_rules, config, hygiene, secrets_gen
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--root", default=".", help="folder to scan (default: the current folder)")
     h.add_argument("--deny-words", default="", help="comma separated words that must not appear (story names)")
     h.add_argument("--deny-words-file", help="a file with one such word per line (kept outside the repository)")
+    h.add_argument("--history", action="store_true", help="also read every line ever added in any commit (a secret deleted from the tree is still in the history)")
 
     c = sub.add_parser("config", help="check the event settings file and render what CTFd needs")
     csub = c.add_subparsers(dest="config_cmd", required=True)
@@ -30,6 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
     sg = ssub.add_parser("generate", help="write one file per secret; values are never printed")
     sg.add_argument("--dir", default=".secrets", help="where to write them (default: .secrets)")
     sg.add_argument("--force", action="store_true", help="replace secrets that already exist")
+
+    a = sub.add_parser("api-rules", help="the nginx rules that keep CTFd's administrator API for the organisers' addresses")
+    a.add_argument("action", choices=["generate", "check"], help="generate rewrites the two snippet files; check fails when they are out of date")
+    a.add_argument("--image", default="l3mon/ctfd:dev", help="the platform image to read CTFd's routes from")
     return parser
 
 
@@ -41,10 +46,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.deny_words_file:
             words += [w.strip() for w in Path(args.deny_words_file).read_text(encoding="utf-8").splitlines() if w.strip() and not w.startswith("#")]
         findings = hygiene.scan(Path(args.root), words)
+        if args.history:
+            findings += hygiene.scan_history(Path(args.root), words)
         for f in findings:
             print(f.human())
         print(f"{len(findings)} finding(s)")
         return 1 if findings else 0
+
+    if args.cmd == "api-rules":
+        return api_rules.main([args.action, "--image", args.image])
 
     if args.cmd == "config":
         try:

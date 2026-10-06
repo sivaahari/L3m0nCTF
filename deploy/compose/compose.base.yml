@@ -7,6 +7,7 @@
 #   read_only: true          the root file system cannot be changed; writable places are named volumes or tmpfs
 #   mem_limit, pids_limit    one runaway container cannot take the whole host down
 #   init: true               zombie processes are reaped
+#   logging max-size         container logs are rotated
 # Only nginx is on a network that has a route to the outside. The database and the cache live on an internal network.
 
 name: l3mon
@@ -17,6 +18,12 @@ x-hardening: &hardening
   read_only: true
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
+  # Container logs are rotated: at most 5 files of 50 MB per service, so a long round cannot fill the host's disk.
+  logging:
+    driver: json-file
+    options:
+      max-size: "50m"
+      max-file: "5"
 
 services:
   ctfd:
@@ -47,11 +54,15 @@ services:
       PERMANENT_SESSION_LIFETIME: "28800"
       UPLOAD_FOLDER: /var/uploads
       LOG_FOLDER: /var/log/CTFd
-      ACCESS_LOG: "-"
+      # nginx logs every request (without query strings, and with reset and confirmation tokens masked); gunicorn's own
+      # access log would repeat them with the query string, so it goes nowhere.
+      ACCESS_LOG: /dev/null
       ERROR_LOG: "-"
       PRESET_ADMIN_NAME: "${PRESET_ADMIN_NAME}"
       PRESET_ADMIN_EMAIL: "${PRESET_ADMIN_EMAIL}"
-    secrets: [SECRET_KEY, DATABASE_PASSWORD, REDIS_PASSWORD, PRESET_ADMIN_PASSWORD, PRESET_ADMIN_TOKEN]
+    # PRESET_ADMIN_TOKEN is NOT here: CTFd would accept that one token, from any address, with no expiry, until the environment
+    # changes. Development and CI add it in compose.dev.yml; production uses tokens created in CTFd (they expire and can be revoked).
+    secrets: [SECRET_KEY, DATABASE_PASSWORD, REDIS_PASSWORD, PRESET_ADMIN_PASSWORD]
     configs:
       - source: preset_configs
         target: /run/config/preset_configs.json
@@ -59,7 +70,7 @@ services:
       - uploads:/var/uploads
     tmpfs:
       - /tmp
-      - /var/log/CTFd:uid=1001,gid=1001
+      - /var/log/CTFd:uid=1001,gid=1001,size=128m
     networks: [edge, internal]
     depends_on:
       db: { condition: service_healthy }
@@ -74,6 +85,7 @@ services:
     user: "999:999"
     environment:
       MARIADB_ROOT_PASSWORD_FILE: /run/secrets/DATABASE_ROOT_PASSWORD
+      MARIADB_ROOT_HOST: localhost  # root can sign in only inside this container, never from the network
       MARIADB_USER: ctfd
       MARIADB_PASSWORD_FILE: /run/secrets/DATABASE_PASSWORD
       MARIADB_DATABASE: ctfd
@@ -110,7 +122,7 @@ services:
     tmpfs: [/data]
     networks: [internal]
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$(cat /run/secrets/REDIS_PASSWORD)\" ping | grep -q PONG"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/REDIS_PASSWORD)\" redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 6
@@ -128,6 +140,8 @@ services:
       - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../nginx/templates:/etc/nginx/templates:ro
       - ../nginx/snippets:/etc/nginx/snippets:ro
+      # The organisers' addresses: development list by default; production and the tests point ADMIN_NETS_FILE elsewhere.
+      - ${ADMIN_NETS_FILE:-../nginx/snippets/admin-nets.conf}:/etc/nginx/snippets/admin-nets.conf:ro
     tmpfs:
       - /tmp
       - /var/cache/nginx

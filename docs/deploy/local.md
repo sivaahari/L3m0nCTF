@@ -25,7 +25,7 @@ tools/compose.sh up -d --wait
 
 Then open <http://localhost:8080/>. It sends you to the sign-in page.
 
-**Signing in as the organiser:** user `organiser`; the password is in `.secrets/PRESET_ADMIN_PASSWORD` (open that file; do not paste it into chat or an issue). The admin pages are at `/admin`. Email is not set up in the local stack, so a self-registered player cannot verify an address: use the organiser account, or create players from the admin pages.
+**Signing in as the organiser:** user `organiser`; the password is in `.secrets/PRESET_ADMIN_PASSWORD` (open that file; do not paste it into chat or an issue). The admin pages are at `/admin`. The development stack also has a fixed administrator API token (`.secrets/PRESET_ADMIN_TOKEN`, for scripts and tests; production does not have one). Both the pages and the whole administrator API are open only to *your own computer and private networks*: nginx refuses them from any other address (see [dependency-bumps.md](../security/dependency-bumps.md#who-may-use-the-administrator-api-found-by-the-independent-audit)). Email is not set up in the local stack, so a self-registered player cannot verify an address: use the organiser account, or create players from the admin pages.
 
 ## Day-to-day
 
@@ -38,10 +38,10 @@ Then open <http://localhost:8080/>. It sends you to the sign-in page.
 | **Wipe everything** (data included) and start clean | `tools/compose.sh down -v`, then `tools/compose.sh up -d --wait` |
 | Use another port | `DEV_PORT=9090 tools/compose.sh up -d --wait` |
 | Run a command inside the platform with its real settings | `tools/compose.sh exec ctfd l3mon-run /opt/venv/bin/python -c "print('hi')"` |
-| Back up (database and uploads) | `tools/backup.sh` (writes `backups/<timestamp>/`, which git ignores) |
-| Restore a backup into a running, **empty** platform | `tools/restore.sh backups/<timestamp>` (add `--force` to replace existing data) |
+| Back up (database and uploads) | `tools/backup.sh` (writes `backups/<timestamp>/`, readable by you only; git ignores it) |
+| Restore a backup (it **replaces** the database and the uploads; nginx and CTFd are stopped meanwhile and started again) | `tools/restore.sh backups/<timestamp> --force` (`--force` is always required) |
 
-Backups are not encrypted by the script: they hold players' emails, so keep them on your own disk and never commit them.
+Backups are not encrypted by the script, and they hold players' emails **and their API tokens in clear text**: treat a backup like a password file, keep it on your own disk and never commit it.
 
 If you change anything under `docker/`, `plugins/` or `ui/`, rebuild the image (command 3) and recreate the platform: `tools/compose.sh up -d --wait --force-recreate`.
 
@@ -50,11 +50,12 @@ If you change anything under `docker/`, `plugins/` or `ui/`, rebuild the image (
 | Command | What it proves | Time |
 |---------|----------------|------|
 | `python -m pytest tools/tests -q` | Our own tools (hygiene scan, settings validation, secret generation, the accepted-advisories list) behave | seconds |
-| `(cd tools && python -m l3mon hygiene --root ..)` | The public repository holds no flag, secret, dump or story material | seconds |
+| `(cd tools && python -m l3mon hygiene --root .. --history)` | The public repository holds no flag, secret, dump or story material: in the files git tracks (flags in any letter case or encoding, tokens, key files, archives, captures, executables) and in every commit ever made. Add `--deny-words-file FILE` for the story words | seconds |
+| `(cd tools && python -m l3mon api-rules check)` | The nginx lists of administrator routes match CTFd's source in the image (re-run `generate` after any CTFd upgrade) | seconds |
 | `tools/verify-image.sh l3mon/ctfd:dev` | The image runs as an unprivileged user, has no pip or compiler, carries every upgraded package at its pinned version and the two Debian fixes, and the plugin files cannot be changed by the running process | about 30 s |
 | `tools/run-ctfd-tests.sh l3mon/ctfd:dev` | CTFd's own 676 tests pass **on our image**: the upgraded libraries break nothing | about 7 min |
 | `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests` | Our plugin's own tests pass inside the image | seconds |
-| `python -m pytest tests/integration -q` (stack running) | The real stack: health routes, headers, cookie flags, unknown hosts get nothing, the admin token works, every event setting is in force, only nginx is published, every container is unprivileged and limited, no secret in logs or `docker inspect`, data survives a restart, rate limits, body-size limits | about 50 s |
+| `python -m pytest tests/integration -q` (stack running) | The real stack: health routes, headers, cookie flags, unknown hosts get nothing, the admin token works, every event setting is in force, only nginx is published, every container is unprivileged and limited, no secret anywhere in `docker inspect` or the logs, data survives a restart, a forged address never reaches CTFd, rate limits are nginx's own, body-size limits. **The hardening tests** (`test_hardening.py`) restart nginx so that nobody counts as an organiser and prove that every administrator route, any API token, any unlisted write and any multipart body is refused, that a player's own writes still work, that logs are rotated and mask reset tokens, that campus-speed traffic is not limited, and that the database root account cannot sign in from the network | about 90 s |
 | `python -m pytest tests/integration/test_restore_drill.py -q --run-drill` | A backup brings a **destroyed** platform back, within the 15-minute budget. **It deletes the local stack's data**, so it only runs when asked | about 1 min |
 
 All of them run on every push in GitHub Actions ([the workflow](../../.github/workflows/ci.yml)): `hygiene`, `lint` (hadolint, shellcheck, compose files), `image` (the checks above plus pip-audit and Trivy against the reviewed list in [dependency-bumps.md](../security/dependency-bumps.md)), `ctfd-suite` and `integration` (including the drill). The image scan also runs every Monday, because new advisories appear without any change here.

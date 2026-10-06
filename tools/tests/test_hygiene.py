@@ -67,15 +67,24 @@ def test_deny_words_are_whole_words_and_ignore_case(tmp_path):
     assert rules(found) == {"deny-word"}
 
 
-def test_skipped_folders_are_not_scanned(tmp_path):
+def test_tool_folders_and_nested_repositories_are_not_scanned_outside_git(tmp_path):
     bad = OPEN + "abcdefgh}"
-    make(tmp_path, {".git/x": bad, "node_modules/x": bad, ".secrets/x": bad, "private/x": bad})
-    assert hygiene.scan(tmp_path) == []
+    make(tmp_path, {".git/x": bad, "node_modules/x": bad, ".secrets/x": bad, "private/.git/HEAD": "ref", "private/x": bad})
+    assert hygiene.scan(tmp_path) == []  # private/ holds its own .git: it is a different repository
+    make(tmp_path, {"build/x": bad, "dist/x": bad})
+    assert {f.path for f in hygiene.scan(tmp_path)} == {"build/x", "dist/x"}  # build and dist are scanned: leaks hide there
 
 
-def test_binary_files_are_skipped_without_error(tmp_path):
-    (tmp_path / "logo.png").write_bytes(b"\x89PNG\r\n\x00\x00" + OPEN.encode() + b"abcdefgh}")
+def test_a_folder_named_private_is_scanned_when_it_is_not_a_repository(tmp_path):
+    make(tmp_path, {"private/x": OPEN + "abcdefgh}"})
+    assert {f.path for f in hygiene.scan(tmp_path)} == {"private/x"}
+
+
+def test_a_harmless_binary_is_fine_and_one_holding_the_prefix_is_not(tmp_path):
+    (tmp_path / "logo.png").write_bytes(b"\x89PNG\r\n\x00\x00" + bytes(range(256)) * 20)
     assert hygiene.scan(tmp_path) == []
+    (tmp_path / "chal.png").write_bytes(b"\x89PNG\r\n\x00\x00" + OPEN.encode() + b"abcdefgh}")
+    assert rules(hygiene.scan(tmp_path)) == {"flag-binary"}
 
 
 def test_the_command_exits_one_with_findings_and_zero_without(tmp_path, capsys):

@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# Restore a backup made by tools/backup.sh into the running stack.
-#   tools/restore.sh BACKUP_DIR [--force]
+# Restore a backup made by tools/backup.sh. This REPLACES the whole database and the uploaded files.
+#   tools/restore.sh BACKUP_DIR --force
 #
-# Refuses to run when the database already holds data, unless --force is given (then the database is dropped and
-# recreated first). Checks the manifest's checksums before touching anything.
+# --force is always required: a restore drops the database and loads the backup in its place, and a platform that has just
+# started is not empty (CTFd's own tables and the preset administrator exist from the first minute).
+# Order: check the manifest's checksums (nothing is touched when they do not match), stop the web side (nginx and CTFd) so
+# nobody writes while the database is replaced, restore the database and the uploads, clear the cache, start the web side again.
 set -euo pipefail
+umask 077
 root="$(cd "$(dirname "$0")/.." && pwd)"
 compose() { "$root/tools/compose.sh" "$@"; }
 
-dir="${1:?usage: tools/restore.sh BACKUP_DIR [--force]}"
+dir="${1:?usage: tools/restore.sh BACKUP_DIR --force}"
 force="${2:-}"
 [[ -f "$dir/manifest.json" ]] || { echo "No manifest.json in $dir" >&2; exit 1; }
+if [[ "$force" != "--force" ]]; then
+  echo "A restore replaces the whole database and the uploaded files. Re-run with --force to go ahead." >&2
+  exit 1
+fi
 
 echo "Checking the backup's checksums ..."
 for name in db.sql.gz uploads.tar.gz; do
@@ -19,25 +26,19 @@ for name in db.sql.gz uploads.tar.gz; do
   [[ -n "$want" && "$want" == "$have" ]] || { echo "Checksum mismatch for $name. The backup is damaged; nothing was changed." >&2; exit 1; }
 done
 
-sql() { compose exec -T db sh -c 'exec mariadb -N -uroot -p"$(cat /run/secrets/DATABASE_ROOT_PASSWORD)" "$@"' sh "$@"; }
+echo "Stopping the web side (nginx and CTFd) ..."
+compose stop nginx ctfd >/dev/null
 
-tables="$(sql -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='ctfd'" | tr -d '\r')"
-if [[ "$tables" != "0" ]]; then
-  if [[ "$force" != "--force" ]]; then
-    echo "The database already holds $tables tables. Re-run with --force to replace it." >&2
-    exit 1
-  fi
-  echo "Replacing the existing database ..."
-  sql -e "DROP DATABASE ctfd; CREATE DATABASE ctfd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-fi
-
-echo "Restoring the database ..."
-gzip -dc "$dir/db.sql.gz" | compose exec -T db sh -c 'exec mariadb --default-character-set=utf8mb4 -uroot -p"$(cat /run/secrets/DATABASE_ROOT_PASSWORD)" ctfd'
+echo "Replacing the database ..."
+sql() { compose exec -T db sh -c 'MYSQL_PWD="$(cat /run/secrets/DATABASE_ROOT_PASSWORD)" exec mariadb -N -uroot "$@"' sh "$@"; }
+sql -e "DROP DATABASE IF EXISTS ctfd; CREATE DATABASE ctfd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+gzip -dc "$dir/db.sql.gz" | compose exec -T db sh -c 'MYSQL_PWD="$(cat /run/secrets/DATABASE_ROOT_PASSWORD)" exec mariadb --default-character-set=utf8mb4 -uroot ctfd'
 
 echo "Restoring the uploaded files ..."
-gzip -dc "$dir/uploads.tar.gz" | compose exec -T ctfd sh -c 'cd /var/uploads && exec tar -xf -'
+# CTFd is stopped, so a one-off container with the same volume does the unpacking (as the same unprivileged user)
+gzip -dc "$dir/uploads.tar.gz" | compose run --rm --no-deps -T --entrypoint sh ctfd -c 'cd /var/uploads && find . -mindepth 1 -delete && tar -xf -'
 
-echo "Clearing the cache and restarting the application ..."
-compose exec -T cache sh -c 'exec redis-cli --no-auth-warning -a "$(cat /run/secrets/REDIS_PASSWORD)" flushdb' >/dev/null
-compose restart ctfd >/dev/null
+echo "Clearing the cache and starting the web side again ..."
+compose exec -T cache sh -c 'REDISCLI_AUTH="$(cat /run/secrets/REDIS_PASSWORD)" exec redis-cli flushdb' >/dev/null
+compose up -d --wait ctfd nginx >/dev/null
 echo "Restore complete."

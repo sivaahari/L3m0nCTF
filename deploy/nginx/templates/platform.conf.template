@@ -12,8 +12,13 @@ server {
   server_name ${PLATFORM_HOST} ${EXTRA_HOST};
 
   include /etc/nginx/snippets/security-headers.conf;
-  limit_req zone=general burst=60 nodelay;
-  limit_conn perip 40;
+  limit_req zone=general burst=200 nodelay;
+  limit_conn perip 300;
+  # The administrator surface and multipart bodies are for the organisers' addresses only (nginx.conf explains the rules).
+  # These refusals happen before nginx reads the body, so nothing reaches CTFd.
+  if ($api_denied)       { return 403; }
+  if ($multipart_denied) { return 415; }
+
   proxy_connect_timeout 5s;
   proxy_send_timeout 30s;
   proxy_read_timeout 60s;
@@ -29,7 +34,7 @@ server {
 
   # Health routes: never cached, no cookie (CTFd starts an anonymous session on every request, which has no place here).
   location = /healthcheck {
-    limit_req zone=general burst=60 nodelay;
+    limit_req zone=general burst=200 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
     proxy_hide_header Set-Cookie;
@@ -37,7 +42,7 @@ server {
     access_log off;
   }
   location = /l3mon/healthz {
-    limit_req zone=general burst=60 nodelay;
+    limit_req zone=general burst=200 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
     proxy_hide_header Set-Cookie;
@@ -47,29 +52,29 @@ server {
 
   # Sign-in, registration and password reset: slow down guessing from one address.
   location = /login {
-    limit_req zone=general burst=60 nodelay;
-    limit_req zone=login burst=5 nodelay;
+    limit_req zone=general burst=200 nodelay;
+    limit_req zone=login burst=40 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }
   location ~ ^/(register|reset_password|confirm)(/|$) {
-    limit_req zone=general burst=60 nodelay;
-    limit_req zone=login burst=5 nodelay;
+    limit_req zone=general burst=200 nodelay;
+    limit_req zone=login burst=40 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }
 
   # Flag submission: generous per address, because a whole campus can share one.
   location = /api/v1/challenges/attempt {
-    limit_req zone=general burst=60 nodelay;
-    limit_req zone=flags burst=60 nodelay;
+    limit_req zone=general burst=200 nodelay;
+    limit_req zone=flags burst=120 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }
 
   # Live notifications (server-sent events): long-lived, unbuffered, few per visitor.
   location = /events {
-    limit_conn perip 20;
+    limit_conn perip 150;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
     proxy_buffering off;
@@ -80,24 +85,24 @@ server {
 
   # The admin pages: only from the organisers' addresses (the list is a file that production replaces).
   location ^~ /admin {
-    include /etc/nginx/snippets/admin-allow.conf;
+    if ($admin_net = 0) { return 403; }
     client_max_body_size 10m;
-    limit_req zone=general burst=60 nodelay;
+    limit_req zone=general burst=200 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }
 
-  # Uploading challenge files (administrators only; CTFd checks the token or session). The only place besides /admin
-  # where a body over 1m is accepted.
+  # Uploading challenge files. Administrators only: this route is on the generated admin list, so any other address is
+  # refused at the top of this server block before the body is read. The only place besides /admin that takes more than 64k.
   location = /api/v1/files {
     client_max_body_size 10m;
-    limit_req zone=general burst=60 nodelay;
+    limit_req zone=general burst=200 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }
 
   location / {
-    limit_req zone=general burst=60 nodelay;
+    limit_req zone=general burst=200 nodelay;
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }

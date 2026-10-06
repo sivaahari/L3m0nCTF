@@ -41,8 +41,8 @@ GIT_BASH = "C:/Program Files/Git/bin/bash.exe"
 BASH = os.environ.get("L3MON_BASH") or (GIT_BASH if sys.platform == "win32" and os.path.exists(GIT_BASH) else "bash")  # on Windows, plain "bash" can be the WSL one
 
 
-def compose(*args: str, check: bool = True, timeout: int = 300) -> subprocess.CompletedProcess:
-    return subprocess.run([BASH, str(ROOT / "tools" / "compose.sh"), *args], capture_output=True, text=True, timeout=timeout, check=check)
+def compose(*args: str, check: bool = True, timeout: int = 300, env: dict | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run([BASH, str(ROOT / "tools" / "compose.sh"), *args], capture_output=True, text=True, timeout=timeout, check=check, env={**os.environ, **(env or {})})
 
 
 def container_id(service: str) -> str:
@@ -164,12 +164,12 @@ def test_every_proxied_page_says_it_varies_by_cookie():
         assert any("cookie" in v.lower() for v in header_values(pairs, "Vary")), path
 
 
-def test_only_the_files_api_and_admin_take_bodies_over_one_megabyte():
-    # Werkzeug 2.2.3's multipart parser can be made to work hard on big bodies (CVE-2023-46136); the cap bounds that work
-    big = b"x" * (2 * 1024 * 1024)
+def test_only_the_files_api_and_admin_take_bodies_over_64_kilobytes():
+    # bodies are capped hard (the multipart parser's work is bounded by the size); only the organisers' file upload is larger
+    big = b"x" * (100 * 1024)
     status, _, _ = request("/login", method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, body=big)
     assert status == 413
-    status, _, _ = request("/api/v1/files", method="POST", headers={"Content-Type": "application/json"}, body=big)
+    status, _, _ = request("/api/v1/files", method="POST", headers={"Content-Type": "application/json"}, body=b"x" * (2 * 1024 * 1024))
     assert status != 413, "the files API must still reach CTFd (which then asks for a token)"
     status, _, _ = request("/api/v1/files", method="POST", headers={"Content-Type": "application/json"}, body=b"x" * (11 * 1024 * 1024))
     assert status == 413
@@ -201,13 +201,25 @@ def test_the_login_page_carries_the_event_name_and_our_theme():
     assert "themes/l3mon/static" in html
 
 
+def sql(statement: str) -> str:
+    done = subprocess.run([BASH, str(ROOT / "tools" / "compose.sh"), "exec", "-T", "db", "sh", "-c", 'MYSQL_PWD="$(cat /run/secrets/DATABASE_ROOT_PASSWORD)" exec mariadb -N -uroot ctfd -e "$0"', statement], capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return done.stdout.strip()
+
+
 def test_a_made_up_forwarded_address_never_reaches_the_application():
-    # nginx rewrites X-Forwarded-For from the connection it actually saw; a visitor cannot choose their address
-    status, _, _ = request("/login", headers={"X-Forwarded-For": "203.0.113.9", "CF-Connecting-IP": "203.0.113.9"})
-    assert status == 200  # and nothing in the application trusts either header: checked by the config below
-    config = subprocess.run(["docker", "exec", container_id("nginx"), "nginx", "-T"], capture_output=True, text=True).stdout
-    assert "proxy_set_header X-Forwarded-For $remote_addr;" in config
-    assert "set_real_ip_from 173.245.48.0/20;" in config and "real_ip_recursive off;" in config
+    # CTFd records the address of every signed-in visitor; sign in with forged headers and read back what it recorded
+    s = Session()
+    nonce = s.nonce("/login")
+    forged = {"X-Forwarded-For": "203.0.113.9", "X-Real-IP": "203.0.113.9", "CF-Connecting-IP": "203.0.113.9", "Forwarded": "for=203.0.113.9"}
+    r = s.open("/login", {"name": "organiser", "password": secret("PRESET_ADMIN_PASSWORD"), "_submit": "Submit", "nonce": nonce}, headers=forged)
+    assert r.status == 302, f"sign-in answered {r.status}"
+    s.open("/admin/config", headers=forged)
+    recorded = sql("SELECT ip FROM tracking ORDER BY id DESC LIMIT 5").split()
+    assert recorded, "CTFd recorded no address"
+    assert "203.0.113.9" not in recorded, f"the forged address reached CTFd: {recorded}"
+    # what it did record is the address nginx really saw (Docker's bridge gateway on a laptop, a private address)
+    assert all(a.startswith(("172.", "10.", "192.168.", "127.")) for a in recorded), recorded
 
 
 # -------------------------------------------------------- the preset administrator
@@ -292,8 +304,10 @@ def test_the_database_and_the_cache_are_only_on_the_internal_network():
     assert internal["Internal"] is True
 
 
-def test_the_code_cannot_be_changed_by_the_running_process_but_uploads_can_be_written():
+def test_the_code_is_owned_by_root_and_cannot_be_changed_by_the_running_process_but_uploads_can_be_written():
     cid = container_id("ctfd")
+    owner = subprocess.run(["docker", "exec", cid, "stat", "-c", "%U %a", "/opt/CTFd/CTFd/plugins/l3mon_core/__init__.py"], capture_output=True, text=True).stdout.split()
+    assert owner[0] == "root" and int(owner[1], 8) & 0o022 == 0, owner
     deny = subprocess.run(["docker", "exec", cid, "sh", "-c", "touch /opt/CTFd/CTFd/plugins/l3mon_core/x 2>&1"], capture_output=True, text=True)
     assert deny.returncode != 0
     allow = subprocess.run(["docker", "exec", cid, "sh", "-c", "touch /var/uploads/.probe && rm /var/uploads/.probe"], capture_output=True, text=True)
@@ -306,10 +320,11 @@ def test_logs_hold_no_secret():
         assert secret(name) not in logs, f"the value of {name} appears in the logs"
 
 
-def test_no_secret_is_visible_in_the_container_configuration():
+def test_no_secret_is_visible_anywhere_in_docker_inspect():
+    # the whole description of each container: environment, command, entry point, health check, labels
     for service in SERVICES:
-        text = json.dumps(inspect(service)["Config"]["Env"])
-        for name in ("SECRET_KEY", "DATABASE_PASSWORD", "DATABASE_ROOT_PASSWORD", "REDIS_PASSWORD", "PRESET_ADMIN_PASSWORD", "PRESET_ADMIN_TOKEN"):
+        text = json.dumps(inspect(service))
+        for name in ("SECRET_KEY", "DATABASE_PASSWORD", "DATABASE_ROOT_PASSWORD", "REDIS_PASSWORD", "PRESET_ADMIN_PASSWORD", "PRESET_ADMIN_TOKEN", "FLAG_HMAC_SECRET"):
             assert secret(name) not in text, f"{name} is visible in docker inspect of {service}"
 
 
@@ -329,16 +344,16 @@ def test_data_survives_a_restart_of_the_application():
     request(f"/api/v1/pages/{page_id}", method="DELETE", headers=token)
 
 
-def test_zz_repeated_sign_in_attempts_from_one_address_are_slowed_down_and_nginx_is_reset_afterwards():
-    codes = []
-    s = Session()
-    for _ in range(20):
-        r = s.open("/login", {"name": "nobody", "password": "wrong-password", "_submit": "Submit", "nonce": s.nonce("/login")})
-        codes.append(r.status)
-        if r.status == 429:
-            break
+def test_zz_a_flood_of_sign_in_posts_from_one_address_is_stopped_by_nginx_and_nginx_is_reset_afterwards():
+    # CTFd has its own limit too (also a 429), so look for nginx's own error page: only the nginx limit produces it
+    seen = []
     try:
-        assert 429 in codes, f"no limit was hit: {codes}"
+        for _ in range(120):
+            status, _, body = request("/login", method="POST", headers={"Content-Type": "application/x-www-form-urlencoded"}, body=b"name=nobody&password=x")
+            seen.append((status, b"<center>nginx</center>" in body))
+            if status == 429 and seen[-1][1]:
+                break
+        assert (429, True) in seen, f"nginx never answered 429 itself: {sorted(set(seen))}"
     finally:
         compose("restart", "nginx")  # forget the counters, so the next run starts clean
         wait_healthy("nginx", 60)

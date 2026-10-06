@@ -13,10 +13,10 @@ innodb_buffer_pool_size = 384M
 innodb_flush_method = O_DIRECT
 innodb_flush_log_at_trx_commit = 1
 
-# Find slow queries early.
-slow_query_log = 1
-slow_query_log_file = /var/lib/mysql/slow.log
-long_query_time = 0.5
+# The slow query log is off by default: it records query text (which can hold submitted flags) in a file that grows without
+# rotation. To diagnose a slow period, switch it on for a while from inside the container and look at the file:
+#   SET GLOBAL slow_query_log_file='/tmp/slow.log'; SET GLOBAL long_query_time=0.5; SET GLOBAL slow_query_log=1;
+slow_query_log = 0
 
 # A client that sends a huge packet is a mistake or an attack.
 max_allowed_packet = 16M

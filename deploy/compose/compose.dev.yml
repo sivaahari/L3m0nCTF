@@ -1,6 +1,8 @@
 # Development on one computer: nginx is published on the loopback address only, so nothing outside this machine can reach it.
 services:
   ctfd:
+    # Development and CI only: a fixed administrator token for scripts and tests (see compose.base.yml for why not in production).
+    secrets: [PRESET_ADMIN_TOKEN]
     environment:
       # CTFd answers only for these host names; localhost is trusted here so a browser can use http://localhost:8080
       TRUSTED_HOSTS: "${PLATFORM_HOST},localhost"
