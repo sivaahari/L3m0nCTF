@@ -62,6 +62,7 @@ Task 4 (build) starts from a design spec:
 - [Running the platform on your own computer](docs/deploy/local.md): from a fresh clone to a working stack, day-to-day commands, every check and what it proves.
 - [Dependency upgrades and the advisories that remain](docs/security/dependency-bumps.md): what we upgraded in the official CTFd image, what could not be upgraded and why, and what stops each remaining advisory.
 - [Verification log](docs/deploy/verification-log.md): a dated record of every check that was run, with its command and result.
+- [Go-live inputs](docs/deploy/go-live-inputs.md): what is hostable today, what is not, and what we need from the owner to go live.
 - [CTFtime endpoints](docs/ctftime-endpoints.md): the addresses and values for the CTFtime registration form.
 
 ```

@@ -26,11 +26,12 @@ ARTIFACT_SUFFIXES = (
     ".elf", ".exe", ".dll", ".so", ".dylib", ".bin", ".iso", ".img", ".vmdk", ".qcow2", ".apk", ".jar", ".war",
 )
 
-PREFIX = "L3m0nCTF{"
-# Any flag with content, in any letter case. The format hint L3m0nCTF{...} is the only allowed form.
-FLAG = re.compile(r"l3m0nctf\{(?!\.\.\.\}|…\})[^}\n]{3,}\}", re.IGNORECASE)
+# The event's flag format is L3m0n{...}. The retired L3m0nCTF{...} is looked for too, so a flag written the old way cannot slip through.
+PREFIXES = ("L3m0n{", "L3m0nCTF{")
+# Any flag with content, in any letter case. The format hint L3m0n{...} is the only allowed form.
+FLAG = re.compile(r"l3m0n(?:ctf)?\{(?!\.\.\.\}|…\})[^}\n]{3,}\}", re.IGNORECASE)
 # the prefix with its brace written another way: %7B, &#123;, &#x7B;, &lbrace;, {, \x7b
-FLAG_ENCODED_BRACE = re.compile(r"l3m0nctf(?:%7b|&#0*123;|&#x0*7b;|&lbrace;|\\u007b|\\x7b)", re.IGNORECASE)
+FLAG_ENCODED_BRACE = re.compile(r"l3m0n(?:ctf)?(?:%7b|&#0*123;|&#x0*7b;|&lbrace;|\\u007b|\\x7b)", re.IGNORECASE)
 PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 TOKENS = (
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
@@ -45,18 +46,20 @@ MAX_BYTES = 5 * 1024 * 1024
 
 
 def _encoded_prefixes() -> list[tuple[str, bytes]]:
-    """The flag prefix as it looks inside a binary or an encoded blob: (name, bytes to look for), all compared in lower case."""
-    raw = PREFIX.encode()
-    out = [("plain", raw.lower())]
-    out.append(("hex", raw.hex().encode()))
-    out.append(("utf-16-le", PREFIX.lower().encode("utf-16-le")))
-    out.append(("utf-16-be", PREFIX.lower().encode("utf-16-be")))
-    # base64 of the prefix depends on where it starts among the 3-byte groups: three alignments, keeping only the characters
-    # that do not depend on the bytes before or after it
-    for shift in range(3):
-        encoded = base64.b64encode(b"x" * shift + raw + b"yyy")
-        first, last = -(-shift // 3), (shift + len(raw)) // 3  # whole groups inside the prefix
-        out.append((f"base64-{shift}", encoded[4 * first : 4 * last]))
+    """The flag prefixes as they look inside a binary or an encoded blob: (name, bytes to look for), all compared in lower case."""
+    out: list[tuple[str, bytes]] = []
+    for prefix in PREFIXES:
+        raw = prefix.encode()
+        out.append(("plain", raw.lower()))
+        out.append(("hex", raw.hex().encode()))
+        out.append(("utf-16-le", prefix.lower().encode("utf-16-le")))
+        out.append(("utf-16-be", prefix.lower().encode("utf-16-be")))
+        # base64 of the prefix depends on where it starts among the 3-byte groups: three alignments, keeping only the characters
+        # that do not depend on the bytes before or after it
+        for shift in range(3):
+            encoded = base64.b64encode(b"x" * shift + raw + b"yyy")
+            first, last = -(-shift // 3), (shift + len(raw)) // 3  # whole groups inside the prefix
+            out.append((f"base64-{shift}", encoded[4 * first : 4 * last]))
     return out
 
 
@@ -98,7 +101,7 @@ def _deny_pattern(deny_words: list[str] | None):
 def _line_findings(rel: str, lineno: int, line: str, deny) -> list[Finding]:
     found = []
     if FLAG.search(line):
-        found.append(Finding("flag", rel, lineno, "a flag-shaped string; only the format hint L3m0nCTF{...} may appear in this repository"))
+        found.append(Finding("flag", rel, lineno, "a flag-shaped string; only the format hint L3m0n{...} may appear in this repository"))
     elif FLAG_ENCODED_BRACE.search(line):
         found.append(Finding("flag", rel, lineno, "the flag prefix with an encoded opening brace"))
     if PRIVATE_KEY.search(line):

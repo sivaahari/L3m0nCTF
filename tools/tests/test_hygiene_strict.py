@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from l3mon import hygiene  # noqa: E402
 
 # Built from pieces, so this file does not trip the scanner it tests.
-OPEN = "L3m0nCTF" + "{"
+OPEN = "L3m0n" + "{"
+RETIRED = "L3m0nCTF" + "{"  # the opening the event used before, still looked for
 
 
 def make(root: Path, files: dict[str, str]) -> Path:
@@ -118,3 +119,27 @@ def test_a_clean_history_has_no_findings(tmp_path):
     git(tmp_path, "add", "a.md")
     git(tmp_path, "commit", "-q", "-m", "ok")
     assert hygiene.scan_history(tmp_path) == []
+
+
+def test_the_retired_opening_is_still_found_in_every_form(tmp_path):
+    raw = RETIRED.encode()
+    make(
+        tmp_path,
+        {
+            "plain.md": RETIRED + "abcdefgh}\n",
+            "upper.md": RETIRED.upper() + "ABCDEFGH}\n",
+            "url.md": "L3m0nCTF" + "%7B" + "abc\n",
+            "hex.md": "data " + raw.hex() + "\n",
+            "b64.md": "data " + base64.b64encode(raw + b"xyz").decode() + "\n",
+            "b64b.md": "data " + base64.b64encode(b"q" + raw + b"xyz").decode() + "\n",
+            "b64c.md": "data " + base64.b64encode(b"qq" + raw + b"xyz").decode() + "\n",
+        },
+    )
+    (tmp_path / "utf16.txt").write_bytes(b"\x00" + RETIRED.encode("utf-16-le"))
+    found = {f.path for f in hygiene.scan(tmp_path)}
+    assert found == {"plain.md", "upper.md", "url.md", "hex.md", "b64.md", "b64b.md", "b64c.md", "utf16.txt"}
+
+
+def test_the_retired_format_hint_is_not_a_leak_but_the_current_one_is_the_documented_form(tmp_path):
+    make(tmp_path, {"a.md": "Old: " + RETIRED + "...}\n", "b.md": "Now: " + OPEN + "...}\n"})
+    assert hygiene.scan(tmp_path) == []

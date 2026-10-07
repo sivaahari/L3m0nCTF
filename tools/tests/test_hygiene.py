@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from l3mon import hygiene  # noqa: E402
 
 # Built from pieces, so this file does not trip the scanner it tests.
-OPEN = "L3m0nCTF" + "{"
+OPEN = "L3m0n" + "{"
 PEM = "-----BEGIN " + "PRIVATE KEY-----"
 
 

@@ -118,3 +118,18 @@ Local results after the round: tool tests 63 passed (2 skipped on Windows); inte
 | Mutation check: break the plugin five ways (final feed frozen, banned kept, non-positive kept, end-of-event check skipped, go-ahead check skipped) | each break made exactly the matching test fail |
 | `python -m pytest tests/integration -q` | 41 passed, 4 skipped (drill). New: through nginx the live feed is JSON of the documented shape with **no cookie, no `Vary: Cookie`**, `public, max-age=15`; the final feed is 404 with `no-store` until published; both feeds work from addresses that are not organisers' |
 | `tools/verify-image.sh` | the feed plugin is in the image |
+
+## 2026-10-07
+
+### Owner review of the platform pages: release control, the programme grid, no easter eggs, flag format `L3m0n{...}`
+
+| Check | Result |
+|-------|--------|
+| Platform pages, unit and HTTP tests (`node --test --test-concurrency=1 "tests/*.test.mjs"`, private repo `platform-ui`) | 254 passed. New: 19 release-control tests (a test for every door a withheld programme could leak through, scheduled drops to the second, the tick, the news line, the desk page) and the programme grid and fragment tests |
+| Platform pages, browser suite in headless Chrome (`node tools/smoke.mjs`) | 4,471 checks. First full run 4,470 of 4,470 before the audit fixes; the run after them had 3 timing-sensitive checks fail once under load (login target size at 320 px, a banner follow-up, a layout-shift reading) and every one passed on a quiet rerun (198 and 226 checks). New: the Guide grid at every viewport, live swap of the grid with the keyboard focus kept, release control on the board, the Guide and the pages |
+| Landing page: `node --test` and `node tools/smoke.mjs` | 28 unit tests; 458 browser checks, including a check that no easter egg is left |
+| Author kit: `python -m pytest l3mon` | 67 passed (new: the kit and the shared helper agree on `L3m0n{...}` and the old opening is refused) |
+| Nine sample challenges, `python -m l3mon check-all` | all pass with `L3m0n{...}`: seven on this machine, and Secret_Sauce, Relic_Lock and Relay_Bench's compiler tests in Linux containers (scapy's Windows driver hangs on this machine, and gcc is missing). Secret_Sauce needed its XOR key changed from 7 to 5 bytes for the 6-byte opening; the lint caught a leftover mention in its README |
+| Public repo: `python -m pytest tools/tests`, `python -m tools.l3mon.cli hygiene` and with `--history` | 65 passed, 2 skipped; 0 findings in the files and in the history, with both openings now looked for in every encoding |
+| Independent Opus audit of release control and the Guide grid | no leak of a withheld programme found on any route. Found and fixed: the no-script forms told a signed-out visitor which slugs were released; the desk could release early (Enter key, a time in the past); keyboard focus was lost when the grid refreshed; counts disagreed after a pull-back; the on-air meter counted solves of hidden programmes; the Guide showed totals before the start; instances of a pulled-back programme were switched off lazily; the tick moved without a visible change. Left as owner decisions or SP3 checks (written in `private/platform-ui/docs/api-contract.md`, section 8): points kept when a solved challenge is pulled back, and CTFd's own team pages and solve lists |
+| Pentest bundle rebuilt (`python tools/pentest_bundle.py --landing-dist private/landing/dist --verify`) | the new landing page without eggs, demo flags in the new format: 13 of 13 end-to-end checks pass. The 2026-10-06 bundle was deleted from this machine |
