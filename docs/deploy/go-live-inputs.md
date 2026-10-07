@@ -6,7 +6,7 @@ Written 2026-10-07 for the owner. Plain words; no event material.
 
 | Piece | Hostable now? | What it needs |
 |-------|---------------|---------------|
-| **Landing page** (`private/landing/dist`) | **Yes.** It is a folder of static files. Any static host or one small nginx container serves it. The pentest bundle already runs it as a container. | The domain pointing at the host, a certificate, and the real facts in `landing/config/site.json` (registration link when it opens, contact email, sponsors, the CTFtime link once it exists). It stays in the private repo until launch. |
+| **Landing page** (`private/landing/dist`) | **Yes.** It is a folder of static files. Any static host or one small nginx container serves it. The pentest bundle already runs it as a container. | The domain pointing at the host, a certificate, and the real facts in `landing/config/site.json` (registration link when it opens, **the sign-in link `links.login`, `https://play.l3m0nctf.xyz/login`, once the platform is up: until it is set the landing page has no way to the platform**, contact email, sponsors, the CTFtime link once it exists). It stays in the private repo until launch. |
 | **Platform, the engine** (this repo: hardened CTFd image, nginx, MariaDB, Redis, backup and restore, the CTFtime feed plugin) | **Yes, as a plain CTFd.** `deploy/compose` runs the whole stack on one VM. It is what the pentest bundle packages. It looks and behaves like stock CTFd plus our security hardening. | A Google Cloud VM, the production checklist (`production-checklist.md`), real secrets, DNS and TLS. |
 | **Platform, the participant pages** (`private/platform-ui`) | **No.** It is a demo: a mock server with invented teams, fake flags and pretend sign-in providers, kept in memory. It is the approved *design and contract*, not something to put on the internet. | It has to be rebuilt on CTFd: SP3 (the plugin that serves the board, Guide, ticks, notifications and the crew's release control from real data) and SP6 (the theme made from the prototype's templates, styles and scripts). |
 
@@ -14,7 +14,7 @@ So the honest answer to "can I host what I have been reviewing": the landing pag
 
 ## What is still to build before the real participant site exists
 
-1. **SP3, the plugin layer** (next): the board, Guide, ticks and notifications as CTFd endpoints with the same JSON as the prototype; **release control** (the crew chooses which channels and challenges are on air and when, with a scheduler and an admin page); contract tests that compare the real answers with the prototype's.
+1. **SP3, the plugin layer** (next): the board, Guide, **scoreboard (TRP ratings)**, ticks and **notifications** as CTFd endpoints with the same JSON as the prototype (the Guide also needs each solve and hint to remember **which member** made it, for the per-member shares; and every message must say **TRP**, television rating points, not points); **release control** (the crew chooses which channels and challenges are on air and when, with a scheduler and an admin page); contract tests that compare the real answers with the prototype's.
 2. **SP6, the theme**: the approved pages as a CTFd theme.
 3. SP4 the instance launcher, SP5 anti-abuse, SP7 the story layer, SP8 sign-in with Google and CTFtime, SP9 monitoring, backups off the machine and the load test.
 
