@@ -24,6 +24,17 @@ def _switched_on(name: str) -> bool:
 
 
 def load(app):
+    from CTFd.plugins.l3mon_core.versions import check_ctfd_version
+
+    check_ctfd_version()  # first of all: on a CTFd we were not built for no l3mon plugin loads (CTFd has already migrated its own tables by now)
+
+    from CTFd.plugins.l3mon_core import models  # noqa: F401  (registers the five tables)
+    from CTFd.plugins.l3mon_core.tick import install as install_tick
+    from CTFd.plugins.migrations import upgrade
+
+    upgrade(plugin_name="l3mon_core")  # MariaDB: the migration; SQLite: create_all, like CTFd's own plugins
+
+    install_tick(app)  # every committed change a player can see moves the tick once
     app.register_blueprint(l3mon)
 
     # Production runs behind HTTPS only. The __Host- prefix makes browsers refuse the cookie unless it is Secure, has

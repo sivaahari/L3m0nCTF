@@ -12,7 +12,7 @@ Status: **draft for the owner's review, 2026-10-07.** It replaces the narrower S
 |---|---|
 | Most challenges dynamic, one or two fixed | Every challenge is one or the other. A dynamic challenge's TRP falls as more studios solve it, down to a floor. Everyone who solved it ends with the same, current value (CTFd works this way and we keep it) |
 | Hint costs differ per hint | Each hint carries its own cost. CTFd already supports this |
-| Scoreboard freeze: undecided | A switch, **off** until the core decides. Built last, so a "no freeze" decision costs nothing |
+| Scoreboard freeze: undecided | The freeze is CTFd's own `freeze` time: **unset** (no freeze) until the core decides, set to turn it on. Built last, so a "no freeze" decision costs nothing |
 | Ties: whoever got there first | CTFd's own rule, kept: the studio whose score last changed earlier ranks higher. The website and the CTFtime feed use the same list, so they cannot disagree |
 | Broken challenge | **Revoke:** the solves are set aside (never deleted), their TRP comes off every studio and member, the challenge's value is recalculated, and the record stays (who, when, what they sent) so you can see how it was solved. **Restore** undoes it. Or leave the challenge live. Hiding a challenge alone does not change anyone's TRP |
 | Award with a message | An admin gives a studio, or one member, TRP with a message ("bug found"). It counts in the ranking at once |
@@ -38,7 +38,7 @@ Status: **draft for the owner's review, 2026-10-07.** It replaces the narrower S
 | 3.3 Scoring | Dynamic and fixed, recalculation, Revoke and Restore, Bonus, private notes, TRP wording, an audit log of every admin action | Scenario tests for decay, bans, revoke, restore, bonus, ties |
 | 3.4 Board and ticks | The board data, the live tick, the extra fields on the programme panel and the flag reply | The answers match the demo's, scenario by scenario |
 | 3.5 Guide, Scoreboard, notifications | Each member's share, channel progress, the top 100, the bell | Same; the scoreboard equals the CTFtime feed row for row |
-| 3.6 Freeze switch | What the demo does while frozen, on a switch | Same tests, with the switch on and off |
+| 3.6 Freeze | What the demo does while frozen, from CTFd's freeze time | Same tests, with a freeze time set and unset |
 | 3.7 Check | A speed check, an independent Opus audit, fixes, the written record | Audit findings fixed with a test each |
 
 Rough size: **15 to 20 working days**, so finished around the end of October if it starts now. The theme (SP6) does not have to wait: the pages follow the contract the demo already fixes, so they can be built against the demo's server while SP3 finishes.
@@ -83,7 +83,7 @@ Everything the design relies on, checked in the pinned image (`ghcr.io/ctfd/ctfd
 | E | Revoke | CTFd's "mark incorrect"; delete the solve; our own action | **Our own action.** Sets each solve to `discard`, keeps who, when and what they sent, writes an undo record, recalculates, clears caches, writes the audit line. Restore reverses it exactly |
 | F | Bonus | a plain award with the message public; award plus a private note | **Award plus private note.** The award is named "Bonus", so it counts everywhere CTFd counts. The message lives in our table, shown only to that studio and the crew |
 | G | Private messages | CTFd notifications; our own table | **Our own table and endpoint.** The bell counts both public and private |
-| H | Freeze | always on; always off; switch | **Switch**, off by default, one function used by every query, built last |
+| H | Freeze | always on; always off; a switch of ours; CTFd's own `freeze` time | **CTFd's own `freeze` time** (unset by default), read by one function (`clock.current_phase().frozen`) that every query asks, built last. A separate flag of ours was tried first and dropped in 3.1: CTFd freezes its own standings whenever `freeze` is set, so a second flag could say "not frozen" while CTFd's scoreboard was |
 | I | Ties | change CTFd's rule; keep it | **Keep it.** The demo's tie rule ignored awards and hint purchases; its documents are corrected to match |
 | J | Sponsored channel | mixed in; separate and uncounted; separate and counted | **Separate and counted** (owner's choice). A `sponsored` flag on the channel with a sponsor name and logo, so the board labels it |
 
@@ -93,13 +93,15 @@ New tables, created by plugin migrations (so they run and roll back with the res
 
 | Table | Holds |
 |---|---|
-| `l3mon_channel` | slug, name, accent, picture key, position, kind (`standard` or `sponsored`), sponsor name and logo, release state, release time (UTC) |
+| `l3mon_channel` | slug, name, storyline (`synopsis`, plain words, told once the channel is on air; added 2026-10-08), accent, picture key, position, kind (`standard` or `sponsored`), sponsor name and logo, release state (`released`, `withheld` or `scheduled`), release time (UTC) |
 | `l3mon_programme` | challenge id, channel, cell, number, slug, release state, release time |
 | `l3mon_void` | challenge, team, member, the set-aside submission, when it was solved, when and by whom voided, the reason, when and by whom restored |
 | `l3mon_bonus` | award id, team, member, scope (`team` or `member`), the message, who gave it, when |
 | `l3mon_note` | studio, title, text, when: a private line for one studio (every void and bonus writes one) |
 
-Settings use CTFd's own `config` table: `l3mon_freeze_enabled` (default off), `l3mon_show_coming_count` (default on). A Redis counter `l3mon:ver` backs the tick; the clients compare it for *difference*, so a restart that resets it is harmless.
+Built in part 3.1 (`plugins/l3mon_core/models.py` and `migrations/`), proved on a real MariaDB (`tests/test_migration_mariadb.py`): the migration builds exactly the columns, types, keys and `CHECK`s the models describe, the database refuses every row the models refuse (all five `CHECK`s, every duplicate, every missing parent), a deleted challenge takes its programme and its voids with it, a deleted administrator leaves the bonus and the void with nobody as the author, a deleted studio takes its bonuses and notes, two workers running the migration at the same moment both succeed, and the downgrade drops exactly our five tables (rolling back is manual: downgrade, then delete the setting `l3mon_core_alembic_version`).
+
+Settings use CTFd's own `config` table: `l3mon_show_coming_count` (default on); the freeze is CTFd's own `freeze` time. A Redis counter `l3mon:ver` backs the tick, and the number players poll (`tick.signature()`) is that counter joined with the phase (before, live, paused, ended, frozen) and the parts later plugins add (3.2: the release signature), because the clock changes the picture with nothing committed; the clients compare it for *difference*, so a restart that resets the counter (it starts again at a random big number) is harmless. The counter moves once for every committed change a player can see, including bulk deletes, and inside a web request when the request ends, after CTFd has cleared its own caches.
 
 The channel and programme data comes from the author kit's `l3mon:` block. SP3 adds an admin-only bulk call (`PUT /api/v1/l3mon/admin/programmes`) for the sync tool and a page to edit it by hand.
 

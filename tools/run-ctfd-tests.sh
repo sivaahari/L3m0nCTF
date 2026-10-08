@@ -8,6 +8,7 @@
 # PYTEST_ARGS     passed to pytest (default: the whole suite on two workers)
 #
 # The test-only packages (pytest and friends) are installed inside the throwaway container and never end up in an image.
+# L3MON_MOUNT_PLUGINS=1 runs the plugins in the working tree instead of the ones baked into the image (no rebuild needed).
 set -euo pipefail
 
 image="${1:?usage: run-ctfd-tests.sh IMAGE [OVERRIDES_FILE] [-- PYTEST_ARGS...]}"
@@ -33,6 +34,13 @@ repo_root="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 for tests in "$repo_root"/plugins/l3mon_*/tests; do
   [[ -d "$tests" ]] && mounts+=(-v "$tests:/l3mon_tests/$(basename "$(dirname "$tests")"):ro")
 done
+
+# L3MON_MOUNT_PLUGINS=1 tests the working-tree plugins (mounted read-only over the image's copies) without rebuilding the image
+if [[ "${L3MON_MOUNT_PLUGINS:-}" == "1" ]]; then
+  for plugin in "$repo_root"/plugins/l3mon_*; do
+    [[ -d "$plugin" ]] && mounts+=(-v "$plugin:/opt/CTFd/CTFd/plugins/$(basename "$plugin"):ro")
+  done
+fi
 
 export MSYS_NO_PATHCONV=1
 docker run --rm --user root "${mounts[@]}" --entrypoint bash "$image" -c "
