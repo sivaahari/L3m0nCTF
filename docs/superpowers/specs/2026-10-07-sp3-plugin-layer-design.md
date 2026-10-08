@@ -49,7 +49,7 @@ Rough size: **15 to 20 working days**, so finished around the end of October if 
 2. Should a bonus message be seen only by that studio and the crew? *Default: yes. Only "Bonus +50" is public, so a message cannot give a challenge away.*
 3. Freeze: the core decides. *Default: off.*
 4. Show the "12 coming up" count to players? *Default: show.*
-5. Starting values for dynamic challenges. *Default: starts at the difficulty value from the author kit (100, 250, 400), falls to 40% of that after 50 solves. Tune after the rehearsal.*
+5. Starting values for dynamic challenges. *Default: starts at the difficulty value from the author kit (100, 250, 400), falls to 40% of that at the 51st solve. Tune after the rehearsal.*
 6. For sponsors, later: the logo files, the wording of "Sponsored by", and who writes each challenge.
 
 **Not in SP3:** the pages and theme (SP6), instances (SP4), anti-abuse (SP5), the story engine (SP7), Google and CTFtime sign-in (SP8), the realtime gateway, and finals mode (SP10).
