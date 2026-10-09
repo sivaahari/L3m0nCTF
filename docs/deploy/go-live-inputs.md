@@ -12,6 +12,8 @@ Written 2026-10-07 for the owner. Plain words; no event material.
 
 So the honest answer to "can I host what I have been reviewing": the landing page yes, the demo no. The demo's pages and rules carry over to the real build, and the board you approved will look the same.
 
+**Step by step:** [platform-deployment.md](platform-deployment.md) is the set-up guide for the platform side (Google Cloud, Cloudflare, email, sign-in), with the parts that can start today marked.
+
 ## What is still to build before the real participant site exists
 
 1. **SP3, the plugin layer** (next): the board, Guide, **scoreboard (TRP ratings)**, ticks and **notifications** as CTFd endpoints with the same JSON as the prototype (the Guide also needs each solve and hint to remember **which member** made it, for the per-member shares; and every message must say **TRP**, television rating points, not points); **release control** (the crew chooses which channels and challenges are on air and when, with a scheduler and an admin page); contract tests that compare the real answers with the prototype's.
