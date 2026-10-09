@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import api_rules, config, hygiene, secrets_gen
+from . import api_rules, config, hygiene, secrets_gen, story
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +35,13 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("api-rules", help="the nginx rules that keep CTFd's administrator API for the organisers' addresses")
     a.add_argument("action", choices=["generate", "check"], help="generate rewrites the two snippet files; check fails when they are out of date")
     a.add_argument("--image", default="l3mon/ctfd:dev", help="the platform image to read CTFd's routes from")
+
+    st = sub.add_parser("story", help="compile and check the cold-open comics (the private story folder) into the files the platform serves")
+    ssub2 = st.add_subparsers(dest="story_cmd", required=True)
+    sb = ssub2.add_parser("build", help="check every channel's script and picture and write one bundle per channel")
+    sb.add_argument("src", help="the story folder (library/*.svg and channels/*.json)")
+    sb.add_argument("out", nargs="?", help="where to write the bundles (omit with --check)")
+    sb.add_argument("--check", action="store_true", help="only check; write nothing")
     return parser
 
 
@@ -52,6 +59,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f.human())
         print(f"{len(findings)} finding(s)")
         return 1 if findings else 0
+
+    if args.cmd == "story":
+        return story.main(args.src, args.out, check=args.check)
 
     if args.cmd == "api-rules":
         return api_rules.main([args.action, "--image", args.image])

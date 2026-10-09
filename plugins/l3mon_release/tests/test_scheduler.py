@@ -15,7 +15,7 @@ from CTFd.cache import cache
 from CTFd.models import Challenges, Notifications, db
 from CTFd.plugins.l3mon_core.models import Channel, Programme
 from CTFd.plugins.l3mon_release import scheduler
-from CTFd.plugins.l3mon_release.reconcile import clear_pull_back_handlers, reconcile
+from CTFd.plugins.l3mon_release.reconcile import RECLEAR_KEY, RECLEAR_SECONDS, clear_pull_back_handlers, reconcile
 from CTFd.utils import set_config
 from tests.helpers import create_ctfd, destroy_ctfd, gen_challenge, login_as_user, register_user
 
@@ -145,11 +145,67 @@ def test_the_first_request_at_or_after_the_second_shows_the_programme_announces_
         assert states() == {"later": "hidden", "now": "visible"}
         assert Notifications.query.count() == 1, "the programme that was released at the start was announced then"
         scheduler.refresh(T_START + 10)
+        assert scheduler.maybe_apply(T_START + 10 + RECLEAR_SECONDS) is True, "the second clearing of the lists after the first release comes first"
         assert scheduler.maybe_apply(T_LATER - 1) is False and states()["later"] == "hidden"
         assert scheduler.maybe_apply(T_LATER) is True
         assert states()["later"] == "visible" and Notifications.query.count() == 2
         assert scheduler.maybe_apply(T_LATER + 1) is False and Notifications.query.count() == 2
-        assert cache.get(scheduler.KEY)["next"] == T_END, "and it already knows what comes after"
+        assert cache.get(scheduler.KEY)["next"] == T_LATER + RECLEAR_SECONDS, "after a change the next moment is the second clearing of the lists"
+        assert scheduler.maybe_apply(T_LATER + RECLEAR_SECONDS) is True and cache.get(scheduler.KEY)["next"] == T_END, "and then what comes after"
+    destroy_ctfd(app)
+
+
+def test_a_change_clears_the_cached_lists_again_a_few_seconds_later_so_a_list_stored_late_cannot_stay():
+    app = setup_app()
+    with app.app_context():
+        started()
+        ch = channel("street", 4)
+        programme(ch, "later", "scheduled", at(5, 0))
+        reconcile(T_START + 10)
+        scheduler.refresh(T_START + 10)
+        with mock.patch("CTFd.plugins.l3mon_release.reconcile.clear_challenges") as challenges, mock.patch("CTFd.plugins.l3mon_release.reconcile.clear_standings") as standings:
+            assert scheduler.maybe_apply(T_LATER) is True
+            assert (challenges.call_count, standings.call_count) == (1, 1), "the drop clears the lists"
+            assert cache.get(RECLEAR_KEY) == T_LATER + RECLEAR_SECONDS
+            assert scheduler.maybe_apply(T_LATER + RECLEAR_SECONDS - 1) is False and challenges.call_count == 1, "not before the moment"
+            assert scheduler.maybe_apply(T_LATER + RECLEAR_SECONDS) is True
+            assert (challenges.call_count, standings.call_count) == (2, 2), "and once more at the moment"
+            assert scheduler.maybe_apply(T_LATER + RECLEAR_SECONDS + 1) is False and challenges.call_count == 2, "then not again"
+    destroy_ctfd(app)
+
+
+def test_a_pull_back_arranges_the_second_clearing_too_and_a_call_that_changes_nothing_clears_only_when_it_is_due():
+    app = setup_app()
+    with app.app_context():
+        started()
+        ch = channel("street", 4)
+        row = programme(ch, "live", "released")
+        with mock.patch("CTFd.plugins.l3mon_release.reconcile.clear_challenges") as challenges:
+            reconcile(T_START + 10)
+            assert challenges.call_count == 1, "shown: cleared"
+            reconcile(T_START + 11)
+            assert challenges.call_count == 1, "nothing changed and the second clearing is not due yet"
+            reconcile(T_START + 10 + RECLEAR_SECONDS)
+            assert challenges.call_count == 2, "the second clearing"
+            Programme.query.filter_by(challenge_id=row).update({"release_state": "withheld"})
+            db.session.commit()
+            reconcile(T_START + 30)
+            assert challenges.call_count == 3 and cache.get(RECLEAR_KEY) == T_START + 30 + RECLEAR_SECONDS, "the pull-back clears and arranges its own second clearing"
+            reconcile(T_START + 30 + RECLEAR_SECONDS - 1)
+            assert challenges.call_count == 3
+            reconcile(T_START + 30 + RECLEAR_SECONDS)
+            assert challenges.call_count == 4
+    destroy_ctfd(app)
+
+
+def test_the_moment_of_the_second_clearing_is_one_of_the_moments_the_scheduler_waits_for():
+    app = setup_app()
+    with app.app_context():
+        started()
+        channel("street", 4)
+        cache.set(RECLEAR_KEY, T_START + 50, timeout=30)
+        assert scheduler.next_event(T_START + 10) == T_START + 50
+        assert scheduler.next_event(T_START + 50) == T_END, "a moment that has come is not waited for again"
     destroy_ctfd(app)
 
 

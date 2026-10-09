@@ -99,6 +99,45 @@ def test_a_programme_belongs_to_one_challenge_one_channel_cell_and_has_a_unique_
     destroy_ctfd(app)
 
 
+def test_a_programme_starts_as_medium_and_shared_and_keeps_the_difficulty_and_delivery_it_is_given():
+    app = app_in_teams_mode()
+    with app.app_context():
+        ch = channel()
+        a, b = gen_challenge(db, name="a"), gen_challenge(db, name="b")
+        db.session.add(Programme(challenge_id=a.id, channel_id=ch.id, cell=0, number=1, slug="alpha"))
+        db.session.add(Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="beta", difficulty="insane", delivery="live_single"))
+        db.session.commit()
+        alpha, beta = Programme.query.filter_by(slug="alpha").one(), Programme.query.filter_by(slug="beta").one()
+        assert (alpha.difficulty, alpha.delivery) == ("medium", "static_shared"), "a plan loaded without them still works"
+        assert (beta.difficulty, beta.delivery) == ("insane", "live_single")
+    destroy_ctfd(app)
+
+
+@pytest.mark.parametrize("word", ["warmup", "easy", "medium", "hard", "insane"])
+def test_every_difficulty_the_author_kit_knows_is_accepted(word):
+    app = app_in_teams_mode()
+    with app.app_context():
+        ch = channel()
+        a = gen_challenge(db, name="a")
+        db.session.add(Programme(challenge_id=a.id, channel_id=ch.id, cell=0, number=1, slug="alpha", difficulty=word))
+        db.session.commit()
+        assert Programme.query.one().difficulty == word
+    destroy_ctfd(app)
+
+
+@pytest.mark.parametrize("kwargs", [dict(difficulty="brutal"), dict(difficulty=""), dict(delivery="carrier_pigeon"), dict(delivery="")])
+def test_a_programme_refuses_a_difficulty_or_a_delivery_nobody_defined(kwargs):
+    app = app_in_teams_mode()
+    with app.app_context():
+        ch = channel()
+        a = gen_challenge(db, name="a")
+        db.session.add(Programme(challenge_id=a.id, channel_id=ch.id, cell=0, number=1, slug="alpha", **kwargs))
+        with pytest.raises(DBAPIError):
+            db.session.commit()
+        db.session.rollback()
+    destroy_ctfd(app)
+
+
 def test_a_void_records_who_when_and_why_and_starts_open():
     app = app_in_teams_mode()
     with app.app_context():

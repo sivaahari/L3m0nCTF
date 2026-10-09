@@ -26,7 +26,10 @@ URL = os.getenv("TESTING_DATABASE_URL", "")
 pytestmark = pytest.mark.skipif(not URL.startswith("mysql"), reason="needs a real MariaDB (tools/run-migration-test.sh)")
 
 FIRST = "7a41c0d2b1e3"
-REVISION = "b3d95f0a6c12"  # the head: the second revision adds the audit table
+SECOND = "b3d95f0a6c12"
+REVISION = "c5e2a7b9d104"  # the head: the second revision adds the audit table, the third the difficulty and the delivery of a programme
+THIRD_COLUMNS = ("difficulty", "delivery")
+THIRD_CHECKS = {"ck_l3mon_programme_difficulty", "ck_l3mon_programme_delivery"}
 VERSION_KEY = "l3mon_core_alembic_version"
 MODELS = {m.__tablename__: m for m in (models.Channel, models.Programme, models.Void, models.Bonus, models.Note, models.Audit)}
 FIRST_FIVE = {name for name in MODELS if name != "l3mon_audit"}
@@ -48,6 +51,19 @@ def migration_module():
 def audit_module():
     """The second revision (the audit table)."""
     return _load("b3d95f0a6c12_add_the_audit_table.py", "l3mon_second_revision")
+
+
+def third_module():
+    """The third revision (the difficulty and the delivery of a programme)."""
+    return _load("c5e2a7b9d104_add_difficulty_and_delivery_to_programmes.py", "l3mon_third_revision")
+
+
+def programme_columns():
+    return {c["name"] for c in inspect(db.engine).get_columns("l3mon_programme")}
+
+
+def programme_checks():
+    return {c["name"] for c in inspect(db.engine).get_check_constraints("l3mon_programme")}
 
 
 def run_on_connection(fn):
@@ -123,6 +139,9 @@ def test_the_database_itself_refuses_what_the_models_refuse():
             models.Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=1, slug="beta"),  # number
             models.Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="alpha"),  # slug
             models.Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="beta", release_state="soon"),  # check: programme release state
+            models.Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="beta", difficulty="brutal"),  # check: difficulty
+            models.Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="beta", difficulty=""),  # check: difficulty (empty)
+            models.Programme(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="beta", delivery="carrier_pigeon"),  # check: delivery
             models.Programme(challenge_id=b.id, channel_id=99999, cell=1, number=2, slug="beta"),  # no such channel
             models.Void(challenge_id=a.id, team_id=team.id, user_id=uid, reason="r", outcome="vanished"),  # check: void outcome
             models.Void(challenge_id=a.id, team_id=team.id, user_id=uid, reason=None),  # a reason is required
@@ -191,7 +210,8 @@ def test_running_the_migration_again_one_after_another_changes_nothing():
         upgrade(plugin_name="l3mon_core", force_all=True)
         run_on_connection(lambda op: migration_module().upgrade(op=op))
         run_on_connection(lambda op: audit_module().upgrade(op=op))
-        assert tables() == before and current("l3mon_core") == REVISION
+        run_on_connection(lambda op: third_module().upgrade(op=op))
+        assert tables() == before and current("l3mon_core") == REVISION and set(THIRD_COLUMNS) <= programme_columns()
     destroy_ctfd(app)
 
 
@@ -260,4 +280,67 @@ def test_the_downgrades_drop_the_six_tables_and_nothing_else_and_a_forgotten_rev
         assert current("l3mon_core") is None
         upgrade(plugin_name="l3mon_core")
         assert tables() == before and current("l3mon_core") == REVISION and get_config("user_mode") == "teams"
+    destroy_ctfd(app)
+
+
+def test_the_third_revision_adds_exactly_the_two_columns_keeps_the_rows_and_a_second_run_changes_nothing():
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context():
+        assert set(THIRD_COLUMNS) <= programme_columns() and THIRD_CHECKS <= programme_checks()
+        ch = models.Channel(slug="street", name="Street")
+        db.session.add(ch)
+        db.session.commit()
+        a = gen_challenge(db, name="a")
+        db.session.add(models.Programme(challenge_id=a.id, channel_id=ch.id, cell=0, number=1, slug="alpha", difficulty="hard", delivery="live_single"))
+        db.session.commit()
+        run_on_connection(lambda op: third_module().downgrade(op=op))
+        assert not (set(THIRD_COLUMNS) & programme_columns()) and not (THIRD_CHECKS & programme_checks()), "the downgrade removes the columns and their checks"
+        assert db.session.execute(text("SELECT slug FROM l3mon_programme")).scalar() == "alpha", "and keeps the row"
+        db.session.rollback()  # a read leaves the session's transaction open, and it would hold the table against the next ALTER
+        run_on_connection(lambda op: third_module().downgrade(op=op))  # a second downgrade is harmless
+        run_on_connection(lambda op: third_module().upgrade(op=op))
+        run_on_connection(lambda op: third_module().upgrade(op=op))  # and so is a second upgrade
+        assert set(THIRD_COLUMNS) <= programme_columns() and THIRD_CHECKS <= programme_checks()
+        row = db.session.execute(text("SELECT difficulty, delivery FROM l3mon_programme WHERE slug = 'alpha'")).one()
+        assert tuple(row) == ("medium", "static_shared"), "a row from before the revision gets the defaults"
+    destroy_ctfd(app)
+
+
+def test_two_workers_adding_the_two_columns_at_the_same_moment_both_succeed():
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context():
+        module = third_module()
+        for round_number in range(5):
+            run_on_connection(lambda op: module.downgrade(op=op))
+            assert not (set(THIRD_COLUMNS) & programme_columns())
+            barrier, errors = threading.Barrier(2), []
+
+            def worker():
+                try:
+                    with app.app_context():
+                        with db.engine.begin() as conn:
+                            op = Operations(MigrationContext.configure(conn))
+                            barrier.wait()
+                            module.upgrade(op=op)
+                except Exception as e:  # noqa: BLE001
+                    errors.append(repr(e))
+
+            threads = [threading.Thread(target=worker) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            assert not errors, f"round {round_number}: {errors}"
+            assert set(THIRD_COLUMNS) <= programme_columns() and THIRD_CHECKS <= programme_checks(), f"round {round_number}"
+    destroy_ctfd(app)
+
+
+def test_a_database_at_the_second_revision_gets_the_columns_at_the_next_start():
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context():
+        run_on_connection(lambda op: third_module().downgrade(op=op))
+        set_config("l3mon_core_alembic_version", SECOND)
+        assert current("l3mon_core") == SECOND
+        upgrade(plugin_name="l3mon_core")
+        assert current("l3mon_core") == REVISION and set(THIRD_COLUMNS) <= programme_columns() and THIRD_CHECKS <= programme_checks()
     destroy_ctfd(app)

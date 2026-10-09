@@ -53,6 +53,8 @@ services:
       SESSION_COOKIE_SAMESITE: Lax
       PERMANENT_SESSION_LIFETIME: "28800"
       UPLOAD_FOLDER: /var/uploads
+      # the cold-open comics, compiled and checked files read from here and never written (filled at deployment; docs/deploy/local.md)
+      L3MON_STORY_DIR: /var/story
       LOG_FOLDER: /var/log/CTFd
       # nginx logs every request (without query strings, and with reset and confirmation tokens masked); gunicorn's own
       # access log would repeat them with the query string, so it goes nowhere.
@@ -68,6 +70,7 @@ services:
         target: /run/config/preset_configs.json
     volumes:
       - uploads:/var/uploads
+      - story:/var/story:ro
     tmpfs:
       - /tmp
       - /var/log/CTFd:uid=1001,gid=1001,size=128m
@@ -165,6 +168,7 @@ networks:
 volumes:
   uploads: {}
   dbdata: {}
+  story: {}
 
 secrets:
   SECRET_KEY: { file: ../../.secrets/SECRET_KEY }

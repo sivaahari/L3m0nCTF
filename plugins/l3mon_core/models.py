@@ -41,11 +41,18 @@ class Channel(db.Model):
     release_at = db.Column(db.DateTime)
 
 
+DIFFICULTIES = ("warmup", "easy", "medium", "hard", "insane")  # the author kit's words (private repo, challenges/l3mon/schema.py)
+DELIVERIES = ("static_per_participant", "static_shared", "live_single", "live_multi")
+LIVE_DELIVERIES = ("live_single", "live_multi")
+
+
 class Programme(db.Model):
     __tablename__ = "l3mon_programme"
     __table_args__ = (
         UniqueConstraint("channel_id", "cell", name="uq_l3mon_programme_cell"),
         CheckConstraint("release_state in ('released', 'withheld', 'scheduled')", name="ck_l3mon_programme_release"),
+        CheckConstraint("difficulty in ('warmup', 'easy', 'medium', 'hard', 'insane')", name="ck_l3mon_programme_difficulty"),
+        CheckConstraint("delivery in ('static_per_participant', 'static_shared', 'live_single', 'live_multi')", name="ck_l3mon_programme_delivery"),
     )
     id = db.Column(db.Integer, primary_key=True)
     challenge_id = db.Column(db.Integer, db.ForeignKey("challenges.id", ondelete="CASCADE"), nullable=False, unique=True)
@@ -55,6 +62,8 @@ class Programme(db.Model):
     slug = db.Column(db.String(48), nullable=False, unique=True)
     release_state = db.Column(db.String(16), nullable=False, default="withheld")  # off air until the crew puts it on
     release_at = db.Column(db.DateTime)
+    difficulty = db.Column(db.String(16), nullable=False, default="medium", server_default="medium")  # the tile and the filters show it (third revision)
+    delivery = db.Column(db.String(24), nullable=False, default="static_shared", server_default="static_shared")  # how the player gets it; live ones have instances (SP4)
 
 
 class Void(db.Model):

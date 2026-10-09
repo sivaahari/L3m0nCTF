@@ -1,0 +1,61 @@
+{
+  "note": "A made-up world, played through the approved demo (private repo, platform-ui/tools/golden.mjs) and through the real platform (test_golden.py). No event names, no real flags. Times are minutes after the start.",
+  "channels": [
+    {"slug": "street", "id": 0, "position": 1, "name": "Mighty Street", "accent": "ch1", "synopsis": "A loud street.", "sponsor": null},
+    {"slug": "snack", "id": 1, "position": 2, "name": "Snack Square", "accent": "ch2", "synopsis": "A hungry square.", "sponsor": null},
+    {"slug": "break", "id": 2, "position": 7, "name": "Sponsored Break", "accent": "ch7", "synopsis": "We will be right back.", "sponsor": "Acme"}
+  ],
+  "programmes": [
+    {"slug": "lantern_walk", "channel": "street", "order": 0, "number": 101, "name": "Lantern Walk", "category": "web", "difficulty": "warmup", "value": 100, "type": "standard", "delivery": "static_shared", "hints": [10, 25], "max_attempts": 0, "author": "Asha"},
+    {"slug": "moth_cipher", "channel": "street", "order": 1, "number": 102, "name": "Moth Cipher", "category": "crypto", "difficulty": "easy", "value": 500, "type": "dynamic", "delivery": "static_shared", "hints": [], "max_attempts": 0, "author": "Bram"},
+    {"slug": "hush_alley", "channel": "street", "order": 2, "number": 103, "name": "Hush Alley", "category": "forensics", "difficulty": "hard", "value": 300, "type": "standard", "delivery": "static_shared", "hints": [], "max_attempts": 0, "author": "Chen"},
+    {"slug": "noodle_ledger", "channel": "snack", "order": 0, "number": 201, "name": "Noodle Ledger", "category": "osint", "difficulty": "medium", "value": 200, "type": "standard", "delivery": "static_shared", "hints": [], "max_attempts": 0, "author": "Dev"},
+    {"slug": "steam_tunnel", "channel": "snack", "order": 1, "number": 202, "name": "Steam Tunnel", "category": "pwn", "difficulty": "insane", "value": 400, "type": "standard", "delivery": "live_single", "hints": [], "max_attempts": 0, "author": "Esha"},
+    {"slug": "careful_door", "channel": "snack", "order": 2, "number": 203, "name": "Careful Door", "category": "misc", "difficulty": "medium", "value": 80, "type": "standard", "delivery": "static_shared", "hints": [], "max_attempts": 3, "author": "Femi"},
+    {"slug": "coffee_break", "channel": "break", "order": 0, "number": 701, "name": "Coffee Break", "category": "misc", "difficulty": "easy", "value": 50, "type": "standard", "delivery": "static_shared", "hints": [], "max_attempts": 0, "author": "Gus"}
+  ],
+  "teams": [
+    {"id": 1, "name": "studio-a", "members": ["alice", "abe"]},
+    {"id": 2, "name": "studio-b", "members": ["bob"]},
+    {"id": 3, "name": "studio-c", "members": ["cara"]},
+    {"id": 4, "name": "studio-h", "members": ["hal"]}
+  ],
+  "steps": [
+    {"label": "before the start", "do": [{"phase": "before"}],
+     "ask": [{"board": "alice"}, {"panel": ["alice", "lantern_walk"]}, {"attempt": ["alice", "lantern_walk", "right"]}]},
+    {"label": "live, nothing on air yet (every programme and channel is withheld, as a freshly loaded plan)", "do": [{"phase": "live"}, {"release": ["programme", "lantern_walk", "off"]}, {"release": ["programme", "moth_cipher", "off"]}, {"release": ["programme", "hush_alley", "off"]}, {"release": ["programme", "noodle_ledger", "off"]}, {"release": ["programme", "steam_tunnel", "off"]}, {"release": ["programme", "careful_door", "off"]}, {"release": ["programme", "coffee_break", "off"]}],
+     "ask": [{"board": "alice"}, {"panel": ["alice", "lantern_walk"]}]},
+    {"label": "the street opens, without the hush alley", "do": [{"release": ["channel", "street", "on"]}, {"release": ["programme", "lantern_walk", "on"]}, {"release": ["programme", "moth_cipher", "on"]}],
+     "ask": [{"board": "alice"}, {"board": "bob"}, {"panel": ["alice", "lantern_walk"]}, {"panel": ["alice", "hush_alley"]}]},
+    {"label": "the snack square and the break open, the steam tunnel is scheduled for minute 30", "do": [{"release": ["channel", "snack", "on"]}, {"release": ["programme", "noodle_ledger", "on"]}, {"release": ["programme", "careful_door", "on"]}, {"release": ["programme", "steam_tunnel", "at", 30]}, {"release": ["channel", "break", "on"]}, {"release": ["programme", "coffee_break", "on"]}],
+     "ask": [{"board": "alice"}]},
+    {"label": "first solves", "do": [{"attempt": ["alice", "lantern_walk", "right"]}, {"attempt": ["bob", "lantern_walk", "right"]}, {"attempt": ["alice", "moth_cipher", "right"]}],
+     "ask": [{"board": "alice"}, {"board": "bob"}, {"board": "cara"}, {"panel": ["alice", "moth_cipher"]}, {"panel": ["cara", "moth_cipher"]}]},
+    {"label": "the second solver of the dynamic programme", "do": [{"attempt": ["bob", "moth_cipher", "right"]}, {"attempt": ["alice", "lantern_walk", "right"]}],
+     "ask": [{"board": "bob"}, {"panel": ["bob", "moth_cipher"]}]},
+    {"label": "wrong flags, tries and a lock-out", "do": [{"attempt": ["cara", "careful_door", "wrong"]}, {"attempt": ["cara", "careful_door", "wrong"]}, {"attempt": ["cara", "careful_door", "wrong"]}, {"attempt": ["cara", "careful_door", "right"]}],
+     "ask": [{"panel": ["cara", "careful_door"]}, {"panel": ["bob", "careful_door"]}]},
+    {"label": "a hint costs TRP", "do": [{"hint": ["alice", "lantern_walk", 0]}],
+     "ask": [{"board": "alice"}, {"panel": ["alice", "lantern_walk"]}]},
+    {"label": "a bonus", "do": [{"bonus": ["studio-b", 40, "found a bug"]}],
+     "ask": [{"board": "bob"}, {"board": "alice"}]},
+    {"label": "the scheduled drop arrives", "do": [{"advance": 31}],
+     "ask": [{"board": "alice"}, {"panel": ["alice", "steam_tunnel"]}]},
+    {"label": "a hidden studio solves and does not count", "do": [{"hide": "studio-h"}, {"attempt": ["hal", "moth_cipher", "right"]}, {"attempt": ["hal", "coffee_break", "right"]}],
+     "ask": [{"board": "alice"}, {"board": "hal"}, {"panel": ["hal", "coffee_break"]}]},
+    {"label": "a banned studio stops counting", "do": [{"attempt": ["cara", "moth_cipher", "right"]}, {"ban": "studio-c"}],
+     "ask": [{"board": "alice"}, {"panel": ["alice", "moth_cipher"]}]},
+    {"label": "a solved programme is pulled back", "do": [{"release": ["programme", "lantern_walk", "off"]}],
+     "ask": [{"board": "alice"}, {"board": "bob"}]},
+    {"label": "and released again", "do": [{"release": ["programme", "lantern_walk", "on"]}],
+     "ask": [{"board": "alice"}]},
+    {"label": "the crew sets a broken programme's solves aside", "do": [{"void": ["moth_cipher", "the checker broke"]}],
+     "ask": [{"board": "alice"}, {"board": "bob"}, {"panel": ["alice", "moth_cipher"]}]},
+    {"label": "and puts them back", "do": [{"restore": "moth_cipher"}],
+     "ask": [{"board": "alice"}, {"board": "bob"}, {"panel": ["alice", "moth_cipher"]}]},
+    {"label": "paused", "do": [{"phase": "paused"}],
+     "ask": [{"board": "alice"}, {"attempt": ["alice", "noodle_ledger", "right"]}, {"hint": ["alice", "lantern_walk", 1]}]},
+    {"label": "the broadcast has ended", "do": [{"phase": "ended"}],
+     "ask": [{"board": "alice"}, {"panel": ["alice", "hush_alley"]}, {"attempt": ["alice", "noodle_ledger", "right"]}, {"attempt": ["alice", "noodle_ledger", "wrong"]}, {"hint": ["alice", "lantern_walk", 1]}]}
+  ]
+}

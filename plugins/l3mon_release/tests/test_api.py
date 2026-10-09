@@ -359,6 +359,55 @@ def test_two_programmes_can_swap_their_cells_and_numbers_in_one_request():
     destroy_ctfd(app)
 
 
+def test_a_programme_slug_may_use_underscores_because_the_author_kit_writes_them_that_way():
+    app = setup_app()
+    with app.app_context():
+        started()
+        admin = admin_client(app)
+        a = gen_challenge(db, name="a", state="hidden")
+        r = admin.put(PROGRAMMES, json={
+            "channels": [{"slug": "street", "name": "Street", "position": 1}],
+            "programmes": [{"challenge_id": a.id, "channel": "street", "cell": 0, "number": 1, "slug": "lantern_walk"}],
+        })
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert Programme.query.one().slug == "lantern_walk"
+        for bad in ("_lantern", "Lantern_Walk", "lantern walk", "lantern/walk", "lantern.walk"):
+            r = admin.put(PROGRAMMES, json={"programmes": [{"challenge_id": a.id, "channel": "street", "cell": 0, "number": 1, "slug": bad}]})
+            assert r.status_code == 400 and "programmes[0].slug" in r.get_json()["errors"], bad
+    destroy_ctfd(app)
+
+
+def test_the_plan_carries_the_difficulty_and_the_delivery_of_each_programme_and_a_call_that_leaves_them_out_changes_neither():
+    app = setup_app()
+    with app.app_context():
+        started()
+        admin = admin_client(app)
+        a, b = gen_challenge(db, name="a", state="hidden"), gen_challenge(db, name="b", state="hidden")
+        r = admin.put(PROGRAMMES, json={
+            "channels": [{"slug": "street", "name": "Street", "position": 1}],
+            "programmes": [
+                {"challenge_id": a.id, "channel": "street", "cell": 0, "number": 1, "slug": "one", "difficulty": "hard", "delivery": "live_single"},
+                {"challenge_id": b.id, "channel": "street", "cell": 1, "number": 2, "slug": "two"},
+            ],
+        })
+        assert r.status_code == 200, r.get_data(as_text=True)
+        one, two = Programme.query.filter_by(slug="one").one(), Programme.query.filter_by(slug="two").one()
+        assert (one.difficulty, one.delivery) == ("hard", "live_single")
+        assert (two.difficulty, two.delivery) == ("medium", "static_shared"), "left out: the default"
+        # the same call again, with the words left out, changes nothing
+        again = admin.put(PROGRAMMES, json={"programmes": [{"challenge_id": a.id, "channel": "street", "cell": 0, "number": 1, "slug": "one"}]})
+        assert body(again)["data"]["programmes"] == {"created": 0, "updated": 0, "unchanged": 1}
+        assert (Programme.query.filter_by(slug="one").one().difficulty, Programme.query.filter_by(slug="one").one().delivery) == ("hard", "live_single")
+        # sending a new word changes it and counts as an update
+        third = admin.put(PROGRAMMES, json={"programmes": [{"challenge_id": a.id, "channel": "street", "cell": 0, "number": 1, "slug": "one", "difficulty": "easy"}]})
+        assert body(third)["data"]["programmes"] == {"created": 0, "updated": 1, "unchanged": 0}
+        assert Programme.query.filter_by(slug="one").one().difficulty == "easy" and Programme.query.filter_by(slug="one").one().delivery == "live_single"
+        view = body(admin.get(RELEASE))["data"]
+        items = {p["slug"]: p for ch in view["channels"] for p in ch["programmes"]}
+        assert (items["one"]["difficulty"], items["one"]["delivery"]) == ("easy", "live_single"), "the crew's page can show them"
+    destroy_ctfd(app)
+
+
 def test_moving_a_released_programme_to_a_channel_that_is_off_air_takes_it_off_air_without_an_announcement():
     app = setup_app()
     with app.app_context():
@@ -411,6 +460,11 @@ def _plan_payload(**over):
         (lambda p, ids: p["programmes"][0].update(cell=1000), "programmes[0].cell"),
         (lambda p, ids: p["programmes"][0].update(number=0), "programmes[0].number"),
         (lambda p, ids: p["programmes"][0].update(cell="two"), "programmes[0].cell"),
+        (lambda p, ids: p["programmes"][0].update(difficulty="brutal"), "programmes[0].difficulty"),
+        (lambda p, ids: p["programmes"][0].update(difficulty=3), "programmes[0].difficulty"),
+        (lambda p, ids: p["programmes"][0].update(difficulty=None), "programmes[0].difficulty"),
+        (lambda p, ids: p["programmes"][0].update(delivery="carrier_pigeon"), "programmes[0].delivery"),
+        (lambda p, ids: p["programmes"][0].update(delivery="Live_Single"), "programmes[0].delivery"),
         (lambda p, ids: p["channels"][0].update(slug="Bad Slug"), "channels[0].slug"),
         (lambda p, ids: p["channels"][0].update(name=""), "channels[0].name"),
         (lambda p, ids: p["channels"][0].update(name="n" * 81), "channels[0].name"),

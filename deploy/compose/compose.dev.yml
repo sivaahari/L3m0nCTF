@@ -3,6 +3,10 @@ services:
   ctfd:
     # Development and CI only: a fixed administrator token for scripts and tests (see compose.base.yml for why not in production).
     secrets: [PRESET_ADMIN_TOKEN]
+    # The compiled cold opens (python -m l3mon story build ...), read-only. Empty by default: no cold open is on air. To play the real ones, set
+    # L3MON_STORY_SRC to the folder the build wrote (for example ../../private/story/out) before `tools/compose.sh up`.
+    volumes:
+      - ${L3MON_STORY_SRC:-./story-empty}:/var/story:ro
     environment:
       # CTFd answers only for these host names; localhost is trusted here so a browser can use http://localhost:8080
       TRUSTED_HOSTS: "${PLATFORM_HOST},localhost"

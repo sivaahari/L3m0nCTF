@@ -28,11 +28,15 @@ check "the plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon
 check "the CTFtime feed plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_ctftime/__init__.py
 check "the release control plugin, its page and its script are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_release/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_release/templates/l3mon_release/release.html && test -f /opt/CTFd/CTFd/plugins/l3mon_release/assets/release.js'
 check "the scoring plugin, its page and its script are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_scoring/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_scoring/templates/l3mon_scoring/scoring.html && test -f /opt/CTFd/CTFd/plugins/l3mon_scoring/assets/scoring.js'
+check "the board plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_board/__init__.py
+check "the cold-open plugin, its page and its player are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_story/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_story/templates/l3mon_story/story.html && test -f /opt/CTFd/CTFd/plugins/l3mon_story/assets/comic.js && test -f /opt/CTFd/CTFd/plugins/l3mon_story/assets/timeline.js && test -f /opt/CTFd/CTFd/plugins/l3mon_story/assets/sounds.js'
+check "the image holds no story" run "$image" sh -c '! ls /opt/CTFd/CTFd/plugins/l3mon_story/*.json /var/story/*.json 2>/dev/null | grep -q .'
 check "the theme is in place" run "$image" test -d /opt/CTFd/CTFd/themes/l3mon
 check "CTFd imports" run "$image" /opt/venv/bin/python -c "import CTFd"
 check "the plugin files are not writable by the running user" run "$image" sh -c '! [ -w /opt/CTFd/CTFd/plugins/l3mon_core/__init__.py ] || [ "$(id -u)" = 0 ]'
 check "the release control files are not writable by the running user" run "$image" sh -c '! [ -w /opt/CTFd/CTFd/plugins/l3mon_release/assets/release.js ] || [ "$(id -u)" = 0 ]'
 check "the scoring files are not writable by the running user" run "$image" sh -c '! [ -w /opt/CTFd/CTFd/plugins/l3mon_scoring/assets/scoring.js ] || [ "$(id -u)" = 0 ]'
+check "the player files are not writable by the running user" run "$image" sh -c '! [ -w /opt/CTFd/CTFd/plugins/l3mon_story/assets/comic.js ] || [ "$(id -u)" = 0 ]'
 
 # the upgraded packages really are the ones in the image
 while IFS= read -r line; do

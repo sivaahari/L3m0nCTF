@@ -226,6 +226,8 @@ def test_04_a_scheduled_drop_appears_for_the_first_request_after_its_second_and_
         seen = False
         while time.time() < end and not seen:
             seen = SECOND["name"] in visible_names(world.session)
+            if not seen:
+                time.sleep(0.1)  # twelve watchers at a hundred a second each would meet nginx's own rate limit, not the thing under test
         return seen
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=12) as pool:

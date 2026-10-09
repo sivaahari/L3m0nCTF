@@ -23,7 +23,7 @@ from flask import current_app, jsonify, request
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from CTFd.cache import clear_challenges, clear_standings
+from CTFd.cache import cache, clear_challenges, clear_standings
 from CTFd.models import Challenges, Notifications, db
 from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.airing import is_on_air, on_air_ids, release_active
@@ -40,6 +40,8 @@ _log = logging.getLogger("l3mon")
 VISIBLE = "visible"
 HIDDEN = "hidden"
 TITLE = "New on air"
+RECLEAR_KEY = "l3mon:release:reclear"  # the second at which the cached lists are cleared once more (see _clear_lists)
+RECLEAR_SECONDS = 2
 
 Result = namedtuple("Result", "shown hidden")  # the challenge ids this call put on air, and took off air
 
@@ -73,6 +75,32 @@ def desired_states(t=None) -> dict:
 def _slugs(ids) -> str:
     rows = db.session.query(Programme.slug).filter(Programme.challenge_id.in_(ids)).order_by(Programme.number).all()
     return ", ".join(slug for (slug,) in rows)
+
+
+def _clear_lists(t):
+    """Clear CTFd's cached lists of challenges and standings, and arrange for it to be done once more two seconds later.
+
+    A list that was being worked out from the database a moment BEFORE the commit can still be stored in the cache AFTER this clear,
+    and is then served for CTFd's whole cache time (60 seconds). It was measured on the stack: a dozen players asking for the list at
+    the very second of a scheduled drop left one of them without the programme for a minute in about one round of three, and the same
+    would keep a pulled-back programme in someone's list. The second clear (taken as a moment the scheduler waits for, see
+    scheduler.next_event) removes anything that was stored late. If the key is lost, only the second clear is."""
+    clear_challenges()
+    clear_standings()
+    try:
+        cache.set(RECLEAR_KEY, t + RECLEAR_SECONDS, timeout=30)
+    except Exception:  # noqa: BLE001  (the cache being down must not undo a release)
+        _log.warning("l3mon: the second clearing of the lists could not be arranged", exc_info=True)
+
+
+def _clear_lists_again_if_due(t):
+    try:
+        due = cache.get(RECLEAR_KEY)
+        if due is not None and t >= due:
+            clear_challenges()  # left in place until it expires: another worker that reaches this second does the same, which is harmless
+            clear_standings()
+    except Exception:  # noqa: BLE001
+        _log.warning("l3mon: the lists could not be cleared the second time", exc_info=True)
 
 
 def _claim(challenge_id, target) -> bool:
@@ -112,8 +140,7 @@ def reconcile(t=None, system=False, locked=False) -> Result:
         audit.record("release.pull", "challenges", f"off air: {_slugs(hidden)}", system=system)
     db.session.commit()  # this also commits whatever the caller already had pending, so a plan change and its effect land together
     if shown or hidden:
-        clear_challenges()
-        clear_standings()
+        _clear_lists(t)
         try:
             tick.bump()
         except Exception:  # the counter is a convenience; it must never undo a release
@@ -128,6 +155,8 @@ def reconcile(t=None, system=False, locked=False) -> Result:
                 announce(shown, t)
             except Exception as error:  # noqa: BLE001
                 _log.warning("l3mon: 'New on air' could not be announced: %r", error, exc_info=True)
+    if not (shown or hidden):
+        _clear_lists_again_if_due(t)
     for hook in list(_after_change):
         try:
             hook(t)
