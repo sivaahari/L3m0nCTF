@@ -19,7 +19,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import aliased
 
 from CTFd.models import Awards, Challenges, Solves, Teams, Users, db
-from CTFd.plugins.dynamic_challenges import DynamicChallenge
 from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.clock import now
 from CTFd.plugins.l3mon_core.counting import counted_solve_counts
@@ -75,8 +74,8 @@ def _do(call):
 # ---- the view ----------------------------------------------------------------------------------------------------------------------
 
 def _challenges() -> list:
-    rows = db.session.query(Challenges.id, Challenges.name, Challenges.value).order_by(Challenges.id).all()
-    dynamic = {c.id: c for c in DynamicChallenge.query.all()}
+    rows = db.session.query(Challenges.id, Challenges.name, Challenges.state, Challenges.value).order_by(Challenges.id).all()
+    dynamic = {c.id: c for c in values.decaying_rows()}  # CTFd values these by a curve (the dynamic type, or any challenge with a scoring function)
     solves = counted_solve_counts([r.id for r in rows])
     held = dict(db.session.query(Solves.challenge_id, func.count(Solves.id)).group_by(Solves.challenge_id).all())  # every solve, counted or not
     open_voids = dict(db.session.query(Void.challenge_id, func.count(Void.id)).filter(Void.outcome == "open").group_by(Void.challenge_id).all())
@@ -88,6 +87,7 @@ def _challenges() -> list:
             {
                 "id": row.id,
                 "name": row.name,
+                "state": row.state,  # "visible" means players can open it now: a studio could solve it again at once after a Revoke
                 "type": "dynamic" if usable else "fixed",
                 "value": row.value,
                 "initial": d.initial if usable else None,
@@ -165,6 +165,7 @@ def get_scoring():
     return _answer(
         {
             "now": int(now()),
+            "restore_note": voids.DEFAULT_RESTORE_NOTE,
             "challenges": _challenges(),
             "teams": _teams(),
             "voids": _voids(),
@@ -211,8 +212,8 @@ def post_recalculate():
         return _refuse(problems)
 
     def run():
-        changed = values.recalculate()
-        names = {c.id: c.name for c in DynamicChallenge.query.filter(DynamicChallenge.id.in_([c[0] for c in changed])).all()} if changed else {}
+        changed = values.recalculate(lock=True)
+        names = dict(db.session.query(Challenges.id, Challenges.name).filter(Challenges.id.in_([c[0] for c in changed])).all()) if changed else {}
         if changed:
             detail = "; ".join(f"{names.get(cid, cid)}: {old} -> {new}" for cid, old, new in changed)
             audit.record("scoring.recalculate", f"{len(changed)} challenge(s)", detail)

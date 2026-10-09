@@ -94,15 +94,16 @@ def test_the_view_shows_every_challenge_against_its_formula_and_ctfds_own_number
     data = out(r)["data"]
     by_name = {c["name"]: c for c in data["challenges"]}
     assert by_name["dyn"] == {
-        "id": api.dyn, "name": "dyn", "type": "dynamic", "value": 495, "initial": 500, "floor": 200, "decay": 15, "function": "logarithmic",
+        "id": api.dyn, "name": "dyn", "state": "visible", "type": "dynamic", "value": 495, "initial": 500, "floor": 200, "decay": 15, "function": "logarithmic",
         "solves": 3, "held": 3, "wanted": 495, "open_voids": 0,
     }
     assert by_name["fix"] == {
-        "id": api.fix, "name": "fix", "type": "fixed", "value": 100, "initial": None, "floor": None, "decay": None, "function": None,
+        "id": api.fix, "name": "fix", "state": "visible", "type": "fixed", "value": 100, "initial": None, "floor": None, "decay": None, "function": None,
         "solves": 1, "held": 1, "wanted": 100, "open_voids": 0,
     }
     assert data["voids"] == [] and data["bonuses"] == [] and data["audit"] == []
     assert isinstance(data["now"], int)
+    assert data["restore_note"] == "The crew put your solve back; it counts again.", "the page shows what a studio is told when no reason is typed"
     assert [t["name"] for t in data["teams"]] == ["alpha", "beta", "gamma"]
     alpha = data["teams"][0]
     assert set(alpha) == {"id", "name", "captain_id", "banned", "hidden", "members"} and alpha["banned"] is False and alpha["hidden"] is False
@@ -233,3 +234,26 @@ def test_a_second_revoke_and_a_double_bonus_answer_409_through_the_api(api):
     r = api.admin.post(f"{BASE}/bonus", json=one)
     assert r.status_code == 409 and "message" in out(r)["errors"]
     assert Awards.query.count() == 1
+
+
+def test_a_standard_challenge_with_a_scoring_function_is_shown_and_checked_like_a_dynamic_one(api):
+    from scoring_world import decaying
+
+    std = decaying("std")
+    for minute, team in enumerate(api.teams):
+        solve(team, std, minutes=minute)
+    db.session.query(Challenges).filter_by(id=std.id).update({"value": 9})
+    db.session.commit()
+    row = {c["name"]: c for c in out(api.admin.get(BASE))["data"]["challenges"]}["std"]
+    assert (row["type"], row["initial"], row["floor"], row["decay"], row["function"]) == ("dynamic", 500, 200, 15, "logarithmic")
+    assert (row["value"], row["wanted"], row["solves"]) == (9, 495, 3), "the page would flag it"
+    r = api.admin.post(f"{BASE}/recalculate", json={})
+    assert out(r)["data"]["changed"] == [{"id": std.id, "name": "std", "old": 9, "new": 495}]
+
+
+def test_the_view_says_whether_a_challenge_is_visible_to_players_so_the_page_can_warn_before_a_revoke(api):
+    from scoring_world import fixed
+
+    fixed("held back", value=10, state="hidden")
+    states = {c["name"]: c["state"] for c in out(api.admin.get(BASE))["data"]["challenges"]}
+    assert states == {"dyn": "visible", "fix": "visible", "held back": "hidden"}

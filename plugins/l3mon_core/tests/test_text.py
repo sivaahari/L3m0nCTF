@@ -44,6 +44,25 @@ def test_crew_text_refuses_what_could_become_markup_or_is_not_a_sentence(value, 
     assert why in problem
 
 
+@pytest.mark.parametrize(
+    "char",
+    ["\xad", "\u061c", "\u2060", "\u2064", "\U000e0020", "\U000e007f", "\x85", "\x80", "\x9f", "\u2028", "\u2029", "\u202e", "\u202a", "\u2066", "\u2069", "\u200e", "\u200f", "\u200b", "\ufeff", "\x7f"],
+    ids=lambda c: f"U+{ord(c):04X}",
+)
+def test_crew_text_refuses_invisible_and_direction_changing_characters(char):
+    """They can reorder or hide what a crew page or a studio's note shows (found by the independent audit)."""
+    clean, problem = text.crew_text(f"fine {char} words", 200)
+    assert clean is None and "control characters" in problem
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ["family 👨\u200d👩\u200d👧 solved it", "ക്\u200dഷ (Malayalam, with a joiner)", "ರ್\u200cಕ (Kannada, with a non-joiner)", "café naïve", "இது தமிழ்"],
+)
+def test_crew_text_keeps_the_joiners_that_real_scripts_and_emoji_need(sentence):
+    assert text.crew_text(sentence, 200) == (sentence, None)
+
+
 def test_crew_text_refuses_what_is_not_text_and_can_allow_empty():
     assert text.crew_text(None, 200)[1] == "must be text"
     assert text.crew_text(5, 200)[1] == "must be text"
@@ -61,3 +80,28 @@ def test_the_release_lock_is_the_shared_lock(monkeypatch):
     monkeypatch.setattr(locks, "serialize", lambda: called.append("locks"))
     reconcile.serialize()
     assert called == ["locks"]  # the old name still works and does the shared thing
+
+
+def test_the_plan_lock_has_a_row_to_lock_even_before_any_channel_exists():
+    """With no channel, `SELECT ... FOR UPDATE` on an empty table takes only a gap lock, and gap locks do not block each other: eight
+    simultaneous bonuses all got through (found by the independent audit on MariaDB). The lock falls back to a settings row that is
+    created once and always exists."""
+    from CTFd.models import Configs, db
+    from CTFd.plugins.l3mon_core.models import Channel
+    from tests.helpers import create_ctfd, destroy_ctfd
+
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        Configs.query.filter_by(key=locks.LOCK_KEY).delete()
+        db.session.commit()
+        assert Configs.query.filter_by(key=locks.LOCK_KEY).count() == 0
+        locks.serialize()
+        assert Configs.query.filter_by(key=locks.LOCK_KEY).count() == 1
+        locks.serialize()
+        locks.serialize()
+        assert Configs.query.filter_by(key=locks.LOCK_KEY).count() == 1, "created once"
+        db.session.add(Channel(slug="street", name="Street", position=1))
+        db.session.commit()
+        locks.serialize()  # with a channel the channel is the lock
+        assert Configs.query.filter_by(key=locks.LOCK_KEY).count() == 1
+    destroy_ctfd(app)

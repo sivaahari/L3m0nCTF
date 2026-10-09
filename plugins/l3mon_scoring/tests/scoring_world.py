@@ -30,6 +30,21 @@ def dynamic(name="dyn", initial=500, minimum=200, decay=15, function="logarithmi
     return challenge
 
 
+def decaying(name="std", initial=500, minimum=200, decay=15, function="logarithmic", state="visible", flag=None):
+    """A STANDARD challenge that carries a scoring function: CTFd 3.8.8 lets any challenge decay (the admin editor offers
+    "Static / Linear / Logarithmic" for every one), and values it after every solve like a dynamic one."""
+    challenge = Challenges(
+        name=name, category="cat", description="d", value=initial, initial=initial, minimum=minimum, decay=decay, function=function,
+        state=state, type="standard",
+    )
+    db.session.add(challenge)
+    db.session.commit()
+    if flag:
+        gen_flag(db, challenge.id, content=flag)
+    clear_challenges()
+    return challenge
+
+
 def fixed(name="fix", value=100, state="visible", flag=None):
     challenge = gen_challenge(db, name=name, value=value, state=state)
     if flag:

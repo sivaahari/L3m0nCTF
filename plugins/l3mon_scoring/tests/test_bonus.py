@@ -8,7 +8,7 @@ import datetime
 import pytest
 from freezegun import freeze_time
 
-from CTFd.models import Awards, Teams, db
+from CTFd.models import Awards, db
 from CTFd.plugins.l3mon_core.models import Audit, Bonus, Note
 from CTFd.plugins.l3mon_core.tick import tick
 from CTFd.plugins.l3mon_scoring import bonus

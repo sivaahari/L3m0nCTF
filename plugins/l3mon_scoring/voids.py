@@ -16,12 +16,21 @@ submission is gone, or the crew changed the submission by hand). The studio is t
 
 Safe to repeat and to run at once on several workers: every step is a conditional statement whose row count decides who acted (the
 `solves` row is deleted by exactly one Revoke; a submission is turned back by exactly one Restore), and both take the shared plan lock
-(l3mon_core.locks), a row that no player route touches, so a player's solve is never blocked or deadlocked by the crew.
+(l3mon_core.locks) and then the challenge's own row, EXCLUSIVELY and first.
+
+Why the challenge row first (found by the independent audit, reproduced on MariaDB): inserting a void record or a solve takes InnoDB's
+shared lock on the challenge it points at, and the value update later needs the exclusive one. With CTFd's own update of that value (after
+a player's solve) arriving in between, the upgrade is a deadlock, and the loser was the player's request. Taking the exclusive lock first
+makes a player's solve wait for a moment instead. If a player's solve is already between its own two steps when the crew action asks,
+InnoDB picks the smaller transaction as the loser, which is the crew action; it is rolled back and tried again (up to three times).
 """
 import datetime
+import functools
+import logging
+import time
 
 from sqlalchemy import delete, insert, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 from CTFd.models import Challenges, Solves, Submissions, Teams, db
 from CTFd.plugins.l3mon_core import audit, locks
@@ -31,6 +40,10 @@ from CTFd.plugins.l3mon_scoring import notes, values
 from CTFd.plugins.l3mon_scoring.errors import Refused
 from CTFd.utils.config import is_teams_mode
 
+_log = logging.getLogger("l3mon")
+LOCK_CONFLICTS = (1213, 1205)  # MariaDB: deadlock found, lock wait timeout
+SAVEPOINT_GONE = 1305
+ATTEMPTS = 3
 REASON_LIMIT = 500
 DEFAULT_RESTORE_NOTE = "The crew put your solve back; it counts again."
 
@@ -56,16 +69,43 @@ def _open(challenge_id, reason, required):
     if problems:
         raise Refused(problems)
     locks.serialize()  # one crew action at a time, on current data
-    challenge = Challenges.query.filter_by(id=challenge_id).first()
+    challenge = Challenges.query.filter_by(id=challenge_id).with_for_update().first()  # and the challenge's own row, exclusively, first
     if challenge is None:
         raise Refused({"challenge_id": ["no such challenge"]}, 404)
     return challenge, text
+
+
+def _is_a_lock_conflict(error) -> bool:
+    """A deadlock or a lock wait timeout, or the 'SAVEPOINT ... does not exist' (1305) that follows a deadlock lost inside a savepoint:
+    InnoDB rolled the whole transaction back, so the savepoint is gone when SQLAlchemy tries to release it (found by the audit)."""
+    orig = getattr(error, "orig", None)
+    code = orig.args[0] if getattr(orig, "args", None) else None
+    return code in LOCK_CONFLICTS or (code == SAVEPOINT_GONE and "SAVEPOINT" in str(orig).upper())
+
+
+def _retrying(action):
+    """Run a crew action again, from the start, when the database picked it as the loser of a lock conflict. Anything else is raised."""
+
+    @functools.wraps(action)
+    def run(*args, **kwargs):
+        for attempt in range(1, ATTEMPTS + 1):
+            try:
+                return action(*args, **kwargs)
+            except OperationalError as error:
+                db.session.rollback()
+                if not _is_a_lock_conflict(error) or attempt == ATTEMPTS:
+                    raise
+                _log.warning("l3mon: %s lost a lock conflict (attempt %s of %s); trying again", action.__name__, attempt, ATTEMPTS)
+                time.sleep(0.05 * attempt)
+
+    return run
 
 
 def _plural(n, word):
     return f"{n} {word}{'' if n == 1 else 's'}"
 
 
+@_retrying
 def revoke(challenge_id=None, reason=None, actor=None) -> dict:
     """Set aside every solve of a challenge. -> {"challenge_id", "name", "voided", "teams", "value_before", "value_after"}.
     Raises Refused (and changes nothing) for a bad request, an unknown challenge, or a challenge nobody holds a solve of."""
@@ -97,6 +137,7 @@ def revoke(challenge_id=None, reason=None, actor=None) -> dict:
         db.session.rollback()
         raise Refused({"challenge_id": ["nobody holds a solve of this challenge; there is nothing to set aside"]}, 409)
 
+    values.mark_changed()  # solves were deleted: the standings, scores and challenge lists are stale whether or not a value moves
     db.session.flush()
     changed = values.recalculate([challenge_id])
     after = changed[0][2] if changed else before
@@ -144,6 +185,7 @@ def _resolve(record, outcome, who_id, when):
     return done.rowcount == 1
 
 
+@_retrying
 def restore(challenge_id=None, reason="", actor=None) -> dict:
     """Put back the solves a Revoke set aside. -> {"challenge_id", "name", "restored", "skipped", "superseded", "value_before", "value_after"}."""
     challenge, text = _open(challenge_id, reason, required=False)
@@ -183,6 +225,8 @@ def restore(challenge_id=None, reason="", actor=None) -> dict:
         db.session.rollback()
         raise Refused({"challenge_id": ["nothing is set aside for this challenge; there is nothing to restore"]}, 409)
 
+    if counts["restored"]:
+        values.mark_changed()  # solves were put back: the same caches are stale
     db.session.flush()
     changed = values.recalculate([challenge_id])
     after = changed[0][2] if changed else before

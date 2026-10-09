@@ -4,8 +4,6 @@ needs a second look; the facts were measured with plugins/l3mon_scoring/tests/pr
 Run through tools/run-ctfd-tests.sh:
     tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_scoring
 """
-import os
-
 import pytest
 
 from CTFd.models import Awards, Challenges, Solves, Submissions, Teams, Users, db

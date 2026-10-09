@@ -56,6 +56,7 @@ try {
   await press(WORLD.dyn, 'Set aside solves');
   await sleep(1800);
   check('with a reason it asks first, naming the challenge', page.log.dialogs === before + 1 && page.log.messages[page.log.messages.length - 1].includes(WORLD.dyn), JSON.stringify(page.log.messages.slice(-1)));
+  check('and warns that players can still see the programme, so a studio could solve it again at once', /visible to players now/.test(page.log.messages[page.log.messages.length - 1]) && /withhold it first/.test(page.log.messages[page.log.messages.length - 1]), JSON.stringify(page.log.messages.slice(-1)));
   check('it sets the solves aside and says what the programme is worth now', /3 solves of ".*" set aside\. It is worth 500 TRP now \(was 495\)/.test(await status()), await status());
   const afterRevoke = await rowText(WORLD.dyn);
   check('the row shows three set aside, and Put back is available', /\b3\b.*Put back/s.test(afterRevoke) && (await page.run(`!Array.from(${row(WORLD.dyn)}.querySelectorAll("button")).find((b) => b.textContent === "Put back").disabled`)), afterRevoke);
@@ -68,6 +69,8 @@ try {
   await press(WORLD.dyn, 'Put back');
   await sleep(1800);
   check('Put back asks first and restores all three', page.log.dialogs === before + 1 && /3 restored, 0 skipped, 0 superseded/.test(await status()) && /495 TRP/.test(await rowText(WORLD.dyn)), await status());
+
+  check('and Put back shows the line the studios will read (the standard one, as no reason was typed)', page.log.messages[page.log.messages.length - 1].includes('The crew put your solve back; it counts again.'), JSON.stringify(page.log.messages.slice(-1)));
 
   // the bonus form
   const chooseStudio = () => page.run(`(() => { const s = document.querySelector('#scoring-app select[aria-label="Studio"]'); const o = Array.from(s.options).find((x) => x.textContent === ${JSON.stringify(WORLD.studio)}); s.value = o.value; s.dispatchEvent(new Event("change")); return s.value !== ""; })()`);

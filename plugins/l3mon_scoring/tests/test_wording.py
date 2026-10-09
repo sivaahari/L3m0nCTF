@@ -8,7 +8,7 @@ import pytest
 from CTFd.models import db
 from CTFd.plugins.l3mon_scoring import wording
 from scoring_world import fixed, make_app, team_client
-from tests.helpers import destroy_ctfd, gen_hint, login_as_user
+from tests.helpers import destroy_ctfd, gen_hint
 
 
 @pytest.fixture()

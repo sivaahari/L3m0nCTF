@@ -141,6 +141,8 @@ def _noted_bulk(context):
 
 
 def _committed(session):
+    if session.in_nested_transaction():
+        return  # SQLAlchemy 1.4 also calls this when a savepoint is released; nothing is committed until the outermost transaction is
     if not session.info.pop(_FLAG, False):
         return
     if has_request_context():

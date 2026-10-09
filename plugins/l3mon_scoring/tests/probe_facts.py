@@ -3,12 +3,10 @@ SP3 part 3.3 depends on, so the design is written from facts. Run it with the ou
 
     tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -s -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_scoring/probe_facts.py
 """
-import datetime
-
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from CTFd.models import Awards, Challenges, Fails, Solves, Submissions, Teams, Users, db
+from CTFd.models import Challenges, Solves, Submissions, Teams, Users, db
 from tests.helpers import create_ctfd, destroy_ctfd, gen_flag, login_as_user, register_user
 
 SEEN = []
@@ -123,7 +121,6 @@ def test_probe():
         # 3. delete a team
         tid_d = Users.query.filter_by(name="uD").first().team_id
         before = db.session.query(Solves).filter_by(team_id=tid_d).count()
-        sol_before = [x.id for x in Solves.query.all()]
         r = admin.delete(f"/api/v1/teams/{tid_d}", json={})
         log("delete team D ->", r.status_code, "| its solves before:", before, "after:", db.session.query(Solves).filter_by(team_id=tid_d).count(), "| value now", value_of(cid))
         drain("delete team D")

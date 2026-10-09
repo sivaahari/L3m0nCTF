@@ -7,6 +7,7 @@ conditional statement whose row count decides who acted, and both actions take t
 """
 import os
 import threading
+import time
 
 import pytest
 
@@ -175,14 +176,135 @@ def test_a_worker_with_an_older_view_of_the_database_still_acts_on_current_data(
     destroy_ctfd(app)
 
 
-def test_banning_a_studio_corrects_the_value_in_the_same_commit_on_mariadb():
+def test_banning_a_studio_corrects_the_value_by_the_end_of_the_request_on_mariadb():
+    from tests.helpers import login_as_user
+
     app = make_app()
     with app.app_context():
         cid, team_ids = three_studios_solved(True)
         assert stored_value(cid) == 495
-        from CTFd.models import Teams
+        admin = login_as_user(app, "admin")
+        r = admin.patch(f"/api/v1/teams/{team_ids[1]}", json={"banned": True})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert stored_value(cid) == 499, "two studios count: the value was put right before the ban's request returned"
+    destroy_ctfd(app)
 
-        Teams.query.filter_by(id=team_ids[1]).first().banned = True
-        db.session.commit()
-        assert stored_value(cid) == 499, "two studios count: the value was put right by the commit that banned the third"
+
+@pytest.mark.parametrize("action", ["revoke", "restore"])
+def test_a_concurrent_update_of_the_same_challenge_row_waits_instead_of_deadlocking(action):
+    """CTFd updates `challenges.value` after every player's solve. Revoke and Restore insert rows that point at the challenge (which
+    takes InnoDB's shared lock on it) and update its value later (which needs the exclusive lock): with another transaction's exclusive
+    request in between, that is a deadlock, and the loser was the player's request (found by the independent audit). Taking the
+    exclusive lock first means the other update simply waits for a moment."""
+    from unittest import mock
+
+    app = make_app()
+    with app.app_context():
+        cid, _ = three_studios_solved(True)
+        if action == "restore":
+            voids.revoke(cid, "first")
+        a_is_working, b_has_asked = threading.Event(), threading.Event()
+        box = {}
+        real = values.recalculate
+
+        def slow_recalculate(*args, **kwargs):
+            a_is_working.set()
+            b_has_asked.wait(10)
+            time.sleep(1.5)  # B's UPDATE is waiting now
+            return real(*args, **kwargs)
+
+        def worker_a():
+            with app.app_context():
+                try:
+                    with mock.patch.object(values, "recalculate", slow_recalculate):
+                        box["a"] = voids.revoke(cid, "the checker broke") if action == "revoke" else voids.restore(cid)
+                except Exception as error:  # noqa: BLE001
+                    box["a"] = repr(error)[:300]
+
+        def worker_b():
+            with app.app_context():
+                a_is_working.wait(10)
+                connection = db.engine.connect()
+                transaction = connection.begin()
+                b_has_asked.set()
+                try:
+                    connection.execute(db.text("UPDATE challenges SET value = value WHERE id = :i"), {"i": cid})
+                    transaction.commit()
+                    box["b"] = "ok"
+                except Exception as error:  # noqa: BLE001
+                    transaction.rollback()
+                    box["b"] = repr(error)[:300]
+                finally:
+                    connection.close()
+
+        threads = [threading.Thread(target=worker_a), threading.Thread(target=worker_b)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(70)
+        assert isinstance(box["a"], dict), f"the crew's action failed: {box['a']}"
+        assert box["b"] == "ok", f"the other update lost a deadlock: {box['b']}"
+    destroy_ctfd(app)
+
+
+@pytest.mark.parametrize("lock", [True, False], ids=["locked (the plugin's way)", "unlocked (proof that the race is real)"])
+def test_a_recalculation_that_runs_beside_a_crew_action_waits_and_then_counts_fresh(lock):
+    """A ban, a delete or a heal recalculates at the end of its request. If a Revoke holds the challenge at that moment, the count the
+    recalculation takes before it waits is out of date by the time it writes (found by the independent audit: the value ended at what
+    the ban alone would give, with nobody holding a solve). With the rows locked first, nothing is counted until the Revoke has
+    committed. The crew action is played here with plain statements so that the moment is exact."""
+    app = make_app()
+    with app.app_context():
+        cid, team_ids = three_studios_solved(True)
+        assert stored_value(cid) == 495
+        a_holds_it, b_has_banned = threading.Event(), threading.Event()
+        box = {}
+
+        def crew_action():
+            with app.app_context():
+                connection = db.engine.connect()
+                transaction = connection.begin()
+                try:
+                    connection.execute(db.text("SELECT id FROM challenges WHERE id = :c FOR UPDATE"), {"c": cid})
+                    connection.execute(db.text("DELETE FROM solves WHERE challenge_id = :c"), {"c": cid})
+                    connection.execute(db.text("UPDATE challenges SET value = 500 WHERE id = :c"), {"c": cid})
+                    a_holds_it.set()
+                    b_has_banned.wait(10)
+                    time.sleep(1.5)
+                    transaction.commit()
+                    box["a"] = "ok"
+                except Exception as error:  # noqa: BLE001
+                    transaction.rollback()
+                    box["a"] = repr(error)[:300]
+                finally:
+                    connection.close()
+
+        def the_end_of_a_ban_request():
+            with app.app_context():
+                try:
+                    a_holds_it.wait(10)
+                    from CTFd.models import Teams
+
+                    Teams.query.filter_by(id=team_ids[1]).first().banned = True  # the cause has committed...
+                    db.session.commit()
+                    b_has_banned.set()
+                    values.recalculate(lock=lock)  # ...and now the request ends
+                    db.session.commit()
+                    box["b"] = "ok"
+                except Exception as error:  # noqa: BLE001
+                    db.session.rollback()
+                    box["b"] = repr(error)[:300]
+
+        threads = [threading.Thread(target=crew_action), threading.Thread(target=the_end_of_a_ban_request)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(70)
+        assert box == {"a": "ok", "b": "ok"}, box
+        db.session.rollback()
+        assert Solves.query.filter_by(challenge_id=cid).count() == 0
+        if lock:
+            assert stored_value(cid) == 500, "nothing was counted until the crew action had committed: nobody holds a solve"
+        else:
+            assert stored_value(cid) == 499, "without the lock the recalculation wrote what it had counted before"
     destroy_ctfd(app)

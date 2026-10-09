@@ -304,3 +304,90 @@ def test_a_member_who_solved_it_again_for_another_studio_is_skipped_and_nothing_
     assert Void.query.filter_by(team_id=world.ids["alpha"]).one().outcome == "skipped"
     assert Submissions.query.filter_by(id=old_submission).one().type == "discard", "the failed attempt was undone completely"
     assert Solves.query.filter_by(id=old_submission).count() == 0
+
+
+def test_revoke_and_restore_follow_a_standard_challenge_that_carries_a_scoring_function(app):
+    from scoring_world import decaying
+
+    std = decaying("std")
+    teams = [studio(f"team{i}") for i in range(3)]
+    for minute, team in enumerate(teams):
+        solve(team, std, minutes=minute)
+    values.recalculate()
+    db.session.commit()
+    assert stored_value(std.id) == 495
+    gone = voids.revoke(std.id, REASON)
+    assert (gone["value_before"], gone["value_after"]) == (495, 500) and stored_value(std.id) == 500
+    back = voids.restore(std.id)
+    assert (back["value_before"], back["value_after"]) == (500, 495) and stored_value(std.id) == 495
+
+
+def test_a_lock_conflict_is_tried_again_and_nothing_else_is(world):
+    """MariaDB picks one transaction as the loser of a deadlock; for the crew action that is a rolled-back attempt, not a failure."""
+    from unittest import mock
+
+    from sqlalchemy.exc import OperationalError
+
+    real = voids.locks.serialize
+    calls = []
+
+    def conflicts_twice():
+        calls.append(1)
+        if len(calls) < 3:
+            raise OperationalError("SELECT 1", {}, Exception(1213, "Deadlock found when trying to get lock"))
+        return real()
+
+    with mock.patch.object(voids.locks, "serialize", conflicts_twice):
+        out = voids.revoke(world.dyn, REASON)
+    assert len(calls) == 3 and out["voided"] == 3, "the third attempt did it, once"
+    assert Void.query.filter_by(challenge_id=world.dyn).count() == 3
+    voids.restore(world.dyn)
+
+    calls.clear()
+
+    def always():
+        calls.append(1)
+        raise OperationalError("SELECT 1", {}, Exception(1205, "Lock wait timeout exceeded"))
+
+    with mock.patch.object(voids.locks, "serialize", always), pytest.raises(OperationalError):
+        voids.revoke(world.dyn, REASON)
+    assert len(calls) == voids.ATTEMPTS, "it gives up after the last attempt and says so"
+
+    calls.clear()
+
+    def another_error():
+        calls.append(1)
+        raise OperationalError("SELECT 1", {}, Exception(2013, "Lost connection to MySQL server"))
+
+    with mock.patch.object(voids.locks, "serialize", another_error), pytest.raises(OperationalError):
+        voids.revoke(world.dyn, REASON)
+    assert len(calls) == 1, "an error that is not a lock conflict is raised at once"
+    assert Solves.query.filter_by(challenge_id=world.dyn).count() == 3, "nothing was half done"
+
+
+def test_a_deadlock_lost_inside_restores_savepoint_is_tried_again_too(world):
+    """After InnoDB rolls back a deadlock victim the savepoint no longer exists, and the error that reaches the code is MariaDB's 1305
+    'SAVEPOINT ... does not exist' (found by the independent audit), not the 1213 behind it."""
+    from unittest import mock
+
+    from sqlalchemy.exc import OperationalError
+
+    voids.revoke(world.dyn, REASON)
+    real = voids._put_back
+    calls = []
+
+    def loses_the_savepoint(record):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OperationalError("RELEASE SAVEPOINT sa_savepoint_1", {}, Exception(1305, "SAVEPOINT sa_savepoint_1 does not exist"))
+        return real(record)
+
+    with mock.patch.object(voids, "_put_back", loses_the_savepoint):
+        out = voids.restore(world.dyn)
+    assert out["restored"] == 3 and Solves.query.filter_by(challenge_id=world.dyn).count() == 3
+
+    def unrelated_1305():
+        raise OperationalError("CALL x()", {}, Exception(1305, "PROCEDURE x does not exist"))
+
+    with mock.patch.object(voids.locks, "serialize", unrelated_1305), pytest.raises(OperationalError):
+        voids.revoke(world.dyn, REASON)

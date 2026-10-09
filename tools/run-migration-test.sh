@@ -17,7 +17,7 @@ else
 fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
 targets=("$@")
-if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py /l3mon_tests/l3mon_scoring/test_voids_mariadb.py); fi
+if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py /l3mon_tests/l3mon_scoring/test_voids_mariadb.py /l3mon_tests/l3mon_scoring/test_bonus_mariadb.py /l3mon_tests/l3mon_scoring/test_solves_mariadb.py); fi
 name="l3mon-realdb-$$"
 export MSYS_NO_PATHCONV=1
 

@@ -1,18 +1,27 @@
 """When a dynamic value must be recalculated.
 
-CTFd recalculates a dynamic challenge's value after a solve and at no other time. Everything else that changes who counts leaves the
-stored value stale (measured on 3.8.8, plugins/l3mon_scoring/tests/probe_facts.py): a ban or a hide of a studio, a deleted studio, a
-deleted user, a deleted solve, "mark incorrect". Four ways, from the most immediate to the last resort (each can be switched off in
-`ON`, so a test can prove it is needed):
+CTFd recalculates a challenge's value after a solve made by a player and at no other time. Everything else that changes who counts
+leaves the stored value stale (measured on 3.8.8, plugins/l3mon_scoring/tests/probe_facts.py): a ban or a hide of a studio, a deleted
+studio, user or solve, a member removed from a studio, "mark incorrect", and a solve added by the crew ("mark correct", a submission
+made by hand). Three ways, from the most immediate to the last resort (each can be switched off in `ON`, so a test can prove it is
+needed):
 
-- `flush`: a session hook (noticed in `after_flush`, done in `after_flush_postexec`). When a flush changes `banned` or `hidden` of a
-  studio or user, or deletes a studio, user or solve, the values are recalculated in the SAME transaction, so the cause and the new numbers are committed together or not at all.
-- `bulk`: deleting a user is a set of bulk deletes (notifications, awards, unlocks, submissions, solves, the user) with no flush
-  to hook, so those only set a flag on the request, and the values are recalculated and committed when the request ends.
+- `flush` and `bulk`: the hooks only NOTICE. A flush that bans or hides a studio or user, or deletes a studio, user or solve, notes
+  "every value"; a flush that adds a solve notes that solve's challenge; a bulk delete of studios, users, solves or submissions (CTFd
+  deletes a user, or removes a member, with bulk deletes and no flush) notes "every value". The value is recalculated when the
+  REQUEST ENDS, in a fresh transaction after the cause has committed.
 - `check`: once a minute, one worker (the one that wins an atomic cache add) compares every stored value with its formula and fixes
-  and reports any difference (`values.heal`). This covers what no hook sees: a script, an edit in the database, two players' solves
-  racing each other.
+  and reports any difference (`values.heal`). This covers what no hook sees: a script, an edit in the database, a crew action on a
+  worker that failed to recalculate.
 - the crew's own actions (Revoke, Restore, "Recalculate") call `values.recalculate` themselves.
+
+Why not inside the transaction that caused the change (the first version did, and an independent audit measured 10 of 24 correct
+flags recorded when eight players solved one challenge at once). A solve's transaction has inserted a row that points at the challenge,
+which takes InnoDB's shared lock on the challenge row; recalculating there asks for the exclusive lock on the same row, and two
+players doing that at once deadlock: one is told 500 and loses a correct flag. CTFd itself avoids this by valuing the challenge in a
+second transaction after the solve has committed, and so does this. The same rule keeps a ban from taking the challenge row while
+holding the studio's row, which would be the opposite order to Revoke's. A player's own flag (`/api/v1/challenges/attempt`) is left to
+CTFd, which values the challenge itself right after the solve.
 
 Clearing CTFd's challenge and standings caches happens after the commit that holds the new numbers (a hook on `after_commit`), never
 before: an earlier clear would let another request cache the old numbers again.
@@ -26,7 +35,7 @@ from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
 from CTFd.cache import cache, clear_challenges, clear_standings
-from CTFd.models import Solves, Teams, Users, db
+from CTFd.models import Solves, Submissions, Teams, Users, db
 from CTFd.plugins.l3mon_scoring import values
 
 _log = logging.getLogger("l3mon")
@@ -34,16 +43,28 @@ _log = logging.getLogger("l3mon")
 ON = {"flush": True, "bulk": True, "check": True}
 CHECK_KEY = "l3mon:scoring:checked"
 CHECK_SECONDS = 60
-WATCHED = (Teams, Users, Solves)
+WATCHED = (Teams, Users, Solves)  # a flush that deletes one of these, or bans or hides a studio or user, changes who counts
+WATCHED_BULK = (Teams, Users, Solves, Submissions)  # CTFd also removes a member's submissions (and with them the solves) in bulk
+ATTEMPT = "/api/v1/challenges/attempt"
 
-_PENDING = "l3mon_scoring_recalculate_after_flush"
-_REQUEST_FLAG = "l3mon_scoring_recalculate_at_end"
+_EVERYTHING = "l3mon_scoring_recalculate_everything"  # on `g`: who counts changed, so every curve-valued challenge
+_THESE = "l3mon_scoring_recalculate_these"  # on `g`: solves were added, so only their challenges
 _SKIP_PREFIXES = ("/themes/", "/plugins/", "/static/")
 _SKIP_PATHS = ("/healthcheck", "/l3mon/healthz")
 _installed = False
 
 
-# -- the flush hook --------------------------------------------------------------------------------------------------------------
+# -- noticing ---------------------------------------------------------------------------------------------------------------------
+
+def _note_everything():
+    if has_request_context():
+        g.setdefault(_EVERYTHING, True)
+
+
+def _note_challenges(ids):
+    if has_request_context():
+        g.setdefault(_THESE, set()).update(ids)
+
 
 def _who_counts_changed(session) -> bool:
     for obj in session.dirty:
@@ -55,45 +76,47 @@ def _who_counts_changed(session) -> bool:
 
 
 def _after_flush(session, context):
-    """Notice, while the history of each object still exists, that who counts has changed. The recalculation itself waits for
-    `_after_flush_postexec`: SQLAlchemy throws away any change made to a previously clean object inside `after_flush` ("Attribute
-    history events accumulated on previously clean instances within inner-flush event handlers have been reset"), found the hard way."""
-    if ON["flush"] and not session.info.get(_PENDING) and _who_counts_changed(session):
-        session.info[_PENDING] = True
-
-
-def _after_flush_postexec(session, context):
-    """The flush is complete and the transaction is still open: recalculate now, in the same transaction. What this changes is
-    flushed by the commit that is under way, so the cause and the new numbers are committed together or not at all."""
-    if not session.info.pop(_PENDING, False) or session is not db.session():
+    """Notice, while the history of each object still exists, that who counts has changed or that a solve was added. Nothing is
+    written here: the value is recalculated when the request ends."""
+    if not ON["flush"]:
         return
-    try:
-        values.recalculate()
-    except Exception:  # noqa: BLE001  (the ban, hide or delete itself must still go through)
-        _log.warning("l3mon: the dynamic values could not be recalculated after a change of who counts", exc_info=True)
+    if _who_counts_changed(session):
+        _note_everything()
+    added = {obj.challenge_id for obj in session.new if isinstance(obj, Solves) and obj.challenge_id is not None}
+    if added:
+        _note_challenges(added)
 
-
-# -- the bulk hook and the end of the request ------------------------------------------------------------------------------------
 
 def _after_bulk_delete(context):
-    if ON["bulk"] and issubclass(context.mapper.class_, WATCHED) and has_request_context():
-        g.setdefault(_REQUEST_FLAG, True)
+    if ON["bulk"] and issubclass(context.mapper.class_, WATCHED_BULK):
+        _note_everything()
 
+
+# -- the end of the request -------------------------------------------------------------------------------------------------------
 
 def _end_of_request(response):
-    if g.pop(_REQUEST_FLAG, False):
-        try:
-            if values.recalculate():
-                db.session.commit()  # the caches are cleared by the after_commit hook
-        except Exception:  # noqa: BLE001
-            db.session.rollback()
-            _log.warning("l3mon: the dynamic values could not be recalculated after a bulk delete", exc_info=True)
+    everything = g.pop(_EVERYTHING, False)
+    these = g.pop(_THESE, None)
+    if request.path.rstrip("/") == ATTEMPT:
+        these = None  # CTFd values the challenge itself, in its own transaction, right after a player's solve
+    if not (everything or these):
+        return response
+    try:
+        # A view that returned an error may have left work uncommitted; it is rolled back at teardown anyway, and must not be committed by us.
+        db.session.rollback()
+        if values.recalculate(None if everything else these, lock=True):
+            db.session.commit()  # the caches are cleared by the after_commit hook
+    except Exception:  # noqa: BLE001  (the ban, the delete or the solve itself went through; the minute check will put it right)
+        db.session.rollback()
+        _log.warning("l3mon: the dynamic values could not be recalculated at the end of the request", exc_info=True)
     return response
 
 
 # -- the caches, after the commit ------------------------------------------------------------------------------------------------
 
 def _committed(session):
+    if session.in_nested_transaction():
+        return  # SQLAlchemy 1.4 also calls this when a savepoint is released; wait for the real commit
     if session.info.pop(values.CLEAR_FLAG, False):
         try:
             clear_challenges()
@@ -129,7 +152,6 @@ def install(app):
     global _installed
     if not _installed:
         event.listen(Session, "after_flush", _after_flush)
-        event.listen(Session, "after_flush_postexec", _after_flush_postexec)
         event.listen(Session, "after_bulk_delete", _after_bulk_delete)
         event.listen(Session, "after_commit", _committed)
         event.listen(Session, "after_soft_rollback", _rolled_back)

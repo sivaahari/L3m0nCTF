@@ -116,7 +116,10 @@
         if (busy) return; // a second click while the first is on its way asks nothing and does nothing
         var reason = reasonText();
         if (!reason) { say('Write the reason first: every studio that loses a solve reads it.', true); shell.reasonBox.focus(); return; }
-        if (!window.confirm('Set aside every solve of "' + c.name + '"? ' + plural(c.held, 'studio') + ' lose their TRP for it now and are told why. Nothing is deleted; you can put them back.')) return;
+        var warning = c.state === 'visible'
+          ? ' It is visible to players now, so a studio can solve it again at once. If it is broken, withhold it first on the Release control page.'
+          : '';
+        if (!window.confirm('Set aside every solve of "' + c.name + '"? ' + plural(c.held, 'studio') + ' lose their TRP for it now and are told why. Nothing is deleted; you can put them back.' + warning)) return;
         act('/revoke', { challenge_id: c.id, reason: reason }, function (r) {
           shell.reasonBox.value = '';
           return plural(r.voided, 'solve') + ' of "' + r.name + '" set aside. It is worth ' + r.value_after + ' TRP now (was ' + r.value_before + ').';
@@ -124,8 +127,9 @@
       });
       restore.addEventListener('click', function () {
         if (busy) return;
-        if (!window.confirm('Put back the solves set aside for "' + c.name + '"? The studios are told.')) return;
         var reason = reasonText();
+        var told = reason ? '"' + reason + '"' : 'the standard line "' + data.restore_note + '"';
+        if (!window.confirm('Put back the solves set aside for "' + c.name + '"? The studios are told ' + told + '.')) return;
         act('/restore', reason ? { challenge_id: c.id, reason: reason } : { challenge_id: c.id }, function (r) {
           shell.reasonBox.value = '';
           return r.restored + ' restored, ' + r.skipped + ' skipped, ' + r.superseded + ' superseded. "' + r.name + '" is worth ' + r.value_after + ' TRP now (was ' + r.value_before + ').';

@@ -103,3 +103,9 @@ def test_the_script_asks_before_it_changes_anything_and_stops_a_double_click():
     assert source.count("window.confirm(") >= 3, "set aside, put back and give a bonus each ask first"
     assert source.count("if (busy) return;") >= 4, "the three buttons and the saving step all stop while a change is on its way"
     assert "busy = true;" in source
+
+
+def test_the_confirmations_show_what_the_studios_will_read_and_warn_about_a_programme_still_on_air():
+    source = open(SCRIPT, encoding="utf-8").read()
+    assert "restore_note" in source and "The studios are told" in source, "the Restore confirmation shows the line that will be sent"
+    assert "c.state === 'visible'" in source and "solve it again at once" in source, "Revoke warns when players can still see the challenge"

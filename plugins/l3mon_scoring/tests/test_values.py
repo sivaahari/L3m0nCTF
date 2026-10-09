@@ -13,7 +13,7 @@ from CTFd.models import Challenges, db
 from CTFd.plugins.dynamic_challenges import decay as ctfd_decay
 from CTFd.plugins.l3mon_core.models import Audit
 from CTFd.plugins.l3mon_scoring import values
-from scoring_world import dynamic, fixed, make_app, solve, stored_value, studio
+from scoring_world import decaying, dynamic, fixed, make_app, solve, stored_value, studio
 from tests.helpers import destroy_ctfd
 
 
@@ -147,3 +147,66 @@ def test_a_challenge_with_missing_numbers_is_skipped_not_fatal(app, caplog):
     with caplog.at_level(logging.WARNING, logger="l3mon"):
         assert values.recalculate() == [(good.id, 2, 500)]
     assert any("broken" in r.message for r in caplog.records), "the skipped challenge is named in the log"
+
+
+# ---- a standard challenge with a scoring function (found by the independent audit) ------------------------------------------------
+
+@pytest.mark.parametrize("function, four", [("logarithmic", 488), ("linear", 455)])  # linear: 500 - 15 x (4 - 1)
+def test_a_standard_challenge_that_carries_a_scoring_function_is_valued_like_a_dynamic_one(app, function, four):
+    std = decaying("std", function=function)
+    teams = [studio(f"team{i}") for i in range(4)]
+    for i, team in enumerate(teams):
+        solve(team, std, minutes=i)
+    db.session.query(Challenges).filter_by(id=std.id).update({"value": 1})
+    db.session.commit()
+    assert values.drifted() == [(std.id, 1, four)], "the minute check sees it"
+    assert values.recalculate() == [(std.id, 1, four)]
+    db.session.commit()
+    assert stored_value(std.id) == four
+    assert values.recalculate() == []
+
+
+def test_a_standard_challenge_with_the_static_function_or_none_is_left_alone(app):
+    static = decaying("static", function="static")
+    nothing = fixed("nothing", value=100)
+    for team in (studio("a"), studio("b")):
+        solve(team, static)
+        solve(team, nothing)
+    db.session.query(Challenges).filter(Challenges.id.in_([static.id, nothing.id])).update({"value": 7}, synchronize_session=False)
+    db.session.commit()
+    assert values.drifted() == [] and values.recalculate() == []
+    assert stored_value(static.id) == 7 and stored_value(nothing.id) == 7
+
+
+def test_the_two_kinds_are_valued_together_in_id_order_and_a_limited_call_touches_only_what_it_names(app):
+    std, dyn = decaying("std"), dynamic("dyn")
+    for team in (studio("a"), studio("b")):
+        solve(team, std)
+        solve(team, dyn)
+    db.session.query(Challenges).filter(Challenges.id.in_([std.id, dyn.id])).update({"value": 7}, synchronize_session=False)
+    db.session.commit()
+    assert values.recalculate([dyn.id]) == [(dyn.id, 7, 499)]
+    db.session.commit()
+    assert stored_value(std.id) == 7
+    assert values.recalculate() == [(std.id, 7, 499)]
+
+
+def test_a_standard_challenge_with_a_function_but_no_start_value_is_skipped_not_fatal(app, caplog):
+    broken = decaying("broken")
+    db.session.query(Challenges).filter_by(id=broken.id).update({"initial": None})
+    db.session.commit()
+    with caplog.at_level(logging.WARNING, logger="l3mon"):
+        assert values.recalculate() == []
+    assert any("broken" in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize("spelling", ["Linear", "LOGARITHMIC", "linear ", "Logarithmic "])
+def test_a_function_name_that_only_a_case_insensitive_database_would_match_is_a_fixed_value(app, spelling):
+    """CTFd compares the name exactly, so 'Linear' or 'linear ' is not a scoring function there. The database's collation ignores case
+    and trailing spaces, so the query alone would value it by a curve (found by the independent audit on MariaDB)."""
+    odd = decaying("odd", function="static")
+    db.session.query(Challenges).filter_by(id=odd.id).update({"function": spelling, "value": 100})
+    db.session.commit()
+    solve(studio("a"), odd)
+    assert values.decaying_rows() == []
+    assert values.recalculate() == [] and stored_value(odd.id) == 100

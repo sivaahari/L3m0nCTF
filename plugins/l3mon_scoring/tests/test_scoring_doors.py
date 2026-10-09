@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from CTFd.models import Awards, Teams, Users, db
+from CTFd.models import Awards, Users, db
 from CTFd.plugins.l3mon_core.models import Bonus, Note, Void
 from CTFd.plugins.l3mon_scoring import bonus, voids
 from scoring_world import attempt, fixed, make_app, team_client
