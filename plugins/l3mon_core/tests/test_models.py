@@ -7,7 +7,7 @@ import datetime
 
 import pytest
 from sqlalchemy import inspect
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError  # MariaDB reports a failed CHECK as an OperationalError, a key as an IntegrityError; SQLite always the latter
 
 from CTFd.models import db
 from CTFd.plugins.l3mon_core.models import Bonus, Channel, Note, Programme, Void
@@ -38,9 +38,9 @@ def test_a_channel_has_sensible_defaults_and_a_unique_slug():
     app = app_in_teams_mode()
     with app.app_context():
         ch = channel("street", name="Mighty Street", accent="ch1")
-        assert (ch.kind, ch.release_state, ch.position) == ("standard", "released", 0)
+        assert (ch.kind, ch.release_state, ch.position) == ("standard", "withheld", 0), "a new channel is off air until the crew puts it on"
         assert ch.release_at is None and ch.sponsor_name is None and ch.synopsis is None
-        with pytest.raises(IntegrityError):
+        with pytest.raises(DBAPIError):
             channel("street", name="Another")
         db.session.rollback()
     destroy_ctfd(app)
@@ -65,7 +65,7 @@ def test_a_channel_refuses_a_kind_or_a_release_state_nobody_defined(model, kwarg
     app = app_in_teams_mode()
     with app.app_context():
         db.session.add(model(**kwargs))
-        with pytest.raises(IntegrityError):
+        with pytest.raises(DBAPIError):
             db.session.commit()
         db.session.rollback()
     destroy_ctfd(app)
@@ -79,7 +79,7 @@ def test_a_programme_belongs_to_one_challenge_one_channel_cell_and_has_a_unique_
         db.session.add(Programme(challenge_id=a.id, channel_id=ch.id, cell=0, number=1, slug="alpha"))
         db.session.commit()
         p = Programme.query.one()
-        assert p.release_state == "released" and p.release_at is None
+        assert p.release_state == "withheld" and p.release_at is None, "a new programme is off air until the crew puts it on"
         for bad in (
             dict(challenge_id=a.id, channel_id=ch.id, cell=1, number=2, slug="beta"),  # the same challenge twice
             dict(challenge_id=b.id, channel_id=ch.id, cell=0, number=2, slug="beta"),  # the same cell
@@ -88,7 +88,7 @@ def test_a_programme_belongs_to_one_challenge_one_channel_cell_and_has_a_unique_
             dict(challenge_id=b.id, channel_id=ch.id, cell=1, number=2, slug="beta", release_state="soon"),  # not a state
         ):
             db.session.add(Programme(**bad))
-            with pytest.raises(IntegrityError):
+            with pytest.raises(DBAPIError):
                 db.session.commit()
             db.session.rollback()
         # another channel may use the same cell
@@ -110,11 +110,11 @@ def test_a_void_records_who_when_and_why_and_starts_open():
         v = Void.query.one()
         assert v.outcome == "open" and isinstance(v.voided_at, datetime.datetime) and v.restored_at is None and v.restored_by is None
         db.session.add(Void(challenge_id=chal.id, team_id=team.id, user_id=None, reason="x", outcome="vanished"))
-        with pytest.raises(IntegrityError):
+        with pytest.raises(DBAPIError):
             db.session.commit()
         db.session.rollback()
         db.session.add(Void(challenge_id=chal.id, team_id=team.id, user_id=None, reason=None))
-        with pytest.raises(IntegrityError):
+        with pytest.raises(DBAPIError):
             db.session.commit()  # a reason is required
         db.session.rollback()
     destroy_ctfd(app)
@@ -135,7 +135,7 @@ def test_a_bonus_is_tied_to_one_award_and_is_for_a_team_or_a_member():
             dict(award_id=gen_award(db, user_id=uid, team_id=team.id, value=1).id, team_id=team.id, user_id=uid, scope="everyone", message="m"),
         ):
             db.session.add(Bonus(**bad))
-            with pytest.raises(IntegrityError):
+            with pytest.raises(DBAPIError):
                 db.session.commit()
             db.session.rollback()
     destroy_ctfd(app)

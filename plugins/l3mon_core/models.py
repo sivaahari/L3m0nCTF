@@ -1,10 +1,11 @@
-"""The five tables of the SP3 design (section 4). Created by migrations/ on MariaDB and by create_all on SQLite (CTFd's own rule).
+"""The tables of the SP3 design (section 4: five, and the audit trail of 3.2). Created by migrations/ on MariaDB and by create_all on SQLite (CTFd's own rule).
 
     l3mon_channel    a channel of the broadcast: its look, its storyline, its sponsor if it has one, and whether it is on air
     l3mon_programme  the place of one challenge in one channel (cell, number, address) and whether it is on air
     l3mon_void       a solve set aside by Revoke: who, when, why, and what happened to it since (nothing is deleted)
     l3mon_bonus      the private note behind a "Bonus" award: for the team or for one member
     l3mon_note       a private line for one studio (every void and bonus writes one)
+    l3mon_audit      who did what to which target, and why: one line for every admin action (added by the second migration)
 
 Times are naive UTC, like CTFd's. The words a column may hold are enforced by the database (CHECK), so no code path can store
 a state that no query knows about. The migration (migrations/) must say exactly the same; test_migration_mariadb.py proves it.
@@ -36,7 +37,7 @@ class Channel(db.Model):
     kind = db.Column(db.String(16), nullable=False, default="standard")
     sponsor_name = db.Column(db.String(80))
     sponsor_logo = db.Column(db.String(128))
-    release_state = db.Column(db.String(16), nullable=False, default="released")
+    release_state = db.Column(db.String(16), nullable=False, default="withheld")  # off air until the crew puts it on
     release_at = db.Column(db.DateTime)
 
 
@@ -52,7 +53,7 @@ class Programme(db.Model):
     cell = db.Column(db.Integer, nullable=False)
     number = db.Column(db.Integer, nullable=False, unique=True)
     slug = db.Column(db.String(48), nullable=False, unique=True)
-    release_state = db.Column(db.String(16), nullable=False, default="released")
+    release_state = db.Column(db.String(16), nullable=False, default="withheld")  # off air until the crew puts it on
     release_at = db.Column(db.DateTime)
 
 
@@ -93,3 +94,14 @@ class Note(db.Model):
     title = db.Column(db.String(100), nullable=False)
     text = db.Column(db.String(500), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
+
+
+class Audit(db.Model):
+    __tablename__ = "l3mon_audit"
+    id = db.Column(db.Integer, primary_key=True)
+    at = db.Column(db.DateTime, nullable=False, default=_utcnow)
+    actor_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    actor_name = db.Column(db.String(80), nullable=False)  # kept when the account is deleted later
+    action = db.Column(db.String(40), nullable=False)
+    target = db.Column(db.String(100), nullable=False)
+    detail = db.Column(db.String(500), nullable=False, default="")

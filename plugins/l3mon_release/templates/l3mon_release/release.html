@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+
+{% block stylesheets %}
+	<link rel="stylesheet" href="{{ request.script_root }}/plugins/l3mon_release/assets/release.css">
+{% endblock %}
+
+{% block content %}
+	<div class="jumbotron">
+		<div class="container">
+			<h1>Release control</h1>
+			<p class="lead mb-0">What players can see, and when. Times are in India (IST).</p>
+		</div>
+	</div>
+	<div class="container">
+		<noscript><div class="alert alert-warning">This page needs JavaScript to read and change the plan.</div></noscript>
+		<div id="release-app" data-api="{{ request.script_root }}/api/v1/l3mon/admin/release">
+			<p id="release-status" role="status" aria-live="polite">Loading the plan…</p>
+		</div>
+	</div>
+{% endblock %}
+
+{% block scripts %}
+	<script defer src="{{ request.script_root }}/plugins/l3mon_release/assets/release.js"></script>
+{% endblock %}

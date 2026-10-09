@@ -98,6 +98,40 @@ def test_ordinary_pages_and_public_reads_still_work_from_anywhere(outside):
     assert NGINX_ERROR_PAGE not in body  # an ordinary form post is CTFd's business, not nginx's
 
 
+# ------------------------------------------------ the crew's release API (SP3 part 3.2)
+
+CREW_CALLS = [
+    ("GET", "/api/v1/l3mon/admin/release"),
+    ("PUT", "/api/v1/l3mon/admin/release"),
+    ("PUT", "/api/v1/l3mon/admin/programmes"),
+    ("POST", "/api/v1/l3mon/admin/release"),
+    ("DELETE", "/api/v1/l3mon/admin/release"),
+    ("GET", "/api/v1/l3mon/admin"),
+    ("GET", "/api/v1/l3mon/admin/anything/else"),
+]
+
+
+def test_the_crews_release_api_is_refused_outside_the_list_for_every_method(outside):
+    """api-player-writes-l3mon.conf lets a signed-in player write anywhere under /api/v1/l3mon/; the crew's prefix must win."""
+    for method, path in CREW_CALLS:
+        status, _, body = t.request(path, method=method, headers={"Content-Type": "application/json"}, body=b"{}" if method != "GET" else None)
+        assert refused_by_nginx(status, body, 403), (method, path, status)
+
+
+def test_the_crews_release_page_is_refused_outside_the_list(outside):
+    for path in ("/admin/l3mon/release", "/plugins/l3mon_release/assets/release.js"):
+        status, _, body = t.request(path)
+        if path.startswith("/admin"):
+            assert refused_by_nginx(status, body, 403), (path, status)
+        else:
+            assert status in (302, 403), (path, status)  # CTFd sends a visitor to sign in
+
+
+def test_a_players_own_writes_under_the_l3mon_prefix_still_reach_ctfd_from_anywhere(outside):
+    status, _, body = t.request("/api/v1/l3mon/board/attempt", method="POST", headers={"Content-Type": "application/json"}, body=b"{}")
+    assert NGINX_ERROR_PAGE not in body, status  # CTFd answers (there is no such route yet), nginx does not refuse it
+
+
 # ------------------------------------------------ multipart bodies (audit H2)
 
 def test_multipart_bodies_are_refused_before_ctfd_parses_them_outside_the_list(outside):

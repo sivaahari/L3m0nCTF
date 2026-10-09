@@ -6,7 +6,8 @@ one they saw (they compare for difference, never for order). It has two parts, j
 - a counter in the cache (Redis in production) under `l3mon:ver`, which moves on every committed change players can see;
 - the phase of the broadcast (before, live, paused, ended, and frozen), because the clock changes the picture with nothing
   committed at all: 09:00 IST, the end and the freeze second are moments, not writes. Later plugins add their own part with
-  `add_signature_part` (3.2 adds the release signature, for scheduled drops).
+  `add_signature_part` (none yet: release control needs none, because the scheduler applies a due drop inside the request that
+  notices it and moves the counter at once).
 
 The counter:
 - starts at a random big number, so if the cache is flushed or restarted the new number is never the one a client holds;

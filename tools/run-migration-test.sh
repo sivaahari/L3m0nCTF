@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Run the tests that need a real MariaDB and a real Redis, in the platform image, against throwaway containers.
 #
-#   tools/run-migration-test.sh [IMAGE] [-- PYTEST_ARGS...]   IMAGE defaults to l3mon/ctfd:dev (also when only `-- ...` is given); PYTEST_ARGS replace the default two test files
+#   tools/run-migration-test.sh [IMAGE] [-- PYTEST_ARGS...]   IMAGE defaults to l3mon/ctfd:dev (also when only `-- ...` is given); PYTEST_ARGS replace the default three test files
 #   L3MON_MOUNT_PLUGINS=1 tools/run-migration-test.sh     test the working-tree plugins instead of the ones baked into the image
 #
-# What it proves (SQLite, the default test database, cannot): the l3mon_core migration builds the schema the models describe,
-# the database refuses what the models refuse, the migration is safe to run twice and rolls back, and the tick counter is
-# atomic and never expires on a real Redis. The containers and the network are removed at the end, even when a test fails.
+# What it proves (SQLite, the default test database, cannot): the l3mon_core migrations build the schema the models describe,
+# the database refuses what the models refuse, the migrations are safe to run twice and roll back, the tick counter is
+# atomic and never expires on a real Redis, and eight workers meeting one scheduled drop show it, announce it and record it once. The containers and the network are removed at the end, even when a test fails.
 set -euo pipefail
 
 if [[ "${1:-}" == "--" ]]; then
@@ -17,7 +17,7 @@ else
 fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
 targets=("$@")
-if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py); fi
+if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py); fi
 name="l3mon-realdb-$$"
 export MSYS_NO_PATHCONV=1
 

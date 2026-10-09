@@ -91,6 +91,8 @@ def test_preset_configs_are_the_keys_ctfd_reads():
         "score_visibility": "public",
         "registration_visibility": "public",
         "verify_emails": True,
+        "view_after_ctf": True,
+        "view_self_submissions": False,
     }
 
 

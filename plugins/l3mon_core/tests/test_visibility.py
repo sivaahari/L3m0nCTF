@@ -110,20 +110,49 @@ def test_holding_back_or_deleting_a_challenge_changes_the_answer_at_once():
     destroy_ctfd(app)
 
 
-def test_the_set_is_one_query_however_many_challenges_there_are():
+def test_the_number_of_queries_does_not_grow_with_the_number_of_challenges():
+    """Two without a plan (the challenges, and whether a plan is in use); with one, a few more (the plan's rows and the clock's settings)."""
+    from CTFd.plugins.l3mon_core.models import Channel, Programme
+
     app = create_ctfd(enable_plugins=True)
     with app.app_context():
-        for i in range(12):
-            gen_challenge(db, name=f"c{i}", state="visible" if i % 3 else "hidden")
         statements = []
 
         def count(conn, cursor, statement, parameters, context, executemany):
             statements.append(statement)
 
-        event.listen(db.engine, "before_cursor_execute", count)
-        try:
-            ids = visible_challenge_ids()
-        finally:
-            event.remove(db.engine, "before_cursor_execute", count)
-        assert len(ids) == 8 and len(statements) == 1
+        def asked():
+            statements.clear()
+            event.listen(db.engine, "before_cursor_execute", count)
+            try:
+                ids = visible_challenge_ids()
+            finally:
+                event.remove(db.engine, "before_cursor_execute", count)
+            return ids, len(statements)
+
+        for i in range(12):
+            gen_challenge(db, name=f"c{i}", state="visible" if i % 3 else "hidden")
+        ids, small = asked()
+        assert len(ids) == 8 and small <= 2
+        for i in range(12, 40):
+            gen_challenge(db, name=f"c{i}", state="visible" if i % 3 else "hidden")
+        _, big = asked()
+        assert big == small, "the same number of queries for 40 challenges as for 12"
+
+        ch = Channel(slug="street", name="Street", release_state="released")
+        db.session.add(ch)
+        db.session.commit()
+        for n, chal in enumerate(Challenges.query.all()):
+            db.session.add(Programme(challenge_id=chal.id, channel_id=ch.id, cell=n, number=n + 1, slug=f"p{n}", release_state="released"))
+        db.session.commit()
+        asked()  # the first look also reads the clock's settings, which CTFd then keeps in its cache
+        ids, with_plan = asked()
+        assert len(ids) == 26 and with_plan <= 3
+        for n in range(40, 70):
+            chal = gen_challenge(db, name=f"c{n}")
+            Challenges.query.filter_by(id=chal.id).update({"state": "visible"})  # a new challenge starts hidden once a plan exists
+            db.session.add(Programme(challenge_id=chal.id, channel_id=ch.id, cell=n, number=n + 1, slug=f"p{n}", release_state="released"))
+        db.session.commit()
+        ids, more = asked()
+        assert len(ids) == 56 and more == with_plan, "with a plan, too, thirty more challenges cost no more queries"
     destroy_ctfd(app)

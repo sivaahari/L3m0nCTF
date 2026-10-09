@@ -106,6 +106,13 @@ def preset_configs(data: dict) -> dict:
         "score_visibility": vis["scores"],
         "registration_visibility": vis["registration"],
         "verify_emails": acc["verify_emails"],
+        # After the end every programme on the release plan is on air again ("You can still read every programme", the approved
+        # demo); CTFd only lets players open challenges after the end when this is on. CTFd still answers a flag sent after the
+        # end ("correct" or "incorrect") but records nothing, and hints cost nothing then.
+        "view_after_ctf": True,
+        # Off, and fixed: with it on, a team can read the name, category and value of a programme it once tried and the crew has
+        # since withheld, through /api/v1/users/me/submissions (found by the independent review of SP3 part 3.2).
+        "view_self_submissions": False,
     }
 
 

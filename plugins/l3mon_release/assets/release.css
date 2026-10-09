@@ -1,0 +1,18 @@
+#release-app .rc-bar { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1rem; }
+#release-app .rc-bar input[type="text"] { flex: 1 1 18rem; max-width: 32rem; }
+#release-app .rc-summary { margin: 0; font-weight: 600; }
+#release-app .rc-channel { border: 1px solid rgba(128, 128, 128, .35); border-radius: .35rem; margin-bottom: 1.25rem; }
+#release-app .rc-channel > header { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; padding: .6rem .9rem; background: rgba(128, 128, 128, .12); }
+#release-app .rc-channel h2 { font-size: 1.15rem; margin: 0; flex: 1 1 14rem; }
+#release-app .rc-channel table { margin: 0; }
+#release-app .rc-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+#release-app .rc-when { display: inline-flex; gap: .35rem; align-items: center; }
+#release-app .rc-onair { font-weight: 600; }
+#release-app .rc-off { opacity: .65; }
+#release-app .rc-loose li, #release-app .rc-audit td { word-break: break-word; }
+#release-app .rc-error { color: #b00020; font-weight: 600; }
+@media (max-width: 640px) {
+  #release-app .rc-channel table thead { display: none; }
+  #release-app .rc-channel td { display: block; }
+  #release-app .rc-channel td::before { content: attr(data-label) ": "; font-weight: 600; }
+}

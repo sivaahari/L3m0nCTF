@@ -35,7 +35,7 @@ Status: **draft for the owner's review, 2026-10-07.** It replaces the narrower S
 | 3.0 Demo update | The four visible additions go into the demo first, so you approve how they look: the Sponsored Break channel, a "now 340 TRP (started at 500)" line, a private Bonus line and voided-solve note in the Guide and bell | You have looked at them |
 | 3.1 Foundation | Shared parts: the clock (09:00 IST is 03:30 UTC), who counts, what players may see, the tick counter, the new database tables | The tests pass and CTFd's own 676 tests still pass with our plugins |
 | 3.2 Release control | Channels and programmes, released / withheld / scheduled, the scheduler, the crew's page, "New on air", and every door that could leak a withheld challenge closed | One test per door; each test fails when its guard is removed |
-| 3.3 Scoring | Dynamic and fixed, recalculation, Revoke and Restore, Bonus, private notes, TRP wording, an audit log of every admin action | Scenario tests for decay, bans, revoke, restore, bonus, ties |
+| 3.3 Scoring | Dynamic and fixed, recalculation, Revoke and Restore, Bonus, private notes, TRP wording; the audit table itself arrived in 3.2, because release control is the first set of admin actions | Scenario tests for decay, bans, revoke, restore, bonus, ties |
 | 3.4 Board and ticks | The board data, the live tick, the extra fields on the programme panel and the flag reply | The answers match the demo's, scenario by scenario |
 | 3.5 Guide, Scoreboard, notifications | Each member's share, channel progress, the top 100, the bell | Same; the scoreboard equals the CTFtime feed row for row |
 | 3.6 Freeze | What the demo does while frozen, from CTFd's freeze time | Same tests, with a freeze time set and unset |
@@ -78,7 +78,7 @@ Everything the design relies on, checked in the pinned image (`ghcr.io/ctfd/ctfd
 |---|---|---|---|
 | A | How to split the code | one big plugin; one plugin per job | **Per job:** `l3mon_core` (shared parts), `l3mon_release`, `l3mon_scoring`, `l3mon_board`. Each is tested alone, and a fault in one is easier to find |
 | B | Snapshot worker and realtime gateway (the old SP3) | build now; leave out | **Leave out for now.** The approved contract polls a tick every 15 s. Answers are cached in Redis, guarded by a lock so one request recomputes and the rest wait. Fewer parts to fail during the 24 hours. Add the worker only if the speed check misses its target |
-| C | How "withheld" works | our own flag; CTFd's `hidden` state | **CTFd's `hidden` state plus guards** on the doors CTFd leaves open, so stock and our endpoints always agree |
+| C | How "withheld" works | our own flag; CTFd's `hidden` state | **CTFd's `hidden` state, derived from the release plan, plus guards** on the doors CTFd leaves open, so stock and our endpoints always agree. The state is never set by hand: a hand-edit that tries to reveal what is not on air is forced back to `hidden`, and a hide in CTFd's own editor becomes a withhold in the plan (3.2, `reconcile.py`) |
 | D | A scheduled drop | a background clock; check on each request | **Check on each request** with one conditional database update. The request that wins announces the drop, so it happens once however many workers run |
 | E | Revoke | CTFd's "mark incorrect"; delete the solve; our own action | **Our own action.** Sets each solve to `discard`, keeps who, when and what they sent, writes an undo record, recalculates, clears caches, writes the audit line. Restore reverses it exactly |
 | F | Bonus | a plain award with the message public; award plus a private note | **Award plus private note.** The award is named "Bonus", so it counts everywhere CTFd counts. The message lives in our table, shown only to that studio and the crew |
@@ -98,27 +98,36 @@ New tables, created by plugin migrations (so they run and roll back with the res
 | `l3mon_void` | challenge, team, member, the set-aside submission, when it was solved, when and by whom voided, the reason, when and by whom restored |
 | `l3mon_bonus` | award id, team, member, scope (`team` or `member`), the message, who gave it, when |
 | `l3mon_note` | studio, title, text, when: a private line for one studio (every void and bonus writes one) |
+| `l3mon_audit` | when, who (the name is copied, so it survives the account), action, target, detail: one line for every admin action, written in the same transaction as the action (second migration, 3.2) |
 
 Built in part 3.1 (`plugins/l3mon_core/models.py` and `migrations/`), proved on a real MariaDB (`tests/test_migration_mariadb.py`): the migration builds exactly the columns, types, keys and `CHECK`s the models describe, the database refuses every row the models refuse (all five `CHECK`s, every duplicate, every missing parent), a deleted challenge takes its programme and its voids with it, a deleted administrator leaves the bonus and the void with nobody as the author, a deleted studio takes its bonuses and notes, two workers running the migration at the same moment both succeed, and the downgrade drops exactly our five tables (rolling back is manual: downgrade, then delete the setting `l3mon_core_alembic_version`).
 
-Settings use CTFd's own `config` table: `l3mon_show_coming_count` (default on); the freeze is CTFd's own `freeze` time. A Redis counter `l3mon:ver` backs the tick, and the number players poll (`tick.signature()`) is that counter joined with the phase (before, live, paused, ended, frozen) and the parts later plugins add (3.2: the release signature), because the clock changes the picture with nothing committed; the clients compare it for *difference*, so a restart that resets the counter (it starts again at a random big number) is harmless. The counter moves once for every committed change a player can see, including bulk deletes, and inside a web request when the request ends, after CTFd has cleared its own caches.
+Settings use CTFd's own `config` table: `l3mon_show_coming_count` (default on); the freeze is CTFd's own `freeze` time. A Redis counter `l3mon:ver` backs the tick, and the number players poll (`tick.signature()`) is that counter joined with the phase (before, live, paused, ended, frozen) and the parts later plugins add (none so far: release control moves the counter at once), because the clock changes the picture with nothing committed; the clients compare it for *difference*, so a restart that resets the counter (it starts again at a random big number) is harmless. The counter moves once for every committed change a player can see, including bulk deletes, and inside a web request when the request ends, after CTFd has cleared its own caches.
 
 The channel and programme data comes from the author kit's `l3mon:` block. SP3 adds an admin-only bulk call (`PUT /api/v1/l3mon/admin/programmes`) for the sync tool and a page to edit it by hand.
 
 ## 5. The doors that must stay shut
 
-A withheld programme does not exist for players. One test per door compares the answer with the answer for an id that never existed (request id aside), and **each test is also run with its guard switched off to prove it can fail.**
+A withheld programme does not exist for players. One test per door compares the answer with the answer for an id that never existed (the echoed address aside), carries a **control** (the same request about a programme that is on air succeeds, so the test cannot pass by being refused for another reason), and **is run a second time with its guard switched off to prove it can fail** (`plugins/l3mon_release/tests/test_doors.py`).
 
-1. `/api/v1/challenges` (list), `/challenges/<id>`, `/challenges/<id>/solves`, `/challenges/<id>/files`, `/challenges/<id>/hints`
-2. `/api/v1/hints/<id>` and `POST /api/v1/unlocks`
-3. `/api/v1/teams/<id>/solves`, `/teams/<id>/awards`, `/teams/<id>/fails`, and the same three for users (leaks 1 and 2)
-4. The team and user pages (`/teams/<id>`, `/users/<id>`)
-5. `/api/v1/scoreboard` and `/scoreboard/top/<n>` (their per-challenge solve lists)
-6. Signed file links made while a programme was released
-7. Instance routes (SP4 plugs in here) and the flag box: a correct flag for a withheld programme is refused and records nothing
-8. Notification text, and the "New on air" lines, which name only counts
-9. Our own board, Guide, scoreboard and notification endpoints, which carry only visible programmes, and counts that match what players can see
-10. Private notes and bonus messages: another studio's request gets nothing
+The list below is what was found by asking every route of stock CTFd 3.8.8 about a challenge that was visible, solved by a team (with a hint unlocked, a wrong flag, a rating and a signed file link) and then set to `hidden` (2026-10-09). The first version of this section was written from memory and was partly wrong; this one is measured.
+
+| Route | Stock CTFd 3.8.8 with the challenge `hidden` | What 3.2 does |
+|---|---|---|
+| `GET /api/v1/challenges` (also searched by `q`, `name`, `category`) | not listed | nothing; the state is derived from the plan, so the list always agrees |
+| `GET /api/v1/challenges/<id>`, `/solves`, `/solution`; `GET /api/v1/hints/<id>`; `POST /api/v1/unlocks`; `POST /api/v1/challenges/attempt`; `PUT /challenges/<id>/ratings` | the same answer as for an id that never existed | nothing; the test proves it, and fails when the state is not derived |
+| `/challenges/<id>/files`, `/tags`, `/topics`, `/hints`, `/flags`, `/requirements`, `/ratings`; `/api/v1/statistics/*`, `/awards`, `/submissions`, `/comments`, `/tags`, `/topics`, `/files`, `/flags`, `/hints`, `/unlocks`, `/solutions` | administrators only | nothing |
+| `/api/v1/scoreboard` | no challenge at all | nothing |
+| **`/api/v1/scoreboard/top/<n>`** | the score history carries the **id** (and so the value) of every solved challenge; only awards have none | the id of a challenge the viewer may not see is blanked (the steps stay: points are kept on a pull-back) |
+| **`/api/v1/teams/<id>/solves`, `/awards`, `/users/<id>/solves`, `/awards`, and the `me` lists** | name, category and value of the challenge, and "Hint for <name>", to any signed-in player | the six model getters are wrapped: entries about a challenge the viewer may not see are left out |
+| **`/teams/<id>`, `/users/<id>`, `/team`, `/user`** (pages) | the same names in the solve list | the same wrap |
+| **`/files/<path>`, plain or with a signed link** | served to any signed-in visitor; the link works for anybody; no look at the challenge | 404, like a file that does not exist, unless the challenge is visible and on air |
+| **`POST /api/v1/unlocks`** with `type` set to any table name other than `hints` or `solutions` | CTFd checks a challenge's state only for the types that have a challenge, so a withheld id answered 400 and a missing one 404, and a loop counted the rows of every table, our audit trail included | any other type answers CTFd's own 404 (found by the independent review) |
+| **`next_id` in `GET /api/v1/challenges/<id>`** | an administrator can point "next challenge" at a withheld one, and its id is then in the JSON | blanked unless the viewer may see that challenge |
+| `/api/v1/users/me/submissions` | with CTFd's `view_self_submissions` on, the name, category and value of a withheld programme the team once tried | the setting is pinned off in the event settings |
+| **`/share/*`, `POST /api/v1/shares`** | any signed-in player can sign a share link for any user and challenge; the public link prints the challenge's name and value | closed outright (404): the platform has no use for it |
+
+Doors that arrive with later parts: our own board, Guide, scoreboard and notification endpoints (they carry only visible programmes and counts that match what players can see; 3.4 and 3.5), the instance routes (SP4 plugs into the pull-back handler that 3.2 provides), and private notes and bonus messages (3.3). The "New on air" lines name only counts.
 
 ## 6. How we prove it
 
