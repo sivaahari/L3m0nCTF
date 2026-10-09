@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+
+{% block stylesheets %}
+	<link rel="stylesheet" href="{{ request.script_root }}/plugins/l3mon_scoring/assets/scoring.css">
+{% endblock %}
+
+{% block content %}
+	<div class="jumbotron">
+		<div class="container">
+			<h1>Scoring</h1>
+			<p class="lead mb-0">What each programme is worth, and the crew's tools to put it right: set a broken challenge's solves aside, give a bonus. Times are in India (IST).</p>
+		</div>
+	</div>
+	<div class="container">
+		<noscript><div class="alert alert-warning">This page needs JavaScript to read and change the scores.</div></noscript>
+		<div id="scoring-app" data-api="{{ request.script_root }}/api/v1/l3mon/admin/scoring">
+			<p id="scoring-status" role="status" aria-live="polite">Loading the scores…</p>
+		</div>
+	</div>
+{% endblock %}
+
+{% block scripts %}
+	<script defer src="{{ request.script_root }}/plugins/l3mon_scoring/assets/scoring.js"></script>
+{% endblock %}

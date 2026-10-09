@@ -19,6 +19,7 @@ from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.airing import entry_on_air, to_epoch
 from CTFd.plugins.l3mon_core.clock import current_phase, ist_text, window
 from CTFd.plugins.l3mon_core.models import Channel, Programme
+from CTFd.plugins.l3mon_core.text import UNSAFE_MESSAGE, UNSAFE_TEXT, plain_text  # noqa: F401  (the rule moved to core; the names stay importable from here)
 
 MAX_CHANGES = 200
 MAX_CHANNELS = 20
@@ -26,11 +27,6 @@ MAX_PROGRAMMES = 400
 MAX_AHEAD = 30 * 24 * 3600  # a scheduled drop may be at most this far away: a typo for a year never schedules anything
 MAX_REASON = 200
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-# Characters that would make text something other than text when a notification or a page renders it as markup, a link or a
-# template ({ctf_name}). The plan refuses them in the words players read (a channel's name, its storyline, a sponsor's name), and
-# the announcement drops them again in case a row got there some other way.
-UNSAFE_TEXT = re.compile(r"[<>\[\]{}*_`\\#|~\x00-\x1f]|//")
-UNSAFE_MESSAGE = "may not contain < > [ ] { } * _ ` \\ # | ~ or //"
 MODES = {"release": "released", "withhold": "withheld", "schedule": "scheduled"}
 KINDS = ("standard", "sponsored")
 
@@ -47,11 +43,6 @@ class Problems(dict):
 
 def _whole(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
-
-
-def plain_text(value: str) -> str:
-    """The text with every character that could turn it into markup taken out."""
-    return UNSAFE_TEXT.sub("", value)
 
 
 def _text(problems, field, value, limit, required=False, allow_null=True, plain=False):

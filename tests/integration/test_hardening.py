@@ -108,6 +108,13 @@ CREW_CALLS = [
     ("DELETE", "/api/v1/l3mon/admin/release"),
     ("GET", "/api/v1/l3mon/admin"),
     ("GET", "/api/v1/l3mon/admin/anything/else"),
+    # scoring (SP3 part 3.3): the same prefix, so the same rule
+    ("GET", "/api/v1/l3mon/admin/scoring"),
+    ("POST", "/api/v1/l3mon/admin/scoring/revoke"),
+    ("POST", "/api/v1/l3mon/admin/scoring/restore"),
+    ("POST", "/api/v1/l3mon/admin/scoring/bonus"),
+    ("POST", "/api/v1/l3mon/admin/scoring/recalculate"),
+    ("PUT", "/api/v1/l3mon/admin/scoring/bonus"),
 ]
 
 
@@ -118,8 +125,8 @@ def test_the_crews_release_api_is_refused_outside_the_list_for_every_method(outs
         assert refused_by_nginx(status, body, 403), (method, path, status)
 
 
-def test_the_crews_release_page_is_refused_outside_the_list(outside):
-    for path in ("/admin/l3mon/release", "/plugins/l3mon_release/assets/release.js"):
+def test_the_crews_release_and_scoring_pages_are_refused_outside_the_list(outside):
+    for path in ("/admin/l3mon/release", "/plugins/l3mon_release/assets/release.js", "/admin/l3mon/scoring", "/plugins/l3mon_scoring/assets/scoring.js"):
         status, _, body = t.request(path)
         if path.startswith("/admin"):
             assert refused_by_nginx(status, body, 403), (path, status)

@@ -28,8 +28,9 @@ from CTFd.models import Challenges, Notifications, db
 from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.airing import is_on_air, on_air_ids, release_active
 from CTFd.plugins.l3mon_core.clock import current_phase, now
+from CTFd.plugins.l3mon_core import locks
 from CTFd.plugins.l3mon_core.models import Channel, Programme
-from CTFd.plugins.l3mon_release.plan import plain_text
+from CTFd.plugins.l3mon_core.text import plain_text
 from CTFd.plugins.l3mon_core.tick import tick
 from CTFd.schemas.notifications import NotificationSchema
 from CTFd.utils.user import is_admin
@@ -81,17 +82,9 @@ def _claim(challenge_id, target) -> bool:
 
 
 def serialize():
-    """Take the plan's lock, and with it a fresh view of the database. Everything that changes the plan or acts on it (the crew's
-    calls, a reconcile by the scheduler) takes this FIRST, so two of them never run at once against each other's stale view.
-
-    The lock is a row lock (SELECT ... FOR UPDATE) on the lowest channel, held until the transaction ends; it blocks only the
-    others that ask for it, never a player's read. The commit before it ends the read transaction CTFd's own request hooks may have
-    started: MariaDB's default isolation (REPEATABLE READ) shows a transaction the data as it was at its first plain read, and a
-    reconcile that judged the plan from such an old view could skip a change another worker had made in between (found by the
-    independent review). The locking read itself starts no view, so the first plain read after it sees everything committed
-    before the lock was won. On SQLite (the tests) there is one writer at a time and the lock does nothing."""
-    db.session.commit()
-    db.session.query(Channel.id).order_by(Channel.id).limit(1).with_for_update().first()
+    """Take the plan's lock (the shared one, in l3mon_core.locks, where its reasoning is written) and with it a fresh view of the
+    database. Everything that changes the plan or acts on it takes this FIRST."""
+    locks.serialize()
 
 
 def reconcile(t=None, system=False, locked=False) -> Result:

@@ -95,3 +95,18 @@ def test_recent_lines_come_newest_first_and_no_more_than_asked():
         assert lines[0]["actor"] == "system"
         assert len(audit.recent()) == 5
     destroy_ctfd(app)
+
+
+def test_recent_can_be_limited_to_one_family_of_actions():
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        for action in ("release.set", "scoring.revoke", "scoring.bonus", "release.drop", "scoring.restore"):
+            audit.record(action, "t", action)
+        db.session.commit()
+        assert [l["action"] for l in audit.recent(10, prefix="scoring.")] == ["scoring.restore", "scoring.bonus", "scoring.revoke"]
+        assert [l["action"] for l in audit.recent(2, prefix="scoring.")] == ["scoring.restore", "scoring.bonus"]
+        assert [l["action"] for l in audit.recent(10, prefix="release.")] == ["release.drop", "release.set"]
+        assert audit.recent(10, prefix="nothing.") == []
+        assert len(audit.recent(10)) == 5
+        assert [l["action"] for l in audit.recent(10, prefix="scoring_")] == [], "an underscore in the prefix is a letter, not a wildcard"
+    destroy_ctfd(app)

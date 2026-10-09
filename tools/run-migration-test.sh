@@ -6,7 +6,7 @@
 #
 # What it proves (SQLite, the default test database, cannot): the l3mon_core migrations build the schema the models describe,
 # the database refuses what the models refuse, the migrations are safe to run twice and roll back, the tick counter is
-# atomic and never expires on a real Redis, and eight workers meeting one scheduled drop show it, announce it and record it once. The containers and the network are removed at the end, even when a test fails.
+# atomic and never expires on a real Redis, and eight workers meeting one scheduled drop show it, announce it and record it once, eight workers revoking or restoring one challenge act once each, a Revoke and a Restore started together end consistent, and a ban corrects a dynamic value in the same commit. The containers and the network are removed at the end, even when a test fails.
 set -euo pipefail
 
 if [[ "${1:-}" == "--" ]]; then
@@ -17,7 +17,7 @@ else
 fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
 targets=("$@")
-if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py); fi
+if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py /l3mon_tests/l3mon_scoring/test_voids_mariadb.py); fi
 name="l3mon-realdb-$$"
 export MSYS_NO_PATHCONV=1
 

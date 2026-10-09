@@ -33,6 +33,11 @@ def _signed_in_user():
         return None
 
 
+def acting_user():
+    """Who is acting: the signed-in user of this request, or None (a script, the clock). The same rule `record` uses."""
+    return _signed_in_user()
+
+
 def record(action, target, detail="", actor=None, system=False) -> Audit:
     """Add one line to the current transaction. `actor` is a Users row; by default the signed-in user, else `system`.
     `system=True` says the clock or the platform did it, whoever happens to be signed in on the request that noticed."""
@@ -48,9 +53,13 @@ def record(action, target, detail="", actor=None, system=False) -> Audit:
     return line
 
 
-def recent(limit=20) -> list:
-    """The newest lines first, as plain dictionaries (`at` is a UTC epoch second)."""
-    rows = Audit.query.order_by(Audit.id.desc()).limit(max(1, int(limit))).all()
+def recent(limit=20, prefix=None) -> list:
+    """The newest lines first, as plain dictionaries (`at` is a UTC epoch second). `prefix` limits them to one family of actions
+    ("scoring."); it is matched literally."""
+    query = Audit.query
+    if prefix:
+        query = query.filter(Audit.action.startswith(prefix, autoescape=True))
+    rows = query.order_by(Audit.id.desc()).limit(max(1, int(limit))).all()
     return [
         {
             "id": row.id,

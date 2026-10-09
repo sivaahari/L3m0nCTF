@@ -1,0 +1,21 @@
+#scoring-app .sc-bar { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1rem; }
+#scoring-app .sc-bar input[type="text"] { flex: 1 1 20rem; max-width: 34rem; }
+#scoring-app .sc-summary { margin: 0; font-weight: 600; }
+#scoring-app section { border: 1px solid rgba(128, 128, 128, .35); border-radius: .35rem; margin-bottom: 1.25rem; }
+#scoring-app section > h2 { font-size: 1.15rem; margin: 0; padding: .6rem .9rem; background: rgba(128, 128, 128, .12); }
+#scoring-app section > p { margin: 0; padding: .6rem .9rem 0; }
+#scoring-app section table { margin: 0; }
+#scoring-app .sc-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+#scoring-app .sc-differs { color: #b00020; font-weight: 600; }
+#scoring-app .sc-form { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: flex-end; padding: .9rem; }
+#scoring-app .sc-form label { display: flex; flex-direction: column; font-weight: 600; font-size: .9rem; gap: .2rem; }
+#scoring-app .sc-form .sc-message { flex: 1 1 18rem; }
+#scoring-app .sc-form .sc-message input { width: 100%; }
+#scoring-app td { word-break: break-word; }
+#scoring-app .sc-error { color: #b00020; font-weight: 600; }
+#scoring-app .sc-muted { opacity: .65; }
+@media (max-width: 640px) {
+  #scoring-app section table thead { display: none; }
+  #scoring-app section td { display: block; }
+  #scoring-app section td::before { content: attr(data-label) ": "; font-weight: 600; }
+}
