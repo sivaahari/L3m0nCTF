@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from CTFd.cache import clear_challenges, clear_standings
-from CTFd.models import Solves, Submissions, Teams, db
+from CTFd.models import Awards, Notifications, Solves, Submissions, Teams, Unlocks, Users, db
 from CTFd.utils import set_config
 from board_world import T_END, T_LIVE, T_START, clock, make_app, started, team_client
 from tests.helpers import destroy_ctfd, gen_challenge, gen_flag, gen_hint
@@ -40,14 +40,15 @@ def play():
 @pytest.fixture(autouse=True)
 def ctfd_alone(play):
     """Everything in this file is about CTFd by itself, so our decorations and guards are switched off for it."""
-    from CTFd.plugins.l3mon_board import panel, replies
+    from CTFd.plugins.l3mon_board import notices, panel, replies
 
-    kept = dict(panel.ON), dict(replies.ON)
-    panel.ON.update({key: False for key in panel.ON})
-    replies.ON.update({key: False for key in replies.ON})
+    kept = dict(panel.ON), dict(replies.ON), dict(notices.ON)
+    for switches in (panel.ON, replies.ON, notices.ON):
+        switches.update({key: False for key in switches})
     yield
     panel.ON.update(kept[0])
     replies.ON.update(kept[1])
+    notices.ON.update(kept[2])
 
 
 def send(client, cid, flag):
@@ -160,3 +161,56 @@ def test_ctfd_alone_lets_a_studio_spend_TRP_on_a_hint_while_paused_or_after_the_
     with clock(T_LIVE if state == "paused" else T_END + 60):
         r = play.alice.post("/api/v1/unlocks", json={"target": play.ids.hint, "type": "hints"})
     assert r.status_code == 200, (state, r.status_code, r.get_data(as_text=True))
+
+
+# ---- part 3.5: the bell, the standings, a hint's rows (measured 2026-10-10)
+
+def test_the_stock_notifications_routes_are_open_to_a_visitor_and_hand_out_team_addressed_lines_with_dates(play):
+    team_b = Teams.query.filter_by(name="studio-b").one().id
+    db.session.add(Notifications(title="for everyone", content="public"))
+    db.session.add(Notifications(title="for studio b", content="addressed", team_id=team_b))
+    db.session.commit()
+    visitor = play.app.test_client()
+    listing = visitor.get("/api/v1/notifications")
+    assert listing.status_code == 200, "no sign-in is asked for"
+    rows = {row["title"]: row for row in listing.get_json()["data"]}
+    assert set(rows) == {"for everyone", "for studio b"} and rows["for studio b"]["team_id"] == team_b and rows["for studio b"]["date"]
+    assert sorted(rows["for everyone"]) == ["content", "date", "html", "id", "team", "team_id", "title", "user", "user_id"]
+    assert visitor.get(f"/api/v1/notifications/{rows['for studio b']['id']}").get_json()["data"]["content"] == "addressed", "the detail route too"
+    assert visitor.head("/api/v1/notifications").headers["Result-Count"] == "2"
+    assert [r["title"] for r in visitor.get(f"/api/v1/notifications?team_id={team_b}").get_json()["data"]] == ["for studio b"], "and anybody may ask for one studio's lines"
+    page = play.alice.get("/notifications")
+    assert page.status_code == 200 and "for studio b" in page.get_data(as_text=True), "the stock page lists them for any signed-in player"
+
+
+def test_a_since_id_that_is_not_a_number_is_ctfds_own_400(play):
+    r = play.alice.get("/api/v1/notifications?since_id=abc")
+    assert r.status_code == 400 and r.get_json()["errors"] == {"since_id": "value is not a valid integer"}
+
+
+def test_the_standings_rows_have_an_account_a_name_and_a_score_and_no_date_or_solve_count(play):
+    from CTFd.utils.scores import get_standings
+
+    assert send(play.alice, play.ids.chal, "F").get_json()["data"]["status"] == "correct"
+    clear_standings()
+    rows = get_standings(admin=False)
+    assert sorted(rows[0]._fields) == ["account_id", "bracket_id", "bracket_name", "name", "oauth_id", "score"]
+    assert [(r.name, int(r.score)) for r in rows] == [("studio-a", 100)], "a studio with no score is not in the list"
+
+
+def test_a_hint_purchase_makes_an_unlock_and_an_award_named_hint_with_the_negative_cost(play):
+    send(play.alice, play.ids.chal, "F")  # a studio can buy only what its score covers
+    r = play.alice.post("/api/v1/unlocks", json={"target": play.ids.hint, "type": "hints"})
+    assert r.status_code == 200 and sorted(r.get_json()["data"]) == ["date", "id", "target", "team_id", "type", "user_id"]
+    team = Teams.query.filter_by(name="studio-a").one()
+    award = Awards.query.filter_by(team_id=team.id).one()
+    assert (award.category, award.value, award.name.startswith("Hint")) == ("hints", -5, True)
+    assert Unlocks.query.filter_by(team_id=team.id, type="hints").count() == 1
+
+
+def test_a_solve_remembers_the_member_who_sent_the_flag_and_the_captain_is_the_first_member(play):
+    send(play.alice, play.ids.chal, "F")
+    team = Teams.query.filter_by(name="studio-a").one()
+    solve = Solves.query.filter_by(team_id=team.id).one()
+    assert solve.user_id == Users.query.filter_by(name="alice").one().id == team.captain_id
+

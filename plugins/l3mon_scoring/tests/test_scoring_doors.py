@@ -1,5 +1,8 @@
 """The doors: a bonus message and a void reason are for one studio and the crew. No public route says them.
 
+Since SP3 part 3.5 the studio's own bell and Guide DO carry its private lines (that is what they are for): studio A may read them there and
+nowhere else; studio B, a visitor and the crew's lists never do.
+
 The world: studio A solved a programme; the crew set the solve aside with a reason (a private line for A) and later gave A a bonus
 with a message (another private line). Every route a player or a visitor can reach that lists scores, awards, solves, news, pages or
 feeds is then asked as A, as another studio B, as a visitor who is not signed in, and as a crew member, and none of the answers may
@@ -22,6 +25,9 @@ from tests.helpers import destroy_ctfd, gen_notification, login_as_user
 
 MARKERS = ("MARKERVOID", "MARKERBONUS", "checker broke", "found a bug")
 FLAG = "FLAG-DOOR"
+GUIDE, EPG = "/api/v1/l3mon/guide", "/api/v1/l3mon/guide/epg"
+SCOREBOARD, ROWS = "/api/v1/l3mon/scoreboard", "/api/v1/l3mon/scoreboard/rows"
+ITS_OWN = {"studio A": {"/api/v1/notifications", GUIDE}}  # the studio's own bell and Guide are where it reads its private lines
 
 
 @pytest.fixture()
@@ -55,6 +61,7 @@ def routes(ids):
         f"/teams/{ids.a_team}", f"/users/{ids.a_user}", "/team", "/user", "/challenges",
         "/api/v1/challenges", f"/api/v1/challenges/{ids.cid}", f"/api/v1/challenges/{ids.cid}/solves",
         "/ctftime/standings.json", "/ctftime/final-standings.json",
+        GUIDE, EPG, SCOREBOARD, ROWS,
     ]
 
 
@@ -65,6 +72,8 @@ def scan(world):
     extra_for_crew = ["/api/v1/awards", "/api/v1/submissions", "/api/v1/users", "/api/v1/teams"]
     for viewer, client in viewers.items():
         for route in routes(world.ids) + (extra_for_crew if viewer == "crew" else []):
+            if route in ITS_OWN.get(viewer, ()):
+                continue
             body = client.get(route).get_data(as_text=True)
             found += [(viewer, route, m) for m in MARKERS if m.lower() in body.lower()]
     for viewer in ("studio A", "studio B", "visitor"):
@@ -90,6 +99,14 @@ def test_the_control_the_awards_public_title_is_in_the_list(world):
 
 def test_no_route_says_a_message_or_a_reason(world):
     assert scan(world) == []
+
+
+def test_control_the_studio_reads_its_own_private_lines_in_its_bell_and_its_guide_and_in_no_other_studios(world):
+    for route in ITS_OWN["studio A"]:
+        text = world.a.get(route).get_data(as_text=True)
+        assert "MARKERVOID" in text and "MARKERBONUS" in text, route
+        for other in (world.b, world.visitor, world.admin):
+            assert "MARKER" not in other.get(route).get_data(as_text=True), route
 
 
 def test_the_scan_catches_a_message_put_into_the_award(world):

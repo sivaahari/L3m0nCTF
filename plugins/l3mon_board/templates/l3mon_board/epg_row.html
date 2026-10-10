@@ -1,0 +1,8 @@
+<div class="epg-row ch-{{ row.class_no }}" role="group" aria-labelledby="epg-ch-{{ row.id }}">
+<h3 class="epg-ch" id="epg-ch-{{ row.id }}"><b class="epg-no">CH {{ row.no }}</b><span class="epg-name">{{ row.name }}</span><span class="epg-meta">{{ row.meta }}</span><span class="epg-soon">{{ row.soon }}</span><span class="epg-ad">{{ row.ad }}</span></h3>
+<div class="epg-cell t-1">{% for b in row.t1 %}<a class="epg-b {{ b.cls }}" href="/board/{{ b.slug }}" aria-label="{{ b.label }}"><span class="epg-n">{{ b.name }}</span><span class="epg-v" aria-hidden="true">{{ b.value }}</span></a>{% endfor %}</div>
+<div class="epg-cell t-2">{% for b in row.t2 %}<a class="epg-b {{ b.cls }}" href="/board/{{ b.slug }}" aria-label="{{ b.label }}"><span class="epg-n">{{ b.name }}</span><span class="epg-v" aria-hidden="true">{{ b.value }}</span></a>{% endfor %}</div>
+<div class="epg-cell t-3">{% for b in row.t3 %}<a class="epg-b {{ b.cls }}" href="/board/{{ b.slug }}" aria-label="{{ b.label }}"><span class="epg-n">{{ b.name }}</span><span class="epg-v" aria-hidden="true">{{ b.value }}</span></a>{% endfor %}</div>
+<div class="epg-cell t-4">{% for b in row.t4 %}<a class="epg-b {{ b.cls }}" href="/board/{{ b.slug }}" aria-label="{{ b.label }}"><span class="epg-n">{{ b.name }}</span><span class="epg-v" aria-hidden="true">{{ b.value }}</span></a>{% endfor %}</div>
+<div class="epg-cell t-5">{% for b in row.t5 %}<a class="epg-b {{ b.cls }}" href="/board/{{ b.slug }}" aria-label="{{ b.label }}"><span class="epg-n">{{ b.name }}</span><span class="epg-v" aria-hidden="true">{{ b.value }}</span></a>{% endfor %}</div>
+</div>

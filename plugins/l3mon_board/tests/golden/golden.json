@@ -86,6 +86,109 @@
       "kind": "phase_closed",
       "phase": "before"
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "before",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": false,
+      "team": {
+       "name": "studio-a",
+       "score": 0,
+       "place": null,
+       "of": 4,
+       "solves": 0,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 0,
+         "total": 0
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 0
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 0
+        }
+       ]
+      },
+      "story": {
+       "reels": 0,
+       "reels_needed": 0,
+       "on_air": 0
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "before",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 0,
+      "shown": 0,
+      "me": {
+       "name": "studio-a",
+       "score": 0,
+       "pos": null,
+       "of": 0
+      },
+      "rows": []
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": null
+    },
+    {
+     "ask": {
+      "bell": "alice"
+     },
+     "value": []
     }
    ]
   },
@@ -159,6 +262,122 @@
       "http": 404,
       "kind": "not_found"
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 0,
+       "place": null,
+       "of": 4,
+       "solves": 0,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 0,
+       "reels_needed": 3,
+       "on_air": 0
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "Off air for now",
+       "soon": "3 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "Off air for now",
+       "soon": "3 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "Off air for now",
+       "soon": "1 coming up",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -384,6 +603,200 @@
       "http": 404,
       "kind": "not_found"
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 0,
+       "place": null,
+       "of": 4,
+       "solves": 0,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 0,
+       "reels_needed": 3,
+       "on_air": 0
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-open",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, not solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "500",
+          "cls": "is-open",
+          "label": "Moth Cipher, Crypto, easy, 500 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "Off air for now",
+       "soon": "3 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "Off air for now",
+       "soon": "1 coming up",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "epg": "bob"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-open",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, not solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "500",
+          "cls": "is-open",
+          "label": "Moth Cipher, Crypto, easy, 500 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "Off air for now",
+       "soon": "3 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "Off air for now",
+       "soon": "1 coming up",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -520,6 +933,161 @@
         "live": false
        }
       ]
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-open",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, not solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "500",
+          "cls": "is-open",
+          "label": "Moth Cipher, Crypto, easy, 500 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 0,
+       "place": null,
+       "of": 4,
+       "solves": 0,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 0,
+       "reels_needed": 3,
+       "on_air": 0
+      }
      }
     }
    ]
@@ -1056,6 +1624,442 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 600,
+       "place": 1,
+       "of": 4,
+       "solves": 2,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 600,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.25
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 100,
+       "place": 2,
+       "of": 4,
+       "solves": 1,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 1,
+         "trp": 100,
+         "pct": 100
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 1,
+       "reels_needed": 3,
+       "on_air": 0.25
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "cara"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-c",
+       "score": 0,
+       "place": null,
+       "of": 4,
+       "solves": 0,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "cara",
+         "captain": true,
+         "you": true,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 0,
+       "reels_needed": 3,
+       "on_air": 0.25
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 600,
+       "pos": 1,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 600,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 1,
+        "score": 100,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "cara"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-c",
+       "score": 0,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 600,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 1,
+        "score": 100,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "500",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 500 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "epg": "bob"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "500",
+          "cls": "is-open",
+          "label": "Moth Cipher, Crypto, easy, 500 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -1262,6 +2266,104 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 599,
+       "place": 2,
+       "of": 4,
+       "solves": 2,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-b",
+       "score": 599,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 599,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 599,
+        "you": true
+       }
+      ]
+     }
     }
    ]
   },
@@ -1399,6 +2501,104 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "cara"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-c",
+       "score": 0,
+       "place": null,
+       "of": 4,
+       "solves": 0,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "cara",
+         "captain": true,
+         "you": true,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 0,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "cara"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-c",
+       "score": 0,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 599,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 599,
+        "you": false
+       }
+      ]
+     }
     }
    ]
   },
@@ -1415,7 +2615,11 @@
      },
      "value": {
       "http": 200,
-      "kind": "unlocked"
+      "kind": "unlocked",
+      "extra": {
+       "score": 589,
+       "cost": 10
+      }
      }
     },
     {
@@ -1582,6 +2786,112 @@
        "state": "live",
        "frozen": false
       }
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 4,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 599,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
      }
     }
    ]
@@ -1852,6 +3162,226 @@
        }
       ]
      }
+    },
+    {
+     "ask": {
+      "guide": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 639,
+       "place": 1,
+       "of": 4,
+       "solves": 2,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        }
+       ],
+       "bonus": 40,
+       "notes": [
+        {
+         "title": "Bonus +40 TRP",
+         "content": "found a bug"
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 4,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "bell": "bob"
+     },
+     "value": [
+      {
+       "title": "Bonus +40 TRP",
+       "content": "found a bug"
+      }
+     ]
+    },
+    {
+     "ask": {
+      "scoreboard": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-b",
+       "score": 639,
+       "pos": 1,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
     }
    ]
   },
@@ -2038,6 +3568,169 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 4,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -2415,6 +4108,233 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "hal"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-h",
+       "score": 549,
+       "place": null,
+       "of": 3,
+       "solves": 2,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "hal",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 549,
+         "pct": 100
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 1,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "hal"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-h",
+       "score": 549,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "epg": "hal"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-open",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, not solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-solved",
+          "label": "Coffee Break, Misc, easy, 50 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -2621,6 +4541,112 @@
       "phase": {
        "state": "live",
        "frozen": false
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 2,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
       }
      }
     }
@@ -2892,6 +4918,197 @@
        }
       ]
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 2,
+       "solves": 1,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 1,
+         "trp": 499,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 1,
+       "reels_needed": 3,
+       "on_air": 0.17
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "1 on air",
+       "soon": "2 coming up",
+       "ad": "",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
     }
    ]
   },
@@ -3044,6 +5261,169 @@
        }
       ]
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 2,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -3377,6 +5757,307 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 90,
+       "place": 2,
+       "of": 2,
+       "solves": 1,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 1,
+         "trp": 100,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 1,
+       "reels_needed": 3,
+       "on_air": 0.17
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 140,
+       "place": 1,
+       "of": 2,
+       "solves": 1,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 1,
+         "trp": 100,
+         "pct": 100
+        }
+       ],
+       "bonus": 40,
+       "notes": [
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Bonus +40 TRP",
+         "content": "found a bug"
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 1,
+       "reels_needed": 3,
+       "on_air": 0.17
+      }
+     }
+    },
+    {
+     "ask": {
+      "bell": "alice"
+     },
+     "value": [
+      {
+       "title": "Solve voided",
+       "content": ""
+      }
+     ]
+    },
+    {
+     "ask": {
+      "bell": "bob"
+     },
+     "value": [
+      {
+       "title": "Bonus +40 TRP",
+       "content": "found a bug"
+      },
+      {
+       "title": "Solve voided",
+       "content": ""
+      }
+     ]
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 90,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 1,
+        "score": 140,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 1,
+        "score": 90,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "500",
+          "cls": "is-open",
+          "label": "Moth Cipher, Crypto, easy, 500 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
@@ -3710,6 +6391,230 @@
        "frozen": false
       }
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 2,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 639,
+       "place": 1,
+       "of": 2,
+       "solves": 2,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        }
+       ],
+       "bonus": 40,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Bonus +40 TRP",
+         "content": "found a bug"
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "bell": "alice"
+     },
+     "value": [
+      {
+       "title": "Solve voided",
+       "content": ""
+      },
+      {
+       "title": "Solve restored",
+       "content": ""
+      }
+     ]
+    },
+    {
+     "ask": {
+      "bell": "bob"
+     },
+     "value": [
+      {
+       "title": "Bonus +40 TRP",
+       "content": "found a bug"
+      },
+      {
+       "title": "Solve voided",
+       "content": ""
+      },
+      {
+       "title": "Solve restored",
+       "content": ""
+      }
+     ]
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
     }
    ]
   },
@@ -3888,6 +6793,131 @@
       "http": 403,
       "kind": "phase_closed",
       "phase": "paused"
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "paused",
+       "frozen": false
+      },
+      "banner": {
+       "id": "paused",
+       "cls": "banner-warn",
+       "lead": "PAUSED.",
+       "text": "Submissions are paused for a moment. Your progress is safe."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 2,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "paused",
+       "frozen": false
+      },
+      "banner": {
+       "id": "paused",
+       "cls": "banner-warn",
+       "lead": "PAUSED.",
+       "text": "Submissions are paused for a moment. Your progress is safe."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
      }
     }
    ]
@@ -4130,6 +7160,247 @@
       "kind": "phase_closed",
       "phase": "ended"
      }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "ended",
+       "frozen": false
+      },
+      "banner": {
+       "id": "wrap",
+       "cls": "banner-wrap",
+       "lead": "THAT'S A WRAP.",
+       "text": "The broadcast has ended. You can still read every programme."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 589,
+       "place": 2,
+       "of": 2,
+       "solves": 2,
+       "hints_used": 1,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "ended",
+       "frozen": false
+      },
+      "banner": {
+       "id": "wrap",
+       "cls": "banner-wrap",
+       "lead": "THAT'S A WRAP.",
+       "text": "The broadcast has ended. You can still read every programme."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": 2,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "hush_alley",
+          "name": "Hush Alley",
+          "value": "300",
+          "cls": "is-open",
+          "label": "Hush Alley, Forensics, hard, 300 TRP, not solved"
+         }
+        ],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "bell": "alice"
+     },
+     "value": [
+      {
+       "title": "Solve voided",
+       "content": ""
+      },
+      {
+       "title": "Solve restored",
+       "content": ""
+      }
+     ]
     }
    ]
   }

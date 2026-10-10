@@ -10,7 +10,7 @@ Run through tools/run-ctfd-tests.sh:
 import pytest
 
 from CTFd.plugins.l3mon_core import settings
-from CTFd.plugins.l3mon_core.settings import SHOW_COMING_KEY, show_coming_count
+from CTFd.plugins.l3mon_core.settings import AIR_TARGET_KEY, METER_KEY, SHOW_COMING_KEY, show_coming_count, story_air_target, story_meter
 from CTFd.utils import set_config
 from tests.helpers import create_ctfd, destroy_ctfd
 
@@ -63,3 +63,27 @@ def test_a_change_shows_at_once_because_ctfds_own_config_cache_is_cleared():
 def test_the_key_is_the_documented_one_and_there_is_no_second_freeze_switch():
     assert SHOW_COMING_KEY == "l3mon_show_coming_count"
     assert not hasattr(settings, "freeze_enabled") and not hasattr(settings, "FREEZE_KEY"), "the freeze is CTFd's own `freeze` time, nothing else"
+
+
+def test_the_story_meter_is_on_unless_switched_off_and_follows_the_same_spellings():
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        assert story_meter() is True
+        for off in ("0", "false", "no", "off", "maybe"):
+            set_config(METER_KEY, off)
+            assert story_meter() is False, off
+        for on in ("1", "true", "yes", "on", " ON "):
+            set_config(METER_KEY, on)
+            assert story_meter() is True, on
+    destroy_ctfd(app)
+
+
+def test_the_air_target_is_a_whole_number_of_solves_and_0_when_unset_or_unusable():
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        assert story_air_target() == 0
+        for value, want in (("5500", 5500), (" 40 ", 40), (120, 120), ("0", 0), ("-5", 0), ("abc", 0), ("1.5", 0), ("", 0), ("99999999999", 0)):
+            set_config(AIR_TARGET_KEY, value)
+            assert story_air_target() == want, value
+    destroy_ctfd(app)
+

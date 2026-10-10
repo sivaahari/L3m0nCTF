@@ -5,6 +5,8 @@ A success is `{"success": true, "data": ...}`. An error is `{"success": false, "
 compared. Every answer carries `X-Request-Id` equal to the body's `request_id`: a player can quote it and the log line has it.
 Nothing is cached unless the caller gives an ETag (the board), and then only privately: the answer is about one studio.
 """
+import base64
+import hashlib
 import json
 import secrets
 
@@ -48,6 +50,23 @@ def ok_bytes(body: bytes, etag) -> Response:
     response.headers["X-Request-Id"] = request_id()
     response.headers["Vary"] = "Cookie"
     return response
+
+
+def fragment(markup: str, etag) -> Response:
+    """A piece of a page (the programme grid, the scoreboard's rows): HTML with a strong ETag, kept only privately."""
+    response = Response(markup, status=200, mimetype="text/html")
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, no-cache"
+    response.headers["X-Request-Id"] = request_id()
+    response.headers["Vary"] = "Cookie"
+    return response
+
+
+def strong_etag(prefix: str, content) -> str:
+    """`"<prefix><22 characters>"`: a hash of the JSON of `content` with its keys in order, so the same content is always the same tag.
+    The prefix tells the answers apart (g the Guide, s the scoreboard, e the grid, r the rows)."""
+    digest = hashlib.sha256(json.dumps(content, sort_keys=True, separators=(",", ":")).encode()).digest()
+    return '"' + prefix + base64.urlsafe_b64encode(digest).decode().rstrip("=")[:22] + '"'
 
 
 def not_modified(etag) -> Response:

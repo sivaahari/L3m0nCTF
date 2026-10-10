@@ -205,3 +205,21 @@ def test_both_feeds_work_without_signing_in_and_ignore_the_cookie():
         with_cookie = client.get(LIVE, headers={"Cookie": "session=not-a-real-session"}).get_data()
         assert anonymous == with_cookie
     destroy_ctfd(app)
+
+
+def test_before_the_start_the_live_feed_is_empty_whatever_was_given_to_a_studio_as_the_scoreboard_is_and_the_start_opens_it():
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context(), app.test_client() as client:
+        chal = gen_challenge(db, value=100)
+        t = gen_team(db, name="Early", email="e@example.com", member_count=1)
+        gen_solve(db, user_id=t.members[0].id, team_id=t.id, challenge_id=chal.id)
+        gen_award(db, user_id=t.members[0].id, team_id=t.id, value=40, name="a gift before the start")
+        set_config("start", int(time.time()) + 3600)
+        clear_standings()
+        r, data = feed(client)
+        assert r.status_code == 200 and data == {"standings": []}, "nothing is ranked before the broadcast starts"
+        set_config("start", int(time.time()) - 60)
+        clear_standings()
+        _, data = feed(client)
+        assert [(row["team"], row["score"]) for row in data["standings"]] == [("Early", 140)]
+    destroy_ctfd(app)

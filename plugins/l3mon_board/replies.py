@@ -5,6 +5,7 @@ CTFd's own endpoint keeps judging the flag, recording the solve and valuing the 
     correct    {value, reel, reels_needed, channel_signal, channel_complete, first_blood, solves}
     incorrect  {tries_left}                      only when the challenge limits tries
     refused    {reason, [retry_after], [tries_left]}   reason: processing | no_tries | ratelimited | paused | ended
+    unlocked   {score, cost}                     on a bought hint: the studio's TRP after the purchase and what the hint cost
 
 `value` is what the programme is worth after this solve (CTFd has already valued it). `reel` is the studio's solves of programmes
 it can see, `reels_needed` a third of all the cells (rounded up), `channel_signal` the share of the channel's cells that are clear.
@@ -25,7 +26,7 @@ import re
 
 from flask import Response, request
 
-from CTFd.models import Challenges, Solves, Teams, db
+from CTFd.models import Challenges, Hints, Solves, Teams, db
 from CTFd.plugins.l3mon_board import envelope, panel, viewer
 from CTFd.plugins.l3mon_core.clock import current_phase, window
 from CTFd.plugins.l3mon_core.models import Programme
@@ -112,7 +113,25 @@ def _refusal(status, message):
     return None
 
 
+def _unlocked(response):
+    """A bought hint: CTFd's own reply plus the studio's score after the purchase and the hint's cost. Nothing is added to a refusal."""
+    body = response.get_json(silent=True)
+    data = body.get("data") if isinstance(body, dict) else None
+    team = viewer.current_team()
+    if response.status_code != 200 or not isinstance(data, dict) or "l3mon" in data or data.get("type") != "hints" or team is None:
+        return response
+    db.session.commit()  # end the transaction CTFd's purchase ran in, so the score below is read fresh
+    hint = Hints.query.get(data.get("target"))
+    if hint is None:
+        return response
+    data["l3mon"] = {"score": int(team.get_score(admin=True) or 0), "cost": int(hint.cost or 0)}
+    response.set_data(json.dumps(body))
+    return response
+
+
 def decorate(response):
+    if ON["extras"] and request.endpoint == UNLOCK and request.method == "POST":
+        return _unlocked(response)
     if not ON["extras"] or request.endpoint != ATTEMPT or request.method != "POST":
         return response
     body = response.get_json(silent=True)

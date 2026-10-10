@@ -141,9 +141,13 @@ def test_03_revoke_takes_the_trp_off_every_studio_and_nothing_public_says_why(wo
     assert after == {"scoreplayer1-team": 100}, after  # only the fixed challenge is left; CTFd's board lists studios with something
     for session in world.players:
         status, notifications = r.get_json(session, "/api/v1/notifications")
-        assert REASON not in json.dumps(notifications)
+        assert [line["content"] for line in notifications["data"]].count(REASON) == 1, "each studio that lost a solve reads the crew's words, in its own bell and nowhere else"
         status, mine = r.get_json(session, "/api/v1/teams/me/solves")
         assert DYN["name"] not in json.dumps(mine)
+    status, _, public = t.request("/api/v1/notifications")
+    assert status == 401 and REASON not in public.decode("utf-8", "replace"), "a visitor gets nothing"
+    status, stock = r.admin("GET", "/api/v1/notifications")
+    assert status == 200 and REASON not in json.dumps(stock), "the crew's own list is CTFd's public one: the studios' lines are not in it"
     status, view = crew("", method="GET")
     assert [v["outcome"] for v in view["data"]["voids"]] == ["open"] * 3 and view["data"]["audit"][0]["action"] == "scoring.revoke"
     assert before != after
@@ -162,13 +166,15 @@ def test_05_a_bonus_counts_and_only_its_title_is_public(world):
     status, out = crew("/bonus", {"team_id": world.teams[1], "trp": 50, "message": MESSAGE})
     assert status == 200 and out["data"]["title"] == "Bonus +50 TRP", out
     assert scores(world.players[0]) == {"scoreplayer1-team": 595, "scoreplayer2-team": 545, "scoreplayer3-team": 495}
-    for session in world.players:
+    for number, session in enumerate(world.players):
         status, awards = r.get_json(session, f"/api/v1/teams/{world.teams[1]}/awards")
         assert status == 200
         assert [(a["name"], a["value"], a["description"]) for a in awards["data"]] == [("Bonus +50 TRP", 50, "")]
         assert MESSAGE not in json.dumps(awards)
         status, notifications = r.get_json(session, "/api/v1/notifications")
-        assert MESSAGE not in json.dumps(notifications)
+        assert (MESSAGE in json.dumps(notifications)) == (number == 1), "only the studio that was given the bonus reads the message, in its own bell"
+    status, _, public = t.request("/api/v1/notifications")
+    assert MESSAGE not in public.decode("utf-8", "replace")
     status, again = crew("/bonus", {"team_id": world.teams[1], "trp": 50, "message": MESSAGE})
     assert status == 409, again
 

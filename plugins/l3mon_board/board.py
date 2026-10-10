@@ -32,15 +32,21 @@ def _signal(solved, total) -> float:
     return round(solved / total, 2) if total else 0
 
 
+def numbers(team, phase):
+    """-> (score, place, of) for a studio. The score is always live (admin=True ignores the freeze, which CTFd would apply even to its owner).
+    The place is CTFd's own, and the scoreboard's: none while the scoreboard is frozen, and none for a studio with no TRP above zero (it has
+    no row in the list: "Not ranked yet"). `of` is how many studios count (not banned, not hidden)."""
+    score = int(team.get_score(admin=True) or 0)
+    place = None if (phase.frozen or score <= 0) else team.get_place(numeric=True)
+    return score, place, Teams.query.filter_by(hidden=False, banned=False).count()
+
+
 def _team_block(viewer, phase):
     team = viewer.team
     if team is None:
         return None
-    counted = Teams.query.filter_by(hidden=False, banned=False).count()
-    # The studio's own score is always live (admin=True ignores the freeze, which CTFd would apply even to its owner). The place is
-    # CTFd's own; a studio that has scored nothing has no row in the standings, and while the scoreboard is frozen nobody gets one.
-    place = None if phase.frozen else team.get_place(numeric=True)
-    return {"id": team.id, "name": team.name, "score": int(team.get_score(admin=True) or 0), "place": place, "of": counted}
+    score, place, of = numbers(team, phase)
+    return {"id": team.id, "name": team.name, "score": score, "place": place, "of": of}
 
 
 def build(viewer):
@@ -96,7 +102,7 @@ def build(viewer):
             "cold_open": {"panels": panels} if panels else None,
         })
 
-    notif_id, notif_ver = news.state_for(viewer.team)
+    notif_id, notif_ver = news.state_for(viewer)
     data = {
         "ver": signature(), "phase": {"state": phase.state, "frozen": phase.frozen}, "team": _team_block(viewer, phase),
         "channels": channel_rows, "programmes": programmes, "notif_id": notif_id, "notif_ver": notif_ver, "show_coming": show_coming_count(),

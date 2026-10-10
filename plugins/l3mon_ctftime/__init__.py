@@ -5,7 +5,7 @@ plugin serves both in the smallest format CTFtime documents (it warns against se
 
     {"standings": [{"pos": 1, "team": "Team name exactly as registered", "score": 4200}]}
 
-    GET /ctftime/standings.json        the live standings; while the scoreboard is frozen, the frozen ones
+    GET /ctftime/standings.json        the live standings (empty before the start); while the scoreboard is frozen, the frozen ones
     GET /ctftime/final-standings.json  the final standings, only once the event has ended AND an organiser has published them
 
 Public means no sign-in, no personal data (only the public team name and its score) and a short shared cache. The rows come
@@ -20,6 +20,8 @@ import json
 
 from flask import Blueprint, Response
 
+from CTFd.plugins.l3mon_core.clock import current_phase
+from CTFd.plugins.l3mon_core.standings import number, ranked
 from CTFd.utils import get_config
 from CTFd.utils.dates import ctf_ended
 from CTFd.utils.scores import get_standings
@@ -29,20 +31,9 @@ PUBLISH_KEY = "l3mon_final_standings_published"
 feeds = Blueprint("l3mon_ctftime", __name__)
 
 
-def _number(score):
-    """A whole number when the score is one (it nearly always is), otherwise rounded to two places."""
-    value = float(score)
-    return int(value) if value == int(value) else round(value, 2)
-
-
 def rows(standings):
     """The feed's rows from CTFd's standings: only a positive score, ranked in the order CTFd gave (pos counts rows shown)."""
-    out = []
-    for row in standings:
-        if row.score is None or float(row.score) <= 0:
-            continue
-        out.append({"pos": len(out) + 1, "team": row.name, "score": _number(row.score)})
-    return out
+    return [{"pos": pos, "team": row.name, "score": number(row.score)} for pos, row in ranked(standings)]
 
 
 def _published() -> bool:
@@ -57,6 +48,8 @@ def _respond(feed_rows):
 
 @feeds.route("/ctftime/standings.json")
 def live():
+    if current_phase().state == "before":
+        return _respond([])  # nothing is ranked before the broadcast starts, as on the scoreboard
     return _respond(rows(get_standings(admin=False)))
 
 

@@ -272,3 +272,39 @@ def test_a_hint_can_be_bought_while_the_broadcast_is_live_and_the_crew_is_not_bl
         except AttributeError:
             got = None  # CTFd's own route has no studio to charge for a crew account; that is CTFd's, not ours
         assert got != "phase_closed", "the crew is not stopped by the studios' phase rule"
+
+
+# ---- the reply to a bought hint ------------------------------------------------------------------------------------------------
+
+def test_a_bought_hint_keeps_ctfds_reply_and_adds_the_score_after_the_purchase_and_what_it_cost(play):
+    send(play.alice, play.ids.lantern, "lantern-answer")
+    first = play.alice.post("/api/v1/unlocks", json={"target": 1, "type": "hints"})
+    assert first.status_code == 200
+    stock = {"id", "date", "target", "team_id", "type", "user_id"}
+    assert stock <= set(data(first)) and data(first)["target"] == 1 and data(first)["type"] == "hints"
+    assert data(first)["l3mon"] == {"score": 90, "cost": 10}
+    second = play.alice.post("/api/v1/unlocks", json={"target": 2, "type": "hints"})
+    assert data(second)["l3mon"] == {"score": 65, "cost": 25}, "the score the studio holds now, and what this hint cost"
+    assert list(data(second)["l3mon"]) == ["score", "cost"]
+    assert Teams.query.filter_by(name="studio-a").first().get_score(admin=True) == 65
+
+
+def test_the_reply_to_a_bought_hint_never_carries_the_hints_text(play):
+    send(play.alice, play.ids.lantern, "lantern-answer")
+    text = play.alice.post("/api/v1/unlocks", json={"target": 1, "type": "hints"}).get_data(as_text=True)
+    assert "look left" not in text and "content" not in text and "html" not in text
+
+
+def test_a_refused_purchase_gets_no_extra_block(play):
+    send(play.alice, play.ids.lantern, "lantern-answer")
+    assert play.alice.post("/api/v1/unlocks", json={"target": 1, "type": "hints"}).status_code == 200
+    again = play.alice.post("/api/v1/unlocks", json={"target": 1, "type": "hints"})
+    assert again.status_code == 400 and "l3mon" not in again.get_data(as_text=True)
+    broke = play.bob.post("/api/v1/unlocks", json={"target": 2, "type": "hints"})
+    assert broke.status_code == 400 and "l3mon" not in broke.get_data(as_text=True), "not enough TRP is CTFd's own refusal, unchanged"
+
+
+def test_the_whole_studio_is_charged_and_told_the_same_whoever_buys(play):
+    send(play.alice, play.ids.lantern, "lantern-answer")
+    reply = play.abe.post("/api/v1/unlocks", json={"target": 1, "type": "hints"})
+    assert data(reply)["l3mon"] == {"score": 90, "cost": 10}

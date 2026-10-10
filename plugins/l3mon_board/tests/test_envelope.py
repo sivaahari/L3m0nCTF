@@ -92,3 +92,19 @@ def test_a_not_modified_answer_has_no_body_and_keeps_the_etag(app):
 )
 def test_if_none_match_accepts_a_list_weak_forms_and_a_star(header, etag, expected):
     assert envelope.etag_matches(header, etag) is expected
+
+
+def test_a_fragment_is_html_with_a_strong_etag_privately_cached_and_carries_the_request_id(app):
+    with app.test_request_context("/"):
+        response = envelope.fragment("<li>a</li>", '"r1"')
+        assert response.status_code == 200 and response.mimetype == "text/html" and response.charset == "utf-8"
+        assert response.get_data(as_text=True) == "<li>a</li>" and response.headers["ETag"] == '"r1"'
+        assert response.headers["Cache-Control"] == "private, no-cache" and response.headers["Vary"] == "Cookie"
+        assert ID.match(response.headers["X-Request-Id"])
+
+
+def test_a_strong_etag_is_a_prefix_and_22_url_safe_characters_that_follow_the_content_not_the_key_order(app):
+    tag = envelope.strong_etag("s", {"a": 1, "b": [1, 2]})
+    assert re.fullmatch(r'"s[A-Za-z0-9_-]{22}"', tag)
+    assert tag == envelope.strong_etag("s", {"b": [1, 2], "a": 1}) and tag != envelope.strong_etag("s", {"a": 1, "b": [2, 1]})
+    assert envelope.strong_etag("g", {"a": 1, "b": [1, 2]}) != tag

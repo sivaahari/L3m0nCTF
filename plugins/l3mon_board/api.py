@@ -1,15 +1,21 @@
-"""The player endpoints of the board (SP3 part 3.4), read only:
+"""The player endpoints of the board (SP3 parts 3.4 and 3.5), read only:
 
-    GET /api/v1/l3mon/board   the channels, the programmes on air and the studio's own numbers; strong ETag, 304 on a match
-    GET /api/v1/l3mon/ticks   {ver, notif_ver, own}: what the pages poll every 15 seconds
+    GET /api/v1/l3mon/board             the channels, the programmes on air and the studio's own numbers; strong ETag, 304 on a match
+    GET /api/v1/l3mon/ticks             {ver, notif_ver, own}: what the pages poll every 15 seconds
+    GET /api/v1/l3mon/guide             the studio's numbers, its members, the channel progress, the story meter; strong ETag, 304
+    GET /api/v1/l3mon/guide/epg         the programme grid as markup; ETag "e<epg_sig>", 304
+    GET /api/v1/l3mon/scoreboard        "TRP ratings": phase, banner, how many are ranked, the studio's own line; strong ETag, 304
+    GET /api/v1/l3mon/scoreboard/rows   the first 100 rows as markup; ETag "r<rows_sig>", 304
 
-Both need a signed-in account (viewer.player). Nothing here writes.
+All need a signed-in account (viewer.player). Nothing here writes. The bell (`GET /api/v1/notifications?since_id=`) is CTFd's own route,
+answered before CTFd's view runs (notices.py).
 """
 import logging
 
 from flask import Blueprint
 
-from CTFd.plugins.l3mon_board import board, envelope, ticks, viewer
+from CTFd.plugins.l3mon_board import board, envelope, epg, guide, plan, scoreboard, ticks, viewer
+from CTFd.plugins.l3mon_core.clock import current_phase
 
 bp = Blueprint("l3mon_board", __name__, url_prefix="/api/v1/l3mon")
 _log = logging.getLogger("l3mon")
@@ -27,7 +33,46 @@ def get_board():
 @bp.route("/ticks", methods=["GET"])
 @viewer.player
 def get_ticks():
-    return envelope.ok(ticks.answer(viewer.current().team))
+    return envelope.ok(ticks.answer(viewer.current()))
+
+
+@bp.route("/guide", methods=["GET"])
+@viewer.player
+def get_guide():
+    data, etag = guide.build(viewer.current())
+    if envelope.wants(etag):
+        return envelope.not_modified(etag)
+    return envelope.ok(data, etag=etag)
+
+
+@bp.route("/guide/epg", methods=["GET"])
+@viewer.player
+def get_guide_epg():
+    asker = viewer.current()
+    grid = epg.model(plan.read(asker, current_phase()), asker)
+    etag = f'"e{epg.signature(grid)}"'
+    if envelope.wants(etag):
+        return envelope.not_modified(etag)
+    return envelope.fragment(epg.html(grid), etag)
+
+
+@bp.route("/scoreboard", methods=["GET"])
+@viewer.player
+def get_scoreboard():
+    data, etag = scoreboard.answer(scoreboard.read(viewer.current_team()))
+    if envelope.wants(etag):
+        return envelope.not_modified(etag)
+    return envelope.ok(data, etag=etag)
+
+
+@bp.route("/scoreboard/rows", methods=["GET"])
+@viewer.player
+def get_scoreboard_rows():
+    view = scoreboard.read(viewer.current_team())
+    etag = scoreboard.rows_etag(view)
+    if envelope.wants(etag):
+        return envelope.not_modified(etag)
+    return envelope.fragment(scoreboard.html(view), etag)
 
 
 @bp.after_request

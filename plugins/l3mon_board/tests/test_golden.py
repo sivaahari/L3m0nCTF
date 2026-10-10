@@ -15,6 +15,7 @@ Run through tools/run-ctfd-tests.sh:
 import datetime
 import json
 import os
+import re
 
 import pytest
 from freezegun import freeze_time
@@ -27,6 +28,13 @@ from tests.helpers import destroy_ctfd, gen_hint, login_as_user
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 SCORING = "/api/v1/l3mon/admin/scoring"
+GUIDE = "/api/v1/l3mon/guide"
+EPG = "/api/v1/l3mon/guide/epg"
+SCOREBOARD = "/api/v1/l3mon/scoreboard"
+SCOREBOARD_ROWS = "/api/v1/l3mon/scoreboard/rows"
+BELL = "/api/v1/notifications"
+BY_DESIGN = ("Solve voided", "Solve restored")  # the real platform words these two lines itself (the crew's reason, or a fixed sentence): only the title is compared
+STORY_TARGET = 12  # the same target the demo's recorder sets for the story meter
 BEFORE = T_START - 3600
 LIVE = T_START + 60  # minute 0 of the scenario
 
@@ -56,6 +64,7 @@ class Round:
     def build(self):
         s = self.scenario
         set_config("view_after_ctf", True)  # the event settings turn it on (3.2): the programmes can be read after the end
+        set_config("l3mon_story_air_target", STORY_TARGET)
         started()
         with self.at():
             self.admin = login_as_user(self.app, "admin")
@@ -95,6 +104,7 @@ class Round:
                 self.hint_ids[p["slug"]] = [h.id for h in Hints.query.filter_by(challenge_id=self.challenges[p["slug"]]).order_by(Hints.id)]
             self.programme_ids = {row.slug: row.id for row in Programme.query.all()}
             self.channel_ids = {row.slug: row.id for row in Channel.query.all()}
+            self.channel_slug = {row_id: slug for slug, row_id in self.channel_ids.items()}
 
     # -- the crew's actions --------------------------------------------------------------------------------------------------
     def do(self, kind, args):
@@ -146,7 +156,7 @@ class Round:
                 r = self.clients[who].post("/api/v1/unlocks", json={"target": self.hint_ids[slug][index], "type": "hints"})
             body = r.get_json(silent=True) or {}
             if r.status_code == 200:
-                return {"http": 200, "kind": "unlocked"}
+                return {"http": 200, "kind": "unlocked", "extra": body["data"]["l3mon"]}
             out = {"http": r.status_code, "kind": body.get("error") or "refused"}
             if body.get("phase"):
                 out["phase"] = body["phase"]
@@ -190,6 +200,70 @@ class Round:
             ],
         }
 
+    def get(self, who, path):
+        with self.at():
+            r = self.clients[who].get(path)
+        assert r.status_code == 200, (path, r.status_code, r.get_data(as_text=True))
+        return r
+
+    def guide(self, who):
+        d = self.get(who, GUIDE).get_json()["data"]
+        t = d["team"]
+        return {
+            "phase": d["phase"], "banner": d["banner"], "has_grid": d["epg_sig"] != "none",
+            "team": {
+                "name": self.team_of(who),
+                "score": t["score"], "place": t["place"], "of": t["of"], "solves": t["solves"], "hints_used": t["hints_used"], "instances_live": t["instances_live"],
+                "members": [{k: m[k] for k in ("name", "captain", "you", "solves", "trp", "pct")} for m in t["members"]],
+                "bonus": t["bonus"], "notes": [self.line(n) for n in t["notes"]],
+                "by_channel": [{"slug": self.channel_slug[c["channel"]], "name": c["name"], "sponsor": c["sponsor"]["name"] if c["sponsor"] else None, "solved": c["solved"], "total": c["total"]}
+                               for c in t["by_channel"]],
+            } if t else None,
+            "story": d["story"],
+        }
+
+    def team_of(self, who):
+        return next(team["name"] for team in self.scenario["teams"] if who in team["members"])
+
+    def scoreboard(self, who):
+        d = self.get(who, SCOREBOARD).get_json()["data"]
+        markup = self.get(who, SCOREBOARD_ROWS).get_data(as_text=True)
+        rows = []
+        for cls, body in re.findall(r'<li class="sb-row([^"]*)">(.*?)</li>', markup, re.S):
+            rows.append({
+                "pos": int(re.search(r'<b class="sb-pos">(\d+)</b>', body).group(1)), "name": re.search(r"<bdi>(.*?)</bdi>", body).group(1),
+                "solves": int(re.search(r'<span class="sb-solves">(\d+) solves?</span>', body).group(1)),
+                "score": int(re.search(r'<span class="sb-trp"><b>(-?\d+)</b>', body).group(1)), "you": "is-you" in cls,
+            })
+        return {"phase": d["phase"], "banner": d["banner"], "total": d["total"], "shown": d["shown"], "me": d["me"], "rows": rows}
+
+    def epg(self, who):
+        markup = self.get(who, EPG).get_data(as_text=True)
+        if not markup:
+            return None
+        rows = []
+        for chunk in re.findall(r'<div class="epg-row.*?(?=<div class="epg-row|\Z)', markup, re.S):
+            head = re.search(r'<span class="epg-name">(.*?)</span><span class="epg-meta">(.*?)</span><span class="epg-soon">(.*?)</span><span class="epg-ad">(.*?)</span>', chunk, re.S)
+            tiers = []
+            for number in range(1, 6):
+                cell = re.search(rf'<div class="epg-cell t-{number}">(.*?)</div>', chunk, re.S).group(1)
+                tiers.append([
+                    {"slug": slug, "name": name, "value": value, "cls": cls, "label": label}
+                    for cls, slug, label, name, value in re.findall(
+                        r'<a class="epg-b ([^"]*)" href="/board/([^"]*)" aria-label="([^"]*)"><span class="epg-n">(.*?)</span><span class="epg-v" aria-hidden="true">(\d+)</span></a>', cell)
+                ])
+            rows.append({"name": head.group(1), "meta": head.group(2), "soon": head.group(3), "ad": head.group(4), "tiers": tiers})
+        return rows
+
+    @staticmethod
+    def line(note):
+        return {"title": note["title"], "content": "" if note["title"] in BY_DESIGN else note["content"]}
+
+    def bell(self, who):
+        """The private lines only: the public "New on air" lines are the release control's (it makes one for each change the crew sends and
+        numbers channels by position, the demo's recorder one for each batch and by id); the release plugin's tests cover them."""
+        return [self.line(n) for n in self.get(who, BELL).get_json()["data"] if n["title"] != "New on air"]
+
     def panel(self, who, slug):
         with self.at():
             r = self.clients[who].get(f"/api/v1/challenges/{self.challenges[slug]}")
@@ -213,8 +287,8 @@ class Round:
 
     def ask(self, ask):
         key = next(iter(ask))
-        if key == "board":
-            return self.board(ask["board"])
+        if key in ("board", "guide", "scoreboard", "epg", "bell"):
+            return getattr(self, key)(ask[key])
         if key == "panel":
             return self.panel(*ask["panel"])
         return self.do(key, ask[key])
@@ -247,8 +321,8 @@ def test_the_real_platform_tells_every_studio_what_the_approved_demo_told_it_at_
         for ask, expected in zip(step["ask"], want["results"]):
             assert ask == expected["ask"], "the golden file was written from another scenario: run tools/golden.mjs again"
             key = next(iter(ask))
-            if key in ("board", "panel", "attempt", "hint"):
-                got = play.ask(ask) if key in ("board", "panel") else play.do(key, ask[key])
+            if key in ("board", "panel", "guide", "scoreboard", "epg", "bell", "attempt", "hint"):
+                got = play.ask(ask) if key in ("board", "panel", "guide", "scoreboard", "epg", "bell") else play.do(key, ask[key])
                 if got != expected["value"]:
                     problems.append((step["label"], ask, expected["value"], got))
     assert not problems, "\n\n".join(f"{label}\n  asked {ask}\n  demo {want}\n  real {got}" for label, ask, want, got in problems[:6]) + f"\n\n({len(problems)} differences)"

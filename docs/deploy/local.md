@@ -93,6 +93,19 @@ A signed-in studio reads three things from the platform (the pages of SP6 will d
 
 After the end a flag is answered "the broadcast has ended" and nothing is recorded; before the start, while paused and after the end a hint cannot be bought (CTFd alone would allow all three).
 
+## The Guide, the scoreboard and the bell: what a studio is told
+
+Four more read-only answers for a signed-in studio (the pages of SP6 will draw them; today they are the API):
+
+- `GET /api/v1/l3mon/guide`: the studio's own TRP and place, its solves, hints bought and instances running, **what each member brought in** (TRP, solves and their share; hint costs and bonuses are in nobody's line; a solve nobody can be named for is "Earlier solves"), the studio's bonuses added up, its five newest private lines, the progress of every channel, and the story meter. `GET /api/v1/l3mon/guide/epg` is the **programme grid** as markup: a row for each channel, a column for each difficulty, a block for each programme the studio may see (a programme that is not on air is not in it, only a count "N coming up"). The Guide stays open before the start; the grid is empty until then.
+- `GET /api/v1/l3mon/scoreboard` and `.../scoreboard/rows`: "TRP ratings", the first 100 studios with TRP above zero. It is **the same list the CTFtime feed publishes**, row for row (both are made by one function), with the studio's own line (its live TRP, its place or none, how many are ranked). While the scoreboard is frozen the list stands still and a studio's own place is hidden; its own TRP stays live.
+- `GET /api/v1/notifications?since_id=`: the bell. CTFd's own route, wrapped: a player gets the public news and the lines written for their own studio (a void, a restore, a bonus with the crew's words), each as `{id, title, content}`, oldest first, with no dates and no studio numbers. The crew keeps CTFd's own list. CTFd's own notification page, the detail of one notification (whatever way its number is written) and the event stream `/events` (which would push a line meant for one studio to everyone) are closed to players (404) until the theme brings its own. The numbers in the ticks (`notif_id`, `notif_ver`) follow the same list.
+- A bought hint's reply (`POST /api/v1/unlocks`) gains `l3mon: {score, cost}`.
+
+**Two crew settings** (`PATCH /api/v1/configs` with an administrator token): `l3mon_story_meter` (`on` unless switched off; off hides the meter) and `l3mon_story_air_target` (a whole number of solves of all studios that fills the "on air" bar; while unset the bar stays at 0). `l3mon_show_coming_count` also decides whether the grid says "N coming up".
+
+**Try it:** sign in as a player in a browser and open `/api/v1/l3mon/guide` (and the others); or with the crew's token `curl -H "Authorization: Token $T" -H "Content-Type: application/json" .../api/v1/l3mon/scoreboard` (the crew gets the list without a studio line). Everything answers with a strong ETag: send `If-None-Match` with it and an unchanged answer comes back as `304`.
+
 ## Cold-open comics
 
 A button under a channel's caption opens a short comic for the channel, once the channel has something on air. Only a registered, signed-in player can open it; a visitor is sent to the registration page. The crew can preview any of them: open `/story/<channel slug>` while signed in as the organiser.
