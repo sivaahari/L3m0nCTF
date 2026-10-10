@@ -54,7 +54,7 @@ You cannot approve technical choices; leadership does. These are the questions t
 | 2 | Region | Mumbai (`asia-south1`) | Closest to most players. About 20% dearer than Iowa; included in the estimate |
 | 3 | Email service for verification and password-reset mail | See the table in step A3. I suggest **Brevo, paid Starter for one month**, or **Amazon SES** | The free plans cap how many emails go out per day. On the day registration opens, hundreds of people need their email at once |
 | 4 | From which networks does the crew reach the admin pages? | A short list of fixed addresses (campus), *plus* Cloudflare Access | The checklist needs explicit addresses and no private ranges (see `production-checklist.md`, section 2) |
-| 5 | Who is on call during the 24 hours, and who may start and stop the VM? | Two named people with the Google permissions in step B6 | Someone must be able to reach it at 03:00 |
+| 5 | Who is on call during the 12 hours (10:00 to 22:00 IST), and who may start and stop the VM? | Two named people with the Google permissions in step B6 | Someone must be able to reach it at any moment of the round |
 | 6 | Where does the crew's admin page live? | `crew.l3m0nctf.xyz` (the name is only a proposal) | A separate name lets Cloudflare Access cover the whole admin surface, including its API |
 
 ## 3. Money and the 90-day clock
@@ -413,7 +413,7 @@ This writes new random secrets into `.secrets/` and prints nothing. It refuses t
 cp config/event.example.toml config/event.toml
 ```
 
-Check the file: the name, the two dates (09:00 IST on 28 November is `2026-11-28T03:30:00Z`), `platform_host = "play.l3m0nctf.xyz"`, `size_max = 4`, `verify_emails = true`. Then turn it into the settings the stack reads:
+Check the file: the name, the two dates (10:00 IST on 28 November is `2026-11-28T04:30:00Z`, and 22:00 IST that day is `2026-11-28T16:30:00Z`), `platform_host = "play.l3m0nctf.xyz"`, `size_max = 4`, `verify_emails = true`. Then turn it into the settings the stack reads:
 
 ```bash
 cd tools && python3 -m l3mon config render ../config/event.toml --out ../deploy/compose/generated && cd ..
@@ -487,7 +487,7 @@ The rest of the list (the VM's account, the egress test, the secrets copy, the l
 
 # Part F. A suggested order and dates
 
-Dates are proposals; the online round is 28 to 29 November.
+Dates are proposals; the online round is 28 November, 10:00 to 22:00 IST.
 
 | When | What | Who |
 |---|---|---|
@@ -499,7 +499,8 @@ Dates are proposals; the online round is 28 to 29 November.
 | Nov 10 | Load test on the big size (needs B5 resize) | both |
 | Nov 21 | Feature freeze | |
 | Nov 27 | Dress rehearsal, restore drill, every alert fired once | both |
-| Nov 28, 09:00 IST (03:30 UTC) | Start | |
+| Nov 28, 10:00 IST (04:30 UTC) | Start | |
+| Nov 28, 22:00 IST (16:30 UTC) | End | |
 
 ---
 

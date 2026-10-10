@@ -7,8 +7,8 @@ description = "The capture-the-flag contest of Amrita Vishwa Vidyapeetham, Coimb
 domain = "l3m0nctf.xyz"
 platform_host = "play.l3m0nctf.xyz"
 theme = "l3mon"
-start = "2026-11-28T03:30:00Z"   # 09:00 IST on 28 November 2026
-end = "2026-11-29T03:30:00Z"     # 09:00 IST on 29 November 2026
+start = "2026-11-28T04:30:00Z"   # 10:00 IST on 28 November 2026
+end = "2026-11-28T16:30:00Z"     # 22:00 IST on 28 November 2026 (twelve hours)
 
 [teams]
 mode = "teams"                   # "teams" or "users"

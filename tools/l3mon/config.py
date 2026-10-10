@@ -60,9 +60,9 @@ def validate(data: dict) -> list[str]:
                 errors.append("event.platform_host must be the domain or a name under the domain")
         start, end = _utc(ev.get("start")), _utc(ev.get("end"))
         if start is None:
-            errors.append("event.start must be a UTC time like 2026-11-28T03:30:00Z (the Z means UTC)")
+            errors.append("event.start must be a UTC time like 2026-11-28T04:30:00Z (the Z means UTC)")
         if end is None:
-            errors.append("event.end must be a UTC time like 2026-11-29T03:30:00Z (the Z means UTC)")
+            errors.append("event.end must be a UTC time like 2026-11-28T16:30:00Z (the Z means UTC)")
         if start and end and end <= start:
             errors.append("event.end must be after event.start")
 

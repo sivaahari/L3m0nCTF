@@ -11,7 +11,7 @@ The event's domain is **`l3m0nctf.xyz`** (given on 2026-10-06). The public landi
 | Name | L3m0nCTF 2026 | ready |
 | Official website | `https://l3m0nctf.xyz/` (the public landing page) | domain known, the page must be live before filing |
 | Format | Jeopardy | ready |
-| Dates | **28 November 2026, 09:00 IST (03:30 UTC) to 29 November 2026, 09:00 IST (03:30 UTC), 24 hours, online** (confirmed on 2026-10-06) | ready |
+| Dates | **28 November 2026, 10:00 IST (04:30 UTC) to 22:00 IST (16:30 UTC), 12 hours, online** (changed on 2026-10-10; the first plan was 24 hours from 09:00 IST) | ready |
 | Location | On-line for the online round. The finals are on campus in Coimbatore for selected teams | ready; finals dates are still to be announced |
 | Organiser team | A TIFAC-CORE team on CTFtime | needs a team member to create or pick it (decision D11) |
 | Logo | `https://l3m0nctf.xyz/icon-512.png` | ready once the page is live |
@@ -26,7 +26,7 @@ These are what CTFtime asks the organisers for once the event is approved. They 
 |---------|---------|------------|
 | **Login with CTFtime: the OAuth endpoint (callback URL)** | `https://play.l3m0nctf.xyz/auth/ctftime/callback` | Where CTFtime sends a player back after they approve the sign-in. It is typed into the event's edit page, and it must match exactly (same scheme, domain, path, no trailing slash). CTFtime shows the **client ID** (it is the CTFtime event number) and the **client secret** on that same page once the event is approved; they go to the platform team, never into a document or chat. |
 | **Live scoreboard feed** | `https://play.l3m0nctf.xyz/ctftime/standings.json` | A public address, no login. CTFtime reads it every 60 seconds. The platform answers from the same standings as the public scoreboard and lets caches keep the answer for 15 seconds. |
-| Final results (after the 24 hours) | `https://play.l3m0nctf.xyz/ctftime/final-standings.json` | The same format, taken once the scoreboard is unfrozen. It is uploaded to CTFtime by form. **This is the part that gives teams their rating points,** so it matters more than the live feed. |
+| Final results (after the 12 hours) | `https://play.l3m0nctf.xyz/ctftime/final-standings.json` | The same format, taken once the scoreboard is unfrozen. It is uploaded to CTFtime by form. **This is the part that gives teams their rating points,** so it matters more than the live feed. |
 
 ### What the live feed looks like
 
@@ -58,7 +58,7 @@ Rules we follow: only teams with a score above zero, no hidden, banned or staff 
 | The sign-in callback in the real platform | Built in the demo platform (`platform-ui`, private repo) only; the real plugin is sub-project SP8 |
 | The real platform that serves them | Runs on a laptop (development stack) and in CI; not deployed. It depends on the hosting and technology decision for the platform (decisions D10, D15, D16) |
 | The domain | **Known: `l3m0nctf.xyz`.** Still needed: DNS control (who can add the `play` name and the records for the landing page) and, later, the fixed IP of the server |
-| Start and finish time of the online round | **Known: 09:00 IST on 28 November to 09:00 IST on 29 November 2026** |
+| Start and finish time of the online round | **Known: 10:00 IST to 22:00 IST on 28 November 2026** |
 | A CTFtime organiser account and team | **Needed** (decision D11) |
 
 ## 5. Order of work once the domain is known

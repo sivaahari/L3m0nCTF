@@ -1,4 +1,4 @@
-"""The clock: 09:00 IST is 03:30 UTC, the four phases, the freeze, and agreement with CTFd at the exact seconds that matter.
+"""The clock: 10:00 IST is 04:30 UTC, the round is twelve hours, the four phases, the freeze, and agreement with CTFd at the exact seconds that matter.
 
 Run through tools/run-ctfd-tests.sh:
     tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_core
@@ -15,23 +15,23 @@ from CTFd.utils.dates import ctf_ended, ctf_started, ctftime
 from tests.helpers import create_ctfd, destroy_ctfd
 
 UTC = lambda *a: calendar.timegm(a)  # noqa: E731  (year, month, day, hour, minute, second) -> epoch seconds
-START = UTC(2026, 11, 28, 3, 30, 0)  # 09:00 IST on 28 November 2026
-END = START + 24 * 3600
+START = UTC(2026, 11, 28, 4, 30, 0)  # 10:00 IST on 28 November 2026
+END = START + 12 * 3600  # 22:00 IST the same day
 FREEZE = END - 3600
 
 
 # ---- conversion ----
 
-def test_nine_in_the_morning_in_india_is_half_past_three_in_the_night_in_utc():
-    assert ist_to_epoch(2026, 11, 28, 9, 0) == START
-    assert ist_to_epoch(2026, 11, 29, 9, 0) == END
-    assert ist_text(START) == "28 Nov 2026, 09:00 IST"
-    assert utc_text(START) == "28 Nov 2026, 03:30 UTC"
+def test_ten_in_the_morning_in_india_is_half_past_four_in_the_morning_in_utc_and_the_round_ends_at_ten_in_the_evening():
+    assert ist_to_epoch(2026, 11, 28, 10, 0) == START
+    assert ist_to_epoch(2026, 11, 28, 22, 0) == END and END - START == 12 * 3600
+    assert ist_text(START) == "28 Nov 2026, 10:00 IST" and ist_text(END) == "28 Nov 2026, 22:00 IST"
+    assert utc_text(START) == "28 Nov 2026, 04:30 UTC" and utc_text(END) == "28 Nov 2026, 16:30 UTC"
 
 
 def test_to_ist_gives_an_aware_time_in_india():
     t = to_ist(START)
-    assert (t.year, t.month, t.day, t.hour, t.minute) == (2026, 11, 28, 9, 0)
+    assert (t.year, t.month, t.day, t.hour, t.minute) == (2026, 11, 28, 10, 0)
     assert t.utcoffset().total_seconds() == 5.5 * 3600 and t.tzname() == "IST"
 
 
@@ -58,7 +58,7 @@ def test_india_has_no_daylight_saving_in_any_month():
         (START - 1, "before"),
         (START, "before"),  # CTFd: started only when now > start, so at the very second it is still before
         (START + 1, "live"),
-        (START + 12 * 3600, "live"),
+        (START + 6 * 3600, "live"),
         (END - 1, "live"),
         (END, "ended"),
         (END + 1, "ended"),
@@ -108,12 +108,12 @@ def _app_with_window(**config):
 @pytest.mark.parametrize(
     "stamp,state,ctfd_live",
     [
-        ("2026-11-28 03:29:59", "before", False),
-        ("2026-11-28 03:30:00", "before", False),
-        ("2026-11-28 03:30:01", "live", True),
-        ("2026-11-28 15:00:00", "live", True),
-        ("2026-11-29 03:29:59", "live", True),
-        ("2026-11-29 03:30:00", "ended", False),
+        ("2026-11-28 04:29:59", "before", False),
+        ("2026-11-28 04:30:00", "before", False),
+        ("2026-11-28 04:30:01", "live", True),
+        ("2026-11-28 10:00:00", "live", True),
+        ("2026-11-28 16:29:59", "live", True),
+        ("2026-11-28 16:30:00", "ended", False),
     ],
 )
 def test_the_phase_and_ctfds_own_checks_agree_at_the_seconds_that_matter(stamp, state, ctfd_live):
@@ -130,7 +130,7 @@ def test_the_phase_and_ctfds_own_checks_agree_at_the_seconds_that_matter(stamp, 
 def test_one_second_after_the_end_ctfd_also_calls_it_ended():
     app = _app_with_window()
     with app.app_context():
-        with freeze_time("2026-11-29 03:30:01"):
+        with freeze_time("2026-11-28 16:30:01"):
             assert current_phase().state == "ended" and ctf_ended() is True
     destroy_ctfd(app)
 
@@ -148,15 +148,15 @@ def test_paused_comes_from_ctfds_paused_setting_inside_the_window_only():
 def test_the_freeze_is_ctfds_own_freeze_time_and_nothing_else():
     app = _app_with_window(freeze=str(FREEZE))
     with app.app_context():
-        with freeze_time("2026-11-29 02:29:59"):
+        with freeze_time("2026-11-28 15:29:59"):
             assert current_phase() == Phase("live", False)
-        with freeze_time("2026-11-29 02:30:00"):
+        with freeze_time("2026-11-28 15:30:00"):
             assert current_phase() == Phase("live", True), "from the freeze second on, with no second switch to disagree with CTFd's scoreboard"
-        with freeze_time("2026-11-29 03:30:00"):
+        with freeze_time("2026-11-28 16:30:00"):
             assert current_phase() == Phase("ended", True)
         assert window() == clock.Window(START, END, FREEZE)
         set_config("freeze", "")
-        with freeze_time("2026-11-29 03:00:00"):
+        with freeze_time("2026-11-28 16:00:00"):
             assert current_phase().frozen is False, "no freeze time, no freeze: the default"
     destroy_ctfd(app)
 
@@ -185,9 +185,9 @@ def test_our_frozen_flag_and_ctfds_frozen_standings_flip_at_the_same_second():
 
         clear_standings()
         assert [(row.name, int(row.score)) for row in get_standings()] == [("t", 100)], "CTFd's scoreboard leaves out the solve after the freeze"
-        with freeze_time("2026-11-29 02:29:59"):
+        with freeze_time("2026-11-28 15:29:59"):
             assert current_phase().frozen is False
-        with freeze_time("2026-11-29 02:30:00"):
+        with freeze_time("2026-11-28 15:30:00"):
             assert current_phase().frozen is True
     destroy_ctfd(app)
 

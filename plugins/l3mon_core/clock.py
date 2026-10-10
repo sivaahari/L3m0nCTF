@@ -1,6 +1,6 @@
 """The event clock: the phase of the broadcast, and times in India and in UTC.
 
-The online round starts at 09:00 IST on 28 November 2026, which is 03:30 UTC. Everything is stored and compared as UTC epoch
+The online round runs from 10:00 IST to 22:00 IST on 28 November 2026 (twelve hours), which is 04:30 to 16:30 UTC. Everything is stored and compared as UTC epoch
 seconds (what CTFd's `start`, `end` and `freeze` settings hold); India Standard Time is UTC+5:30 all year, with no daylight
 saving, and is only for words people read.
 
@@ -58,12 +58,12 @@ def _text(t, tz, label) -> str:
 
 
 def ist_text(t) -> str:
-    """For example `28 Nov 2026, 09:00 IST`. English month names always, whatever the server's locale."""
+    """For example `28 Nov 2026, 10:00 IST`. English month names always, whatever the server's locale."""
     return _text(t, IST, "IST")
 
 
 def utc_text(t) -> str:
-    """For example `28 Nov 2026, 03:30 UTC`."""
+    """For example `28 Nov 2026, 04:30 UTC`."""
     return _text(t, UTC, "UTC")
 
 

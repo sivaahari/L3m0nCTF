@@ -84,8 +84,8 @@ def test_preset_configs_are_the_keys_ctfd_reads():
         "ctf_theme": "l3mon",
         "user_mode": "teams",
         "team_size": 4,
-        "start": epoch(2026, 11, 28, 3, 30),
-        "end": epoch(2026, 11, 29, 3, 30),
+        "start": epoch(2026, 11, 28, 4, 30),
+        "end": epoch(2026, 11, 28, 16, 30),
         "challenge_visibility": "private",
         "account_visibility": "private",
         "score_visibility": "public",
@@ -101,9 +101,9 @@ def test_preset_configs_refuses_an_invalid_file():
         config.preset_configs(mutate("teams.mode", "squads"))
 
 
-def test_the_start_and_end_are_exactly_24_hours_apart_in_the_example():
+def test_the_start_and_end_are_exactly_12_hours_apart_in_the_example():
     preset = config.preset_configs(example())
-    assert preset["end"] - preset["start"] == 24 * 3600
+    assert preset["end"] - preset["start"] == 12 * 3600
 
 
 def test_render_writes_one_line_of_json(tmp_path):

@@ -42,7 +42,7 @@ So the honest answer to "can I host what I have been reviewing": the landing pag
 - The real challenges from the 30 authors through the private repo and its checks; the real flags are set only at deploy.
 - The story text for the story meter (private).
 - The **cold-open comics**: seven are drawn and compiled in the private repository (`private/story/`; the owner's questions are at the end of `private/story/bible/cold-opens.md`). Before the round, `python -m l3mon story build` compiles them to a folder of files that is copied to the server's read-only `story` volume. The plan's channel slugs must be the story slugs (`test-card`, `street`, `snack`, `gadget`, `ninja`, `chase`, `cubcop`); a channel with no matching file simply has no comic.
-- A staging dress rehearsal date, and who is on call during the 24 hours.
+- A staging dress rehearsal date, and who is on call during the 12 hours.
 - Whether the count of challenges still to come ("12 coming up") should be visible to players, or hidden (the prototype shows it).
 
 ## The flag format

@@ -20,7 +20,7 @@ Survey of what CTFtime requires of an organiser and of the platform, read from C
 | Rule | Source | L3m0nCTF |
 |------|--------|----------|
 | Team competitions only. An event that implies individual participation cannot be listed | For organizers | Fine. Allow one-person teams, as Pragyan CTF 2026 does ("max 4 members or individual") |
-| An event lasting more than 5 days gets no rating points | For organizers | Prelims are 24 hours |
+| An event lasting more than 5 days gets no rating points | For organizers | Prelims are 12 hours |
 | Organisers of events without a scoreboard, or that never provide the final scoreboard, get no rating points | For organizers | We publish a public scoreboard and a final export |
 | Event text must be in English | For organizers | The landing page, the event description and the whole platform are in plain English |
 
@@ -40,7 +40,7 @@ CTFtime's event filters are: **Location** (On-line, On-site) and **Restrictions*
 |-------|--------------------|-------|
 | Full event and CTF name | "L3m0nCTF 2026" | Settled name |
 | Logo link | A hosted PNG or SVG | Public asset URL, from the landing site |
-| Start and finish (UTC) | Prelims 28 to 29 November 2026, 24 h (confirmed 2026-10-06); the start time of day is still needed | Exact start and finish time in UTC |
+| Start and finish (UTC) | Prelims 28 November 2026, 10:00 to 22:00 IST = 04:30 to 16:30 UTC, 12 h (changed 2026-10-10) | Exact start and finish time in UTC |
 | Official site URL | The public landing page | **Live site before submission** |
 | Format | Jeopardy | |
 | Online or on-site | Prelims on-line. Finals on-site, Coimbatore | |
