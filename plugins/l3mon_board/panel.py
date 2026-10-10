@@ -17,17 +17,18 @@ Before the start CTFd answers every challenge route with a 403 and a bare senten
 import json
 from datetime import datetime, timedelta
 
-from flask import request
+from flask import abort, request
 
 from CTFd.models import Challenges, Fails, Solves, db
 from CTFd.plugins.l3mon_board import envelope, viewer
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.models import LIVE_DELIVERIES, Channel, Programme
+from CTFd.plugins.l3mon_core.visibility import is_visible
 from CTFd.plugins.l3mon_scoring.values import DECAYING
 from CTFd.utils import get_config
-from CTFd.utils.user import is_admin
+from CTFd.utils.user import authed, is_admin
 
-ON = {"block": True, "before": True}
+ON = {"block": True, "before": True, "locked": True}
 DETAIL = "api.challenges_challenge"
 BEFORE_START = {
     DETAIL: "Programmes go on air when the broadcast starts.",
@@ -81,6 +82,28 @@ def _closed_before_the_start(response):
     return envelope.fail("phase_closed", 403, message, phase="before")
 
 
+def locked_door():
+    """Before CTFd's view: a programme whose prerequisite the studio has not met is a missing one.
+
+    Stock CTFd answers such a request with a 403, or (with `anonymize`) with a 200 whose name is "???", or (with `anonymize`
+    set to "preview") with the real name, category and value; the board already treats the programme as absent, so the panel
+    must too. Aborting here gives the exact answer a missing id gets. Not before the start (CTFd answers every id alike then,
+    and a different answer for a locked one would tell the two apart); the crew and visitors are left alone."""
+    if not ON["locked"] or request.method != "GET" or request.endpoint != DETAIL:
+        return None
+    if not authed() or is_admin() or current_phase().state == "before":
+        return None
+    try:
+        challenge = Challenges.query.get(int(request.view_args.get("challenge_id")))
+    except (TypeError, ValueError):
+        return None
+    if challenge is None or not (challenge.requirements or {}).get("prerequisites"):
+        return None  # a missing id is CTFd's to answer, and a challenge without prerequisites needs nothing from us
+    if not is_visible(challenge, solved_ids=viewer.current().solved):
+        abort(404)
+    return None
+
+
 def decorate(response):
     if request.method not in ("GET", "POST") or request.endpoint not in BEFORE_START:
         return response
@@ -112,4 +135,5 @@ def decorate(response):
 def install(app):
     if "l3mon_board_panel" not in app.extensions:
         app.extensions["l3mon_board_panel"] = True
+        app.before_request(locked_door)
         app.after_request(decorate)

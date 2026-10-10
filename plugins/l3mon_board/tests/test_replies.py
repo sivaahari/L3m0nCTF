@@ -133,6 +133,20 @@ def test_while_frozen_the_reply_counts_the_studios_own_solve_and_tells_nothing_a
     assert (second["solves"], second["first_blood"]) == (1, True), "bob may not learn that alice solved it after the freeze"
 
 
+def test_a_hidden_studio_is_told_the_same_count_frozen_or_not(play):
+    """Its own solve is never in the public count, so freezing must not add one to what it is told (found by the independent review)."""
+    import calendar
+
+    from freezegun.api import real_datetime
+
+    ghost = team_client(play.app, "ghost", "studio-ghost")
+    Teams.query.filter_by(name="studio-ghost").first().hidden = True
+    db.session.commit()
+    set_config("freeze", calendar.timegm(real_datetime.utcnow().timetuple()) - 100)
+    block = data(send(ghost, play.ids.coffee, "coffee-answer"))["l3mon"]
+    assert block["solves"] == 0 and block["first_blood"] is True
+
+
 def test_a_flag_for_a_programme_already_solved_is_ctfds_answer_without_extras(play):
     send(play.alice, play.ids.lantern, "lantern-answer")
     r = send(play.abe, play.ids.lantern, "lantern-answer")

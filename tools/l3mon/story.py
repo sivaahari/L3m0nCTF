@@ -33,11 +33,11 @@ def _format():
 fmt = _format()
 _COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _DECLARATION = re.compile(r"^\s*<\?xml[^>]*\?>\s*", re.IGNORECASE)
-_BETWEEN = re.compile(r">\s+<")
+_BETWEEN = re.compile(r">[ \t]*\r?\n\s*<")  # layout (a line break and indentation) goes; a space between two <tspan> is part of the words and stays
 
 
 def normalize_svg(text: str) -> str:
-    """What an editor adds and the server does not accept (a byte-order mark, an XML declaration, comments), taken out; whitespace between tags dropped."""
+    """What an editor adds and the server does not accept (a byte-order mark, an XML declaration, comments), taken out; the layout between tags dropped."""
     text = text.lstrip("﻿")
     text = _DECLARATION.sub("", text)
     text = _COMMENT.sub("", text)
@@ -118,6 +118,9 @@ def build(src: Path, out: Path | None) -> tuple[list[str], list[str]]:
 
 
 def main(src: str, out: str | None, check: bool = False) -> int:
+    if out is None and not check:
+        print("ERROR: give an output folder, or --check to only test the folder")
+        return 2
     errors, notes = build(Path(src), None if check else Path(out) if out else None)
     for note in notes:
         print(f"note: {note}")

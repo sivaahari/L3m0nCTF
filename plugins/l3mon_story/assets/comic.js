@@ -390,7 +390,7 @@ export class Player {
   destroy() {
     this.closed = true;
     this.pause();
-    this.sound.disable();
+    this.sound.dispose();
     if (this.resizer) this.resizer.disconnect();
     (this.off || []).forEach((undo) => undo());
     this.root.remove();
@@ -403,21 +403,29 @@ export function mount(host, bundle, options) {
 
 // ---- getting a story ---------------------------------------------------------------------------------------------------------
 
-/** Fetch a story. Resolves {ok: true, bundle} or {ok: false, reason: 'signin'|'verify'|'banned'|'closed'|'offline'|'broken'}. */
-export async function fetchStory(url) {
-  let response;
+/** Fetch a story. Resolves {ok: true, bundle} or {ok: false, reason: 'signin'|'verify'|'banned'|'closed'|'offline'|'broken'}.
+ *  A request that has not answered after `timeoutMs` counts as no connection, so the person is never left waiting for ever. */
+export async function fetchStory(url, timeoutMs = 15000, signal = null) {
+  const control = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = control ? setTimeout(() => control.abort(), timeoutMs) : null;
+  if (control && signal) signal.addEventListener('abort', () => control.abort(), { once: true });  // the person closed the screen: stop asking
   try {
-    response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-  } catch {
-    return { ok: false, reason: 'offline' };
+    let response;
+    try {
+      response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' }, ...(control ? { signal: control.signal } : {}) });
+    } catch {
+      return { ok: false, reason: 'offline' };
+    }
+    if (response.status === 401) return { ok: false, reason: 'signin' };
+    if (response.status === 404) return { ok: false, reason: 'closed' };
+    let body = null;
+    try { body = await response.json(); } catch { /* not JSON */ }
+    if (response.status === 403) return { ok: false, reason: (body && body.error === 'unverified') ? 'verify' : 'banned' };
+    if (!response.ok || !body || !body.data || !Array.isArray(body.data.panels)) return { ok: false, reason: 'broken' };
+    return { ok: true, bundle: body.data };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  if (response.status === 401) return { ok: false, reason: 'signin' };
-  if (response.status === 404) return { ok: false, reason: 'closed' };
-  let body = null;
-  try { body = await response.json(); } catch { /* not JSON */ }
-  if (response.status === 403) return { ok: false, reason: (body && body.error === 'unverified') ? 'verify' : 'banned' };
-  if (!response.ok || !body || !body.data || !Array.isArray(body.data.panels)) return { ok: false, reason: 'broken' };
-  return { ok: true, bundle: body.data };
 }
 
 const MESSAGES = {
@@ -449,7 +457,7 @@ function notice(host, reason, slug, onClose) {
 let active = null;
 
 /** Open a story over the page. Safe to call twice: the second call replaces the first. */
-export async function open(slug, { opener, url } = {}) {
+export async function open(slug, { opener, url, timeoutMs } = {}) {
   if (active) active.close();
   const backdrop = el('div', 'l3m-backdrop');
   const returnTo = opener || document.activeElement;
@@ -459,20 +467,33 @@ export async function open(slug, { opener, url } = {}) {
   }
   document.body.append(backdrop);
   document.documentElement.classList.add('l3m-lock');
+  let finished = false;
+  const asking = typeof AbortController === 'function' ? new AbortController() : null;
+  const onEscape = (e) => { if (e.key === 'Escape') done(); };  // while the story is still on its way; the player and the notice listen for themselves
   const done = () => {
+    if (finished) return;
+    finished = true;
+    if (asking) asking.abort();  // a request left hanging would also hold up the next try for the same story (the browser shares one answer)
+    document.removeEventListener('keydown', onEscape);
     backdrop.remove();
     hidden.forEach((n) => n.removeAttribute('inert'));
     document.documentElement.classList.remove('l3m-lock');
-    active = null;
+    if (active === handle) active = null;
     if (returnTo && typeof returnTo.focus === 'function') returnTo.focus();
   };
   const handle = { close: done };
   active = handle;
   const loading = el('p', 'l3m-loading', { role: 'status' }, 'Tuning in…');
-  backdrop.append(loading);
-  const found = await fetchStory(url || `/api/v1/l3mon/story/${encodeURIComponent(slug)}`);
-  if (active !== handle) return null;
+  const cancel = el('button', 'l3m-btn l3m-close', { type: 'button', 'aria-label': 'Close' }, '✕');
+  cancel.addEventListener('click', () => done());
+  document.addEventListener('keydown', onEscape);
+  backdrop.append(loading, cancel);
+  cancel.focus();
+  const found = await fetchStory(url || `/api/v1/l3mon/story/${encodeURIComponent(slug)}`, timeoutMs, asking && asking.signal);
+  document.removeEventListener('keydown', onEscape);
+  if (finished || active !== handle) return null;
   loading.remove();
+  cancel.remove();
   if (!found.ok) { notice(backdrop, found.reason, slug, done); return null; }
   const player = mount(backdrop, found.bundle, { mode: 'overlay', onClose: done, strip: reducedMotion() });
   handle.close = () => { player.destroy(); done(); };

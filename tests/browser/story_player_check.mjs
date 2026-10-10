@@ -15,7 +15,7 @@ const svg = (fill, extra = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewB
 const panel = (n, text, extra = {}) => ({
   id: `p${n}`, ms: n === 1 ? 3600 : 1800, enter: ['static', 'slide', 'pop', 'cut'][n % 4], alt: `Panel ${n}: a round sun on a coloured field.`,
   layers: [{ art: 'field', x: 0, y: 0, w: 100, h: 100, z: 0, from: { x: 0, y: 0, s: 1 }, to: { x: -3, y: 0, s: 1.1 } }, { art: 'sun', x: 40, y: 30, w: 20, h: 40, z: 1, anim: 'bob' }],
-  bubbles: [{ kind: 'say', who: 'Tara', text, x: 5, y: 6, w: 44, tail: 'bl', at: 100 }, { kind: 'sfx', text: 'POW!', x: 60, y: 60, w: 30, at: 200 }],
+  bubbles: [{ kind: 'say', who: 'Host', text, x: 5, y: 6, w: 44, tail: 'bl', at: 100 }, { kind: 'sfx', text: 'POW!', x: 60, y: 60, w: 30, at: 200 }],
   sfx: [{ cue: 'pop', at: 0 }],
   ...extra,
 });
@@ -74,6 +74,7 @@ const server = http.createServer((req, res) => {
     if (state.mode === '404') return send(404, { success: false, error: 'not_found', message: 'No.' });
     if (state.mode === '403v') return send(403, { success: false, error: 'unverified', message: 'Verify.' });
     if (state.mode === '500') return send(500, { success: false, error: 'server_error', message: 'Broke.' });
+    if (state.mode === 'hang') return;  // never answers
     if (state.mode === 'hostile') return send(200, { success: true, data: hostile() });
     return send(200, { success: true, data: story(slug) });
   }
@@ -89,7 +90,7 @@ const tab = (opts = {}) => openTab(chrome, { base: BASE, shots: SHOTS, ...opts }
 try {
   const page = await tab();
   // count the audio contexts that get made: none may exist before the person asks for sound
-  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__contexts = 0; const A = window.AudioContext; window.AudioContext = function(...a) { window.__contexts++; return new A(...a); }; window.AudioContext.prototype = A.prototype;' });
+  await page.send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__contexts = 0; const A = window.AudioContext; window.AudioContext = function(...a) { window.__contexts++; return new A(...a); }; window.AudioContext.prototype = A.prototype; window.__closed = 0; const C = A.prototype.close; A.prototype.close = function() { window.__closed++; return C.call(this); };' });
   await page.goto(`${BASE}/`);
   const q = (css) => page.run(`document.querySelector(${JSON.stringify(css)})`) ;
   const text = (css) => page.run(`(document.querySelector(${JSON.stringify(css)}) || {}).textContent || ''`);
@@ -111,8 +112,8 @@ try {
   const early = await until(async () => { const w = await words(); return w.length > 0 && w.length < 'Good evening, crew.'.length; }, 1500);
   check('a speech bubble types its words a few at a time', early, await words());
   check('and has all of them in the end', await until(async () => (await words()) === 'Good evening, crew.', 3000), await words());
-  check('the speaker is a label inside the bubble', (await text('.l3m-bubble.l3m-say .l3m-who')) === 'Tara');
-  check('the live region says what the panel shows and who says what', /Panel 1 of 3\. Panel 1: a round sun on a coloured field\. Tara: Good evening, crew\./.test(await text('.l3m-sr')), await text('.l3m-sr'));
+  check('the speaker is a label inside the bubble', (await text('.l3m-bubble.l3m-say .l3m-who')) === 'Host');
+  check('the live region says what the panel shows and who says what', /Panel 1 of 3\. Panel 1: a round sun on a coloured field\. Host: Good evening, crew\./.test(await text('.l3m-sr')), await text('.l3m-sr'));
   check('the pictures are hidden from assistive technology while the words type', (await attr('.l3m-bubbles', 'aria-hidden')) === 'true');
 
   // ---- moving on by itself and by hand ---------------------------------------------------------------------------------------
@@ -144,7 +145,7 @@ try {
 
   // ---- text and strip -----------------------------------------------------------------------------------------------------------
   await page.run('document.querySelector(".l3m-text").click(); true');
-  check('the transcript lists every panel as text', !(await page.run('document.querySelector(".l3m-transcript").hidden')) && (await count('.l3m-transcript li')) === 3 && /Tara: The bars hum a message/.test(await text('.l3m-transcript')));
+  check('the transcript lists every panel as text', !(await page.run('document.querySelector(".l3m-transcript").hidden')) && (await count('.l3m-transcript li')) === 3 && /Host: The bars hum a message/.test(await text('.l3m-transcript')));
   await page.run('document.querySelector(".l3m-stripbtn").click(); true');
   check('the strip shows every panel at once with its words complete and no motion', (await count('.l3m-figure')) === 3 && await page.run('[...document.querySelectorAll(".l3m-strip .l3m-say .l3m-words")].every((w) => w.textContent.length > 10)') && await page.run('document.querySelector(".l3m-tv").hidden'));
   check('every strip picture has a caption in words', await page.run('[...document.querySelectorAll(".l3m-figure figcaption")].every((c) => /Panel \\d: a round sun/.test(c.textContent))'));
@@ -156,6 +157,7 @@ try {
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   check('Escape closes it, frees the page and puts focus back on the button that opened it', await until(async () => (await count('.l3m-backdrop')) === 0) && (await attr('#page', 'inert')) === null && await page.run('document.activeElement.id === "open"') && !(await page.run('document.documentElement.classList.contains("l3m-lock")')));
+  check('closing the comic lets the audio context go (a page that opens it again and again must not collect them)', (await page.run('window.__closed')) === 1, await page.run('window.__closed'));
   const kids = await page.run('document.body.children.length');
   for (let i = 0; i < 4; i++) { await page.run('document.getElementById("open").click(); true'); await until(async () => (await count('.l3m-backdrop .l3m')) === 1); await page.run('document.querySelector(".l3m-close").click(); true'); await sleep(50); }
   check('opening and closing it again and again leaves nothing behind', (await count('.l3m-backdrop')) === 0 && (await page.run('document.body.children.length')) === kids && (await attr('#page', 'inert')) === null);
@@ -172,6 +174,23 @@ try {
     await page.run('document.querySelector(".l3m-notice .l3m-close").click(); true');
     check(`the notice closes (${mode})`, await until(async () => (await count('.l3m-backdrop')) === 0));
   }
+  state.mode = 'ok';
+
+  // ---- a request that never answers --------------------------------------------------------------------------------------------------
+  state.mode = 'hang';
+  await page.run('document.getElementById("open").focus(); document.getElementById("open").click(); true');
+  check('while the story loads the person sees it and has a way out', await until(async () => (await text('.l3m-loading')).includes('Tuning in')) && (await count('.l3m-backdrop .l3m-close')) === 1);
+  await page.run('document.querySelector(".l3m-backdrop .l3m-close").click(); true');
+  check('the close button frees the page and gives focus back', await until(async () => (await count('.l3m-backdrop')) === 0) && (await attr('#page', 'inert')) === null && await page.run('document.activeElement.id === "open"'));
+  await page.run('document.getElementById("open").focus(); document.getElementById("open").click(); true');
+  await until(async () => (await count('.l3m-loading')) === 1);
+  await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  check('and so does Escape', await until(async () => (await count('.l3m-backdrop')) === 0) && (await attr('#page', 'inert')) === null);
+  await page.run('window.__open("street", { opener: document.getElementById("open"), timeoutMs: 700 }); true');
+  check('a request that never answers ends in the "No connection" notice and not in a page that stays locked', await until(async () => (await text('.l3m-notice h2')) === 'No connection', 4000), await text('.l3m-notice h2'));
+  await page.run('document.querySelector(".l3m-notice .l3m-close").click(); true');
+  check('and the notice closes', await until(async () => (await count('.l3m-backdrop')) === 0) && (await attr('#page', 'inert')) === null);
   state.mode = 'ok';
 
   // ---- hostile content is only ever text ------------------------------------------------------------------------------------------
@@ -217,6 +236,7 @@ try {
   await phone.shot('story-phone.png');
 } finally {
   await chrome.close();
+  server.closeAllConnections();
   server.close();
 }
 finish();

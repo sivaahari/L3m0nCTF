@@ -306,6 +306,20 @@ def test_the_third_revision_adds_exactly_the_two_columns_keeps_the_rows_and_a_se
     destroy_ctfd(app)
 
 
+def test_a_run_that_died_between_a_column_and_its_check_is_finished_by_the_next_start():
+    """MariaDB commits each ALTER on its own, so a worker killed between the two leaves the column without its CHECK; the revision is
+    recorded as done at the next start, so the revision itself has to notice (found by the independent review)."""
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context():
+        for check, column in (("ck_l3mon_programme_delivery", "delivery"), ("ck_l3mon_programme_difficulty", "difficulty")):
+            with db.engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE l3mon_programme DROP CONSTRAINT {check}"))
+            assert check not in programme_checks() and column in programme_columns()
+            run_on_connection(lambda op: third_module().upgrade(op=op))
+            assert THIRD_CHECKS <= programme_checks() and set(THIRD_COLUMNS) <= programme_columns(), check
+    destroy_ctfd(app)
+
+
 def test_two_workers_adding_the_two_columns_at_the_same_moment_both_succeed():
     app = create_ctfd(enable_plugins=True, user_mode="teams")
     with app.app_context():

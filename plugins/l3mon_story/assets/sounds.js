@@ -33,6 +33,17 @@ export class Sound {
     this.on = false;
   }
 
+  /** Let the audio context go (a browser allows only a few: a page that opens the comic again and again must not collect them). */
+  dispose() {
+    this.on = false;
+    const ctx = this.ctx;
+    this.ctx = null;
+    this.master = null;
+    if (ctx) {
+      try { ctx.close().catch(() => {}); } catch { /* already closed */ }
+    }
+  }
+
   /** Play a sting by name. Does nothing when the sound is off or the name is not one of CUES. */
   play(cue) {
     if (!this.on || !this.ctx || !CUES.includes(cue)) return;

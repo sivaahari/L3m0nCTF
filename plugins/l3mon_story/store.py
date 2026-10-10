@@ -65,10 +65,9 @@ def _say(name, message):
         _log.warning("l3mon: the story file %s is not available: %s", name, message)
 
 
-def _read(directory, entry):
-    """-> Story or None for one directory entry (see the module docstring for what is refused)."""
+def _read(directory, entry, info):
+    """-> Story or None for one directory entry whose `info` was just taken (see the module docstring for what is refused)."""
     name = entry.name
-    info = entry.stat(follow_symlinks=False)
     if not stat.S_ISREG(info.st_mode):
         _say(name, "it is not a regular file (links are not followed)")
         return None
@@ -102,13 +101,16 @@ def _scan():
             _say(str(directory), f"the folder could not be read: {error}")
             entries = []
         for entry in sorted(entries, key=lambda e: e.name):
-            info = entry.stat(follow_symlinks=False)
+            try:
+                info = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue  # gone between the listing and the look (the folder is being refreshed): it is simply not there
             key = (info.st_mtime_ns, info.st_size, info.st_ino)
             old = _state["keys"].get(entry.name)
             if old is not None and old[0] == key and _state["folder"] == directory:
                 story = _state["stories"].get(entry.name[:-5])
             else:
-                story = _read(directory, entry)
+                story = _read(directory, entry, info)
             keys[entry.name] = (key,)
             if story is not None:
                 stories[story.slug] = story

@@ -43,13 +43,15 @@ def _checks(op):
 
 
 def _add(op, name, column, check_name, check_sql):
-    if name in _columns(op):
-        return
-    try:
-        op.add_column(TABLE, column)
-    except (OperationalError, ProgrammingError):
-        if name not in _columns(op):
-            raise
+    """The column, then its CHECK; each only if it is not there yet. MariaDB commits every ALTER on its own, so a worker that died
+    between the two leaves a column without its CHECK, and the revision is recorded as done at the next start: this step must look
+    at both every time and not stop at the column (found by the independent review)."""
+    if name not in _columns(op):
+        try:
+            op.add_column(TABLE, column)
+        except (OperationalError, ProgrammingError):
+            if name not in _columns(op):
+                raise
     if check_name not in _checks(op):
         try:
             op.create_check_constraint(check_name, TABLE, check_sql)

@@ -128,3 +128,19 @@ def test_the_command_line_runs_and_fails_with_a_non_zero_status(tmp_path):
     bad = folder(tmp_path / "bad", {"street": script(art="ghost")})
     failed = subprocess.run([sys.executable, "-m", "l3mon", "story", "build", str(bad), "--check"], cwd=ROOT, capture_output=True, text=True)
     assert failed.returncode == 1 and "ERROR" in failed.stdout
+
+
+def test_layout_between_tags_goes_but_a_space_between_two_tspans_stays():
+    pretty = "<svg>\n  <g>\n    <rect/>\n  </g>\n</svg>"
+    assert story.normalize_svg(pretty) == "<svg><g><rect/></g></svg>"
+    assert story.normalize_svg(pretty.replace("\n", "\r\n")) == "<svg><g><rect/></g></svg>"
+    words = '<text><tspan>NOW</tspan> <tspan>SHOWING</tspan></text>'
+    assert story.normalize_svg(words) == words, "the space is part of the words"
+
+
+def test_without_an_output_folder_and_without_check_the_build_says_so_and_does_not_claim_success(tmp_path, capsys):
+    src = folder(tmp_path)
+    assert story.main(str(src), None) == 2
+    assert "give an output folder" in capsys.readouterr().out
+    assert not (tmp_path / "out").exists()
+

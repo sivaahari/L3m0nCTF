@@ -9,6 +9,7 @@ Run through tools/run-ctfd-tests.sh:
 """
 import copy
 import json
+import time
 
 import pytest
 
@@ -25,7 +26,7 @@ def bundle():
             {
                 "id": "p1", "ms": 5000, "enter": "static", "alt": "Colour bars with a small round sun in the middle.",
                 "layers": [{"art": "bars", "x": 0, "y": 0, "w": 100, "h": 100, "z": 0, "from": {"x": 0, "y": 0, "s": 1.05}, "to": {"x": -3, "y": 0, "s": 1.15}}],
-                "bubbles": [{"kind": "say", "who": "Tara", "text": "Good evening, crew.", "x": 8, "y": 8, "w": 40, "tail": "bl", "at": 800}],
+                "bubbles": [{"kind": "say", "who": "Host", "text": "Good evening, crew.", "x": 8, "y": 8, "w": 40, "tail": "bl", "at": 800}],
                 "sfx": [{"cue": "static", "at": 0}],
             },
             {
@@ -301,6 +302,102 @@ def test_each_guard_refuses_for_its_own_reason_so_no_other_rule_can_hide_a_broke
 def test_every_allowed_attribute_has_its_own_rule_so_the_catch_all_never_decides():
     for name in sorted(fmt.ALLOWED_ATTRS):
         assert fmt._attribute_problem("rect", name, "!") != f"the attribute {name} is not allowed", name
+
+
+@pytest.mark.parametrize(
+    "template",
+    ['<rect x="{}" width="1" height="1"/>', '<polygon points="{}"/>', '<rect width="1" height="1" stroke-dasharray="{}"/>', '<filter id="f"><feColorMatrix values="{}"/></filter>'],
+)
+def test_a_long_run_of_digits_is_refused_at_once_and_not_after_minutes(template):
+    """The number checks once backtracked quadratically: 8,000 digits and a stray letter took two seconds, 80 KB about three minutes,
+    inside a gevent worker that holds the store's lock (found by the independent review)."""
+    svg = HEAD + template.format("1" * 8000 + "x") + "</svg>"
+    started = time.perf_counter()
+    found = fmt.check_svg(svg)
+    assert found, "refused"
+    assert time.perf_counter() - started < 0.5, "and at once"
+
+
+def test_a_very_long_but_well_formed_number_is_refused_for_its_length_not_trusted():
+    assert fmt.check_svg(HEAD + '<rect x="' + "1" * 41 + '" width="1" height="1"/></svg>'), "a single number is at most 40 characters"
+    assert fmt.check_svg(HEAD + '<rect x="' + "1" * 40 + '" width="1" height="1"/></svg>') == []
+
+
+def test_a_list_of_numbers_has_a_length_limit_too():
+    limit = fmt.LIMITS["list_chars"]
+    short, long = ("1 " * (limit // 2 - 1)).strip(), ("1 " * (limit // 2 + 1)).strip()
+    assert len(short) <= limit < len(long)
+    assert fmt.check_svg(HEAD + f'<polygon points="{short}"/></svg>') == []
+    found = fmt.check_svg(HEAD + f'<polygon points="{long}"/></svg>')
+    assert len(found) == 1 and "points must be a list of numbers" in found[0], found
+
+
+def _many(count, body):
+    return "".join(body.format(i=i) for i in range(count))
+
+
+EXPENSIVE = [
+    ("a pattern that paints with another pattern",
+     HEAD + '<defs><pattern id="a" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1"/></pattern>'
+            '<pattern id="b" width="2" height="2" patternUnits="userSpaceOnUse"><rect width="1" height="1" fill="url(#a)"/></pattern></defs><rect width="9" height="9" fill="url(#b)"/></svg>',
+     "fill may not point at anything from inside a pattern, mask or clip path"),
+    ("a pattern that holds a use",
+     HEAD + '<defs><circle id="c" r="1"/><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse"><use href="#c"/></pattern></defs><rect width="9" height="9" fill="url(#p)"/></svg>',
+     "<use> may not be used inside a pattern, mask or clip path"),
+    ("a mask that holds a filtered shape",
+     HEAD + '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter><mask id="m"><circle r="3" filter="url(#f)"/></mask></defs><rect width="9" height="9" mask="url(#m)"/></svg>',
+     "filter may not point at anything from inside a pattern, mask or clip path"),
+    ("three hundred copies of a thousand circles",
+     HEAD + '<defs><g id="big">' + _many(1000, '<circle r="1"/>') + "</g></defs>" + _many(300, '<use href="#big"/>') + "</svg>",
+     "is too expensive to draw"),
+    ("a blur on three hundred copies",
+     HEAD + '<defs><filter id="f"><feGaussianBlur stdDeviation="30"/></filter><g id="s" filter="url(#f)"><circle r="3"/></g></defs>' + _many(300, '<use href="#s"/>') + "</svg>",
+     "is too expensive to draw"),
+    ("a pattern used by two hundred big shapes",
+     HEAD + '<defs><pattern id="p" width="2" height="2" patternUnits="userSpaceOnUse">' + _many(60, '<circle r="1"/>') + "</pattern></defs>" + _many(200, '<rect width="1" height="1" fill="url(#p)"/>') + "</svg>",
+     "is too expensive to draw"),
+    ("a filter that covers a continent", HEAD + '<defs><filter id="f" x="-1000%" y="-1000%" width="2100%" height="100%"><feGaussianBlur stdDeviation="3"/></filter></defs><rect width="1" height="1" filter="url(#f)"/></svg>',
+     "a filter region is at most"),
+    ("a mask as large as the sky", HEAD + '<defs><mask id="m" width="900000" height="900"><rect width="1" height="1"/></mask></defs><rect width="1" height="1" mask="url(#m)"/></svg>', "a mask region is at most"),
+    ("a fill that points at a shape", HEAD + '<rect id="r" width="1" height="1"/><rect width="1" height="1" fill="url(#r)"/></svg>', "fill must point at a gradient or a pattern"),
+    ("a clip path that points at a mask", HEAD + '<defs><mask id="m"><rect width="1" height="1"/></mask></defs><rect width="1" height="1" clip-path="url(#m)"/></svg>', "clip-path must point at a clipPath"),
+    ("a mask that points at a filter", HEAD + '<defs><filter id="f"><feGaussianBlur stdDeviation="1"/></filter></defs><rect width="1" height="1" mask="url(#f)"/></svg>', "mask must point at a mask"),
+    ("a filter that points at a gradient", HEAD + '<defs><linearGradient id="g"><stop offset="0"/></linearGradient></defs><rect width="1" height="1" filter="url(#g)"/></svg>', "filter must point at a filter"),
+    ("a colour that is a reference", HEAD + '<defs><linearGradient id="g"><stop offset="0" stop-color="url(#g)"/></linearGradient></defs><rect width="1" height="1" fill="url(#g)"/></svg>', "stop-color must be a colour"),
+    ("a self-referencing group", HEAD + '<g id="a"><rect width="1" height="1" fill="url(#a)"/></g></svg>', "fill must point at a gradient or a pattern"),
+]
+
+
+@pytest.mark.parametrize("name,svg,reason", EXPENSIVE, ids=[row[0] for row in EXPENSIVE])
+def test_art_that_passes_the_shape_checks_but_would_hang_a_browser_is_refused_for_its_own_reason(name, svg, reason):
+    assert len(svg.encode()) < fmt.LIMITS["art_bytes"], "small enough to reach the cost check at all"
+    found = fmt.check_svg(svg)
+    assert len(found) == 1 and reason in found[0], (name, found)
+
+
+HEAVY = HEAD.replace("0 0 160 90", "0 0 3200 900") + '<defs><g id="b">' + _many(100, '<circle r="20"/>') + "</g></defs>" + _many(56, '<use href="#b"/>') + "</svg>"
+
+
+def test_a_whole_script_of_heavy_pictures_is_refused_even_when_every_picture_passes_alone():
+    """The strip shown for reduced motion paints every layer at once: one picture at the limit takes a quarter of a second to paint
+    (measured in Chrome), a hundred and forty-four of them would take most of a minute."""
+    assert fmt.check_svg(HEAVY) == [] and 5000 < fmt.art_cost(HEAVY) <= fmt.LIMITS["svg_cost"]
+    two = bundle()
+    two["art"] = {"bars": HEAVY}
+    assert problems(two) == [], "two layers of the heaviest picture are fine"
+    many = bundle()
+    many["art"] = {"bars": HEAVY}
+    many["panels"] = [dict(copy.deepcopy(many["panels"][0]), id=f"p{i}") for i in range(12)]
+    for panel in many["panels"]:
+        panel["layers"] = panel["layers"] * 12
+    found = problems(many)
+    assert len(found) == 1 and "together cost" in found[0], found
+
+
+def test_the_cost_of_the_art_the_stories_need_is_far_below_the_limit():
+    """So the limit is a fence for mistakes and attacks, not a squeeze on the artists: every good picture above costs a hundredth of it."""
+    for name, svg in GOOD_ART.items():
+        assert fmt.art_cost(svg) < fmt.LIMITS["svg_cost"] / 20, name
 
 
 def test_art_that_is_not_text_is_refused():

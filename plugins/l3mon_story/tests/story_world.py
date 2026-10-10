@@ -46,7 +46,7 @@ def bundle(slug="street", title="Moth Hour", panels=2, kicker=None):
             {
                 "id": f"p{i + 1}", "ms": 4000, "enter": "static" if i == 0 else "slide", "alt": f"Panel {i + 1}: a round sun over a dark field.",
                 "layers": [{"art": "sun", "x": 0, "y": 0, "w": 100, "h": 100, "z": 0, "from": {"x": 0, "y": 0, "s": 1.0}, "to": {"x": -2, "y": 0, "s": 1.1}}],
-                "bubbles": [{"kind": "say", "who": "Tara", "text": f"Line {i + 1} & \"quoted\" it's fine.", "x": 8, "y": 8, "w": 40, "tail": "bl", "at": 500}],
+                "bubbles": [{"kind": "say", "who": "Host", "text": f"Line {i + 1} & \"quoted\" it's fine.", "x": 8, "y": 8, "w": 40, "tail": "bl", "at": 500}],
                 "sfx": [{"cue": "whoosh", "at": 0}],
             }
             for i in range(panels)

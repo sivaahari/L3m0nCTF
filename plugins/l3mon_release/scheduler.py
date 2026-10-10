@@ -7,7 +7,11 @@ reconcile() before it answers, so the very page that notices the drop already sh
 one conditional update, so however many workers notice it together, the drop is shown, announced and reported once.
 
 The moments are: every `scheduled` channel or programme time still to come, the end of the broadcast (when everything on
-the plan can be read again), and the second clearing of the cached lists a few seconds after a change (see reconcile._clear_lists). If the crew moves the end, the stored `end` no longer matches and the next request reconciles.
+the plan can be read again).
+
+Next to that record there is one more, `RECLEAR_KEY`: the second at which the cached lists are cleared once more after a change
+(see reconcile._clear_lists). It is read in the same round trip, needs no reconcile and no lock, and is done once however many workers
+reach it. If the crew moves the end, the stored `end` no longer matches and the next request reconciles.
 If the record is missing (a restart, a flushed cache, the cache's own timeout) the next request works it out and reconciles,
 which also puts right anything that fell due while nobody was looking. A reconcile that fails never breaks the page: the
 failure is logged and the request goes on, and the next try is a few seconds later, not on every request.
@@ -23,7 +27,7 @@ from CTFd.models import db
 from CTFd.plugins.l3mon_core.airing import release_active, to_epoch
 from CTFd.plugins.l3mon_core.clock import now, window
 from CTFd.plugins.l3mon_core.models import Channel, Programme
-from CTFd.plugins.l3mon_release.reconcile import RECLEAR_KEY, reconcile, register_after_change
+from CTFd.plugins.l3mon_release.reconcile import RECLEAR_KEY, reclear, reconcile, register_after_change
 
 _log = logging.getLogger("l3mon")
 
@@ -49,9 +53,6 @@ def next_event(t) -> int:
     end = _end()
     if end > t:
         moments.append(end)
-    again = cache.get(RECLEAR_KEY)  # the second clearing of the cached lists after a change (reconcile._clear_lists)
-    if isinstance(again, (int, float)) and again > t:
-        moments.append(int(again))
     return min(moments) if moments else 0
 
 
@@ -65,7 +66,9 @@ def maybe_apply(t=None) -> bool:
     """Apply what is due, if anything is. True when a reconcile ran. Never raises."""
     t = now() if t is None else t
     try:
-        stored = cache.get(KEY)
+        stored, again = cache.get_many(KEY, RECLEAR_KEY)
+        if again is not None and t >= again:
+            reclear()
         end = _end()
         if isinstance(stored, dict) and stored.get("end") == end and (not stored.get("next") or t < stored["next"]):
             return False

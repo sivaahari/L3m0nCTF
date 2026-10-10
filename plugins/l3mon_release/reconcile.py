@@ -16,6 +16,7 @@ done in CTFd's own challenge editor into a withhold in the plan (otherwise the n
 editor request that tries to reveal a programme which is not on air gets a plain 400 first.
 """
 import logging
+import math
 import re
 from collections import namedtuple
 
@@ -80,27 +81,27 @@ def _slugs(ids) -> str:
 def _clear_lists(t):
     """Clear CTFd's cached lists of challenges and standings, and arrange for it to be done once more two seconds later.
 
-    A list that was being worked out from the database a moment BEFORE the commit can still be stored in the cache AFTER this clear,
-    and is then served for CTFd's whole cache time (60 seconds). It was measured on the stack: a dozen players asking for the list at
-    the very second of a scheduled drop left one of them without the programme for a minute in about one round of three, and the same
-    would keep a pulled-back programme in someone's list. The second clear (taken as a moment the scheduler waits for, see
-    scheduler.next_event) removes anything that was stored late. If the key is lost, only the second clear is."""
+    A request that took its view of the database a moment BEFORE the commit can still reach CTFd's cache AFTER this clear and
+    store a list that does not have the change; CTFd then serves it for its whole cache time (60 seconds). It was measured on the
+    stack: a dozen players asking for the list at the very second of a scheduled drop left one of them without the programme for a
+    minute in about one round of five, and the same would keep a pulled-back programme in someone's list. The second clear removes
+    anything stored late. The moment is a whole second and the next request at or after it does the work (scheduler.maybe_apply
+    calls reclear), so it needs neither the plan's lock nor a reconcile. If the key is lost, only the second clear is."""
     clear_challenges()
     clear_standings()
     try:
-        cache.set(RECLEAR_KEY, t + RECLEAR_SECONDS, timeout=30)
+        cache.set(RECLEAR_KEY, math.ceil(t) + RECLEAR_SECONDS, timeout=30)
     except Exception:  # noqa: BLE001  (the cache being down must not undo a release)
         _log.warning("l3mon: the second clearing of the lists could not be arranged", exc_info=True)
 
 
-def _clear_lists_again_if_due(t):
-    try:
-        due = cache.get(RECLEAR_KEY)
-        if due is not None and t >= due:
-            clear_challenges()  # left in place until it expires: another worker that reaches this second does the same, which is harmless
-            clear_standings()
-    except Exception:  # noqa: BLE001
-        _log.warning("l3mon: the lists could not be cleared the second time", exc_info=True)
+def reclear() -> bool:
+    """The second clearing, done once however many workers reach its moment together: only the one whose delete finds the key does it."""
+    if not cache.delete(RECLEAR_KEY):
+        return False
+    clear_challenges()
+    clear_standings()
+    return True
 
 
 def _claim(challenge_id, target) -> bool:
@@ -155,8 +156,6 @@ def reconcile(t=None, system=False, locked=False) -> Result:
                 announce(shown, t)
             except Exception as error:  # noqa: BLE001
                 _log.warning("l3mon: 'New on air' could not be announced: %r", error, exc_info=True)
-    if not (shown or hidden):
-        _clear_lists_again_if_due(t)
     for hook in list(_after_change):
         try:
             hook(t)

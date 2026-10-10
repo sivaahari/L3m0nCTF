@@ -36,7 +36,7 @@ def bundle(slug, title, panels=3):
         "panels": [{
             "id": f"p{i + 1}", "ms": 4000, "enter": "static", "alt": f"Panel {i + 1}: a round sun.",
             "layers": [{"art": "sun", "x": 0, "y": 0, "w": 100, "h": 100}],
-            "bubbles": [{"kind": "say", "who": "Tara", "text": f"Line {i + 1}.", "x": 6, "y": 6, "w": 36, "tail": "bl", "at": 300}],
+            "bubbles": [{"kind": "say", "who": "Host", "text": f"Line {i + 1}.", "x": 6, "y": 6, "w": 36, "tail": "bl", "at": 300}],
         } for i in range(panels)],
         "art": {"sun": SVG},
     }

@@ -86,8 +86,8 @@ def _correct(challenge_id, team):
         earlier = earlier.filter(Solves.date < unix_time_to_utc(freeze))  # while frozen a studio may not learn that another solved it after the freeze
     earlier = earlier.first()
     counted = int((get_solve_counts_for_challenges(admin=False) or {}).get(challenge_id, 0))
-    if freeze and own.date >= unix_time_to_utc(freeze):
-        counted += 1  # the freeze leaves the studio's own later solve out of the public count; the studio is told its own
+    if freeze and own.date >= unix_time_to_utc(freeze) and not team.hidden and not team.banned:
+        counted += 1  # the freeze leaves the studio's own later solve out of the public count; the studio is told its own (a studio that never counts is told none)
     return {
         "value": int(db.session.query(Challenges.value).filter_by(id=challenge_id).scalar() or 0),
         "reel": reel, "reels_needed": math.ceil(total_cells / 3),

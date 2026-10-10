@@ -60,7 +60,7 @@ def test_a_player_gets_the_page_with_the_words_as_text(play):
     r = play.alice.get("/story/street")
     assert r.status_code == 200 and r.mimetype == "text/html"
     html = r.get_data(as_text=True)
-    assert MARKER in html and "Panel 1: a round sun over a dark field." in html and "Tara:" in html
+    assert MARKER in html and "Panel 1: a round sun over a dark field." in html and "Host:" in html
     assert 'data-story-url="/api/v1/l3mon/story/street"' in html
     assert r.headers["Cache-Control"] == "private, no-cache"
 

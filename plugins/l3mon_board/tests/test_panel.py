@@ -4,6 +4,7 @@ Run through tools/run-ctfd-tests.sh:
     L3MON_MOUNT_PLUGINS=1 tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_board
 """
 import datetime
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -238,3 +239,46 @@ def test_the_crew_can_still_read_a_challenge_before_the_start(play):
     with clock(T_START - 3600):
         r = play.admin.get(f"{LIST}/{play.ids.lantern}")
     assert r.status_code == 200 and "l3mon" in r.get_json()["data"]
+
+
+def shape(response, asked):
+    """The status and the body of an answer with the id that was asked for and the request id taken out: CTFd's 404 repeats the address
+    that was asked for, and our own refusals carry a request id that differs from one request to the next."""
+    body = response.get_json(silent=True)
+    if isinstance(body, dict) and "request_id" in body:
+        text = json.dumps({key: value for key, value in body.items() if key != "request_id"}, sort_keys=True)
+    else:
+        text = response.get_data(as_text=True)
+    return response.status_code, text.replace(str(asked), "<id>")
+
+
+@pytest.mark.parametrize("anonymize", [None, True, "preview"])
+def test_a_programme_whose_prerequisite_the_studio_has_not_met_answers_exactly_like_one_that_does_not_exist(play, anonymize):
+    dumpling = Challenges.query.get(play.ids.dumpling)
+    dumpling.requirements = {"prerequisites": [play.ids.lantern], **({} if anonymize is None else {"anonymize": anonymize})}
+    dumpling.attribution = "SecretAuthor"
+    db.session.commit()
+    gone = play.bob.get(f"{LIST}/99999")
+    locked = play.bob.get(f"{LIST}/{play.ids.dumpling}")
+    assert gone.status_code == 404
+    assert shape(locked, play.ids.dumpling) == shape(gone, 99999), "a locked programme is a missing one"
+    for word in (b"Dumpling", b"SecretAuthor", b"dumpling_gate", b"Snack Square"):
+        assert word not in locked.get_data()
+    # the control: once the prerequisite is solved the same request answers, with the block
+    assert attempt(play.bob, play.ids.lantern, "lantern-answer") == "correct"
+    unlocked = play.bob.get(f"{LIST}/{play.ids.dumpling}")
+    assert unlocked.status_code == 200 and unlocked.get_json()["data"]["l3mon"]["slug"] == "dumpling_gate"
+    # and the crew is never held back by a prerequisite
+    other = play.admin.get(f"{LIST}/{play.ids.dumpling}")
+    assert other.status_code == 200 and other.get_json()["data"]["l3mon"]["author"] == "SecretAuthor"
+
+
+def test_before_the_start_a_locked_programme_is_not_told_apart_from_an_open_one(play):
+    dumpling = Challenges.query.get(play.ids.dumpling)
+    dumpling.requirements = {"prerequisites": [play.ids.lantern], "anonymize": True}
+    db.session.commit()
+    with clock(T_START - 3600):
+        locked = play.bob.get(f"{LIST}/{play.ids.dumpling}")
+        open_ = play.bob.get(f"{LIST}/{play.ids.moth}")
+    assert shape(locked, play.ids.dumpling) == shape(open_, play.ids.moth), "before the start nothing tells a locked programme from an open one"
+

@@ -47,7 +47,7 @@ def test_the_transcript_is_the_alt_text_and_the_words_of_the_bubbles(shelf):
     write_story(shelf, "street", panels=2)
     transcript = store.get("street").transcript
     assert [t["alt"] for t in transcript] == ["Panel 1: a round sun over a dark field.", "Panel 2: a round sun over a dark field."]
-    assert transcript[0]["lines"] == [("Tara", 'Line 1 & "quoted" it\'s fine.', "say")]
+    assert transcript[0]["lines"] == [("Host", 'Line 1 & "quoted" it\'s fine.', "say")]
 
 
 # ---- what is refused, each for its own reason ---------------------------------------------------------------------------------
@@ -119,6 +119,20 @@ def test_a_file_that_is_not_named_like_a_channel_is_not_even_opened(shelf, caplo
     (shelf / name).write_text(json.dumps(bundle("street")), encoding="utf-8")
     assert store.all_stories() == {}
     assert said(caplog) == [], "ignored without a word: the name is looked at before anything else"
+
+
+class Vanishing:
+    """A directory entry whose file is deleted between the listing and the look (the folder is refreshed while the platform runs)."""
+
+    name = "street.json"
+
+    def stat(self, follow_symlinks=True):
+        raise FileNotFoundError(2, "gone")
+
+
+def test_a_file_that_vanishes_between_the_listing_and_the_look_is_skipped_and_never_breaks_a_request(shelf, monkeypatch):
+    monkeypatch.setattr(store.os, "scandir", lambda directory: [Vanishing()])
+    assert store.all_stories() == {} and store.get("street") is None and store.panels_of("street") is None
 
 
 # ---- the folder ------------------------------------------------------------------------------------------------------------

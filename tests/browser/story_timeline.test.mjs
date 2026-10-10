@@ -99,8 +99,8 @@ test('sound cues fire once, in the window they belong to', () => {
 });
 
 test('the text of a panel and the length of a story', () => {
-  const panel = { alt: 'A street at dusk.', bubbles: [{ who: 'Tara', text: 'Good evening.' }, { text: 'The bars hum.' }] };
-  assert.equal(spoken(panel), 'A street at dusk. Tara: Good evening. The bars hum.');
+  const panel = { alt: 'A street at dusk.', bubbles: [{ who: 'Host', text: 'Good evening.' }, { text: 'The bars hum.' }] };
+  assert.equal(spoken(panel), 'A street at dusk. Host: Good evening. The bars hum.');
   assert.equal(spoken({ alt: 'Only a picture.' }), 'Only a picture.');
   assert.equal(totalMs({ panels: [{ ms: 4000 }, { ms: 5000 }] }), 9000);
 });

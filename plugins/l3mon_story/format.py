@@ -32,6 +32,7 @@ LIMITS = {
     "bubble_chars": 160, "alt_chars": 300, "title_chars": 80, "kicker_chars": 60, "who_chars": 24,
     "panel_ms": (2000, 20000), "bundle_bytes": 600_000, "art_bytes": 80_000,
     "svg_elements": 2500, "svg_depth": 24, "svg_text_chars": 120, "path_chars": 20_000,
+    "number_chars": 40, "list_chars": 20_000, "svg_cost": 6000, "bundle_cost": 20_000, "filter_cost": 60, "region_percent": 400, "region_units": 20_000,
 }
 ENTER = ("cut", "static", "slide", "pop")
 KINDS = ("say", "think", "shout", "caption", "sfx")
@@ -296,6 +297,11 @@ def validate_bundle(obj):
         size = 0
     if size > LIMITS["bundle_bytes"]:
         problems.append(Problem("", f"the bundle is {size} bytes; the limit is {LIMITS['bundle_bytes']}"))
+    if not problems:  # the strip shown for reduced motion paints every layer of every panel at once, so the whole script has a limit too
+        costs = {name: art_cost(svg) for name, svg in art.items()}
+        total = sum(costs[layer["art"]] for panel in panels for layer in panel["layers"])
+        if total > LIMITS["bundle_cost"]:
+            problems.append(Problem("", f"the pictures of all the panels together cost {total} to draw; the limit is {LIMITS['bundle_cost']}"))
     return problems
 
 
@@ -323,7 +329,7 @@ _TRANSFORMS = {"transform", "gradientTransform", "patternTransform"}
 ALLOWED_ATTRS = _GEOMETRY | _NUMBER_LISTS | _PAINT | _REFERENCES | _PLAIN_NUMBERS | _WORDS | _TRANSFORMS | {"d", "id", "href", "font-family", "xmlns"}
 ROOT_ATTRS = {"viewBox", "width", "height", "preserveAspectRatio", "xmlns"}
 
-_NUM = r"-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+_NUM = r"-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"  # a digit run can be read in one way only, so a failing match is linear, not quadratic
 _NUMBER = re.compile(rf"^{_NUM}(?:%|px)?$")
 _NUMBER_LIST = re.compile(rf"^\s*{_NUM}(?:[\s,]+{_NUM})*\s*$")
 _PATH = re.compile(r"^[MmZzLlHhVvCcSsQqTtAa0-9eE+\-.,\s]*$")
@@ -363,11 +369,11 @@ def _attribute_problem(tag, name, value):
             return f"a path is at most {LIMITS['path_chars']} characters"
         return None if _PATH.match(value) else "a path may only hold path commands and numbers"
     if name in _GEOMETRY:
-        return None if _NUMBER.match(value) else f"{name} must be a number"
+        return None if len(value) <= LIMITS["number_chars"] and _NUMBER.match(value) else f"{name} must be a number"
     if name in _NUMBER_LISTS:
-        return None if _NUMBER_LIST.match(value) else f"{name} must be a list of numbers"
+        return None if len(value) <= LIMITS["list_chars"] and _NUMBER_LIST.match(value) else f"{name} must be a list of numbers"
     if name in _PLAIN_NUMBERS:
-        return None if re.fullmatch(_NUM, value) else f"{name} must be a number"
+        return None if len(value) <= LIMITS["number_chars"] and re.fullmatch(_NUM, value) else f"{name} must be a number"
     if name in _TRANSFORMS:
         return None if _TRANSFORM.match(value) else "a transform may only hold transform functions and numbers"
     if name in _PAINT:
@@ -405,9 +411,9 @@ def check_svg(text):
     problems, ids, refs, count, by_id, uses, kinds = [], set(), [], 0, {}, [], {}
     if _local(root.tag) != "svg":
         return ["the root element must be <svg> in the SVG namespace"]
-    stack = [(root, 1)]
+    stack = [(root, 1, False)]
     while stack:
-        element, depth = stack.pop()
+        element, depth, inside = stack.pop()
         count += 1
         if count > LIMITS["svg_elements"]:
             problems.append(f"has more than {LIMITS['svg_elements']} elements")
@@ -422,6 +428,8 @@ def check_svg(text):
         kinds[tag] = kinds.get(tag, 0) + 1
         if tag == "use":
             uses.append(element)
+            if inside:
+                problems.append("<use> may not be used inside a pattern, mask or clip path")
         for name, value in element.attrib.items():
             if element is root:
                 if name not in ROOT_ATTRS:
@@ -435,11 +443,15 @@ def check_svg(text):
                 ids.add(value)
                 by_id[value] = element
             elif name == "href":
-                refs.append(value[1:])
+                refs.append(("href", value[1:]))
             elif name in _PAINT | _REFERENCES:
                 found = _URL.match(value)
                 if found:
-                    refs.append(found.group(1))
+                    refs.append((name, found.group(1)))
+                    if inside:  # what a pattern, mask or clip path draws never draws anything else, so cost cannot multiply through them
+                        problems.append(f"{name} may not point at anything from inside a pattern, mask or clip path")
+            if tag in _REGIONS and name in ("width", "height") and _region_too_big(value):
+                problems.append(f"a {tag} region is at most {LIMITS['region_percent']}% or {LIMITS['region_units']} units")
             if name in {"stdDeviation"} and any(n > 40 for n in _numbers_in(value)):
                 problems.append("stdDeviation is at most 40")
             if name == "numOctaves" and float(value) > 4:
@@ -459,9 +471,16 @@ def check_svg(text):
         if element.tail and element.tail.strip():
             problems.append("text outside an element is not allowed")
         for child in reversed(list(element)):
-            stack.append((child, depth + 1))
-    for name in sorted(set(refs) - ids):
+            stack.append((child, depth + 1, inside or tag in _CONTENT_ONLY))
+    for name in sorted({target for _, target in refs} - ids):
         problems.append(f"refers to #{name}, which is not defined in the same picture")
+    for attribute, target in refs:
+        wanted = _TARGETS.get(attribute)
+        found = by_id.get(target)
+        if wanted is not None and found is not None and _local(found.tag) not in wanted:
+            problems.append(f"{attribute} must point at {_TARGET_WORDS[attribute]}")
+        elif attribute in ("stop-color", "flood-color"):
+            problems.append(f"{attribute} must be a colour")
     # one level of <use> only: a <use> that points at something holding another <use> can multiply into millions of copies
     for element in uses:
         target = by_id.get(element.attrib.get("href", "#")[1:])
@@ -471,4 +490,61 @@ def check_svg(text):
     for tag, limit in (("use", 400), ("filter", 12), ("feTurbulence", 2), ("mask", 12), ("pattern", 12)):
         if kinds.get(tag, 0) > limit:
             problems.append(f"at most {limit} <{tag}> elements")
+    if not problems:
+        cost = _cost(root, by_id, {})
+        if cost > LIMITS["svg_cost"]:
+            problems.append(f"is too expensive to draw (cost {cost}; the limit is {LIMITS['svg_cost']}): too many copies, filters or patterns")
     return problems
+
+
+# What the browser has to do to draw a picture: every element once, a `use` again for everything it points at, a filtered element
+# for the filter, and an element that is painted with a pattern, masked or clipped again for what that draws. The checks above keep a
+# pattern, mask or clip path from pointing at or using anything, so this cannot loop and the numbers cannot multiply through a chain.
+_CONTENT_ONLY = {"pattern", "mask", "clipPath"}
+_REGIONS = {"filter", "mask", "pattern"}
+_TARGETS = {"fill": {"linearGradient", "radialGradient", "pattern"}, "stroke": {"linearGradient", "radialGradient", "pattern"},
+            "clip-path": {"clipPath"}, "mask": {"mask"}, "filter": {"filter"}}
+_TARGET_WORDS = {"fill": "a gradient or a pattern", "stroke": "a gradient or a pattern", "clip-path": "a clipPath", "mask": "a mask", "filter": "a filter"}
+
+
+def _region_too_big(value):
+    found = re.fullmatch(rf"({_NUM})(%|px)?", value)
+    if not found:
+        return False  # the attribute check has already refused it
+    number = abs(float(found.group(1)))
+    return number > (LIMITS["region_percent"] if found.group(2) == "%" else LIMITS["region_units"])
+
+
+def _cost(element, by_id, memo):
+    key = id(element)
+    if key in memo:
+        return memo[key]
+    total = 1
+    attrs = element.attrib
+    if attrs.get("filter", "none") != "none":
+        total += LIMITS["filter_cost"]
+    for name in ("fill", "stroke", "clip-path", "mask"):
+        found = _URL.match(attrs.get(name, ""))
+        target = by_id.get(found.group(1)) if found else None
+        if target is not None and _local(target.tag) in _CONTENT_ONLY:
+            total += _cost(target, by_id, memo)
+    if _local(element.tag) == "use":
+        target = by_id.get(attrs.get("href", "#")[1:])
+        if target is not None:
+            total += _cost(target, by_id, memo)
+    for child in element:
+        total += _cost(child, by_id, memo)
+    memo[key] = total
+    return total
+
+
+def art_cost(text):
+    """The cost of a picture that passes the other checks (see _cost); 0 when it does not parse. Used by the tests and the build tool."""
+    if _BAD_MARKUP.search(text):  # the same guard as check_svg: nothing that makes the standard parser unsafe ever reaches it
+        return 0
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return 0
+    by_id = {e.attrib["id"]: e for e in root.iter() if "id" in e.attrib}
+    return _cost(root, by_id, {})
