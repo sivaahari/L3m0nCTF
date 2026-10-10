@@ -121,6 +121,7 @@ def test_render_writes_the_compose_environment_without_any_secret(tmp_path):
         "PLATFORM_HOST": "play.l3m0nctf.xyz",
         "PRESET_ADMIN_NAME": "organiser",
         "PRESET_ADMIN_EMAIL": "organiser@l3m0nctf.xyz",
+        "CTFTIME_CLIENT_ID": "",
     }
     assert "PASSWORD" not in env and "TOKEN" not in env and "SECRET" not in env
 
@@ -141,3 +142,23 @@ def test_render_output_is_readable_by_the_container_user_whatever_the_umask(tmp_
 def test_render_refuses_an_invalid_file(tmp_path):
     with pytest.raises(ValueError):
         config.render(mutate("teams.mode", "squads"), tmp_path)
+
+
+def test_the_ctftime_event_number_is_optional_digits_in_quotes_and_goes_to_the_compose_environment(tmp_path):
+    for good in ("", "3456", "999999999"):
+        data = copy.deepcopy(example())
+        data["ctftime"] = {"client_id": good}
+        assert config.validate(data) == [], good
+    for bad in (3456, "abc", "12 34", "1234567890", " 5", None, True):
+        data = copy.deepcopy(example())
+        data["ctftime"] = {"client_id": bad}
+        assert any("ctftime.client_id" in e for e in config.validate(data)), bad
+    data = copy.deepcopy(example())
+    data["ctftime"] = "yes"
+    assert any("[ctftime]" in e for e in config.validate(data))
+    del data["ctftime"]
+    assert config.validate(data) == [], "the whole section may be left out"
+    data["ctftime"] = {"client_id": "3456"}
+    env = config.render(data, tmp_path)["compose.env"].read_text(encoding="utf-8")
+    assert "CTFTIME_CLIENT_ID=3456" in env.splitlines() and "SECRET" not in env
+

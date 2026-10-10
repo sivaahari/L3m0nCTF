@@ -23,6 +23,11 @@ registration = "public"
 [accounts]
 verify_emails = true
 
+[ctftime]
+# Login with CTFtime. Empty until CTFtime approves the event: then its event number goes here, in quotes, and the secret goes in
+# .secrets/CTFTIME_CLIENT_SECRET (see docs/ctftime-endpoints.md). While this is empty the sign-in route does not exist.
+client_id = ""
+
 [admin]
 # The preset organiser account CTFd creates at first sign-in. The password and token are secrets (see .secrets/).
 name = "organiser"

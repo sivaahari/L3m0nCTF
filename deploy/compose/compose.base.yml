@@ -45,6 +45,11 @@ services:
       REDIS_PORT: "6379"
       REVERSE_PROXY: "true"
       TRUSTED_HOSTS: "${PLATFORM_HOST}"
+      L3MON_PLATFORM_HOST: "${PLATFORM_HOST}"
+      # Login with CTFtime: the sign-in route exists only when the event number is set (event.toml, [ctftime]) AND the secret file holds the
+      # secret CTFtime gives (a Docker secret added by the production override, never an environment variable). docs/ctftime-endpoints.md
+      CTFTIME_CLIENT_ID: "${CTFTIME_CLIENT_ID:-}"
+      CTFTIME_CLIENT_SECRET_FILE: /run/secrets/CTFTIME_CLIENT_SECRET
       UPDATE_CHECK: "false"
       SWAGGER_UI: "false"
       SERVER_SENT_EVENTS: "true"

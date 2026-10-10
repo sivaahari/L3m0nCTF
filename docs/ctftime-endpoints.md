@@ -55,7 +55,7 @@ Rules we follow: only teams with a score above zero, no hidden, banned or staff 
 |------|-------|
 | The three addresses and the feed format | **Decided, as above** |
 | The live feed and the final results file in the real platform | **Built and tested** (plugin `l3mon_ctftime`, public repo): the exact format above, the platform's own standings and freeze, no cookie, a 15-second shared cache. The final file is served only after the event has ended **and** an organiser publishes it (after cheating cases are settled): `PATCH /api/v1/configs` with `{"l3mon_final_standings_published": true}`. 11 tests inside CTFd, every rule broken once on purpose to prove the tests notice, and an integration test through nginx |
-| The sign-in callback in the real platform | Built in the demo platform (`platform-ui`, private repo) only; the real plugin is sub-project SP8 |
+| The sign-in callback in the real platform | **Built and tested against a stand-in CTFtime** (plugin `l3mon_ctftime`, public repo, 2026-10-10): `GET /auth/ctftime` and `GET /auth/ctftime/callback`, off until the event number and the secret are set (section 6). It has **not** been tried against the real CTFtime: that needs the approved event |
 | The real platform that serves them | Runs on a laptop (development stack) and in CI; not deployed. It depends on the hosting and technology decision for the platform (decisions D10, D15, D16) |
 | The domain | **Known: `l3m0nctf.xyz`.** Still needed: DNS control (who can add the `play` name and the records for the landing page) and, later, the fixed IP of the server |
 | Start and finish time of the online round | **Known: 10:00 IST to 22:00 IST on 28 November 2026** |
@@ -68,3 +68,38 @@ Rules we follow: only teams with a score above zero, no hidden, banned or staff 
 3. After approval: type the callback address and the feed address into the event's edit page, copy the client secret to the platform team, and send CTFtime the server's fixed IP address.
 4. Test Login with CTFtime for real, and watch the feed from the outside for a day.
 5. After the event: unfreeze, take the final file, and upload it.
+
+## 6. Login with CTFtime: what it does, and how to switch it on
+
+**What a player sees.** A button (the page that has it is part of the platform's pages) sends the player to `https://play.l3m0nctf.xyz/auth/ctftime`, which sends them to CTFtime to approve and to choose which of their CTFtime teams they play for. CTFtime sends them back to the callback address, and they are signed in.
+
+**What the platform does with the answer** (the whole flow is in the header of `plugins/l3mon_ctftime/oauth.py`):
+
+- The account is found by the **CTFtime user number**, never by email. A new account needs an email address that no other account uses, and it starts **unverified**: CTFtime's email may come from an unverified social account, so the platform's own email check still applies before the player can use the board.
+- In team mode the CTFtime team becomes a **studio** with the first player as captain and the team's name kept exactly (CTFtime's feed finds a team by its name). Later players of the same CTFtime team join it while there is room. If another studio already has that name, the studio is full, or the limit of studios is reached, the player gets an account and no studio and sets one up the normal way: nothing is taken over.
+- A CTFtime sign-in **never opens an administrator's account or a suspended one**, and never makes an account that normal registration would refuse (registration closed, the limit of accounts reached).
+- If CTFtime, or the Cloudflare in front of it, answers with an error, a timeout or anything unexpected, no account is made, nobody is signed in, the player is told to use the normal sign-in, and the log says which step failed (never the code, the token or the secret).
+- 120 starts and 120 callbacks a minute per address, so a campus can share one address; nginx adds its usual sign-in limit.
+
+**To switch it on, once CTFtime has approved the event:**
+
+1. In `config/event.toml` set the event number CTFtime shows as the client ID, in quotes, then render the settings again:
+   ```
+   [ctftime]
+   client_id = "1234"
+   ```
+   `python -m l3mon config render ../config/event.toml --out ../deploy/compose/generated`
+2. Put the **client secret** CTFtime shows in `.secrets/CTFTIME_CLIENT_SECRET` (the secret and nothing else; the file is yours, the platform only reads it) and add it as a Docker secret in the production override:
+   ```
+   secrets:
+     CTFTIME_CLIENT_SECRET:
+       file: ../../.secrets/CTFTIME_CLIENT_SECRET
+   services:
+     ctfd:
+       secrets: [CTFTIME_CLIENT_SECRET]
+   ```
+3. Recreate the platform container (`tools/compose.sh up -d --wait --force-recreate --no-deps ctfd`). Until both the number and the secret are there, both routes answer 404, so nothing is visible and nothing can be probed.
+4. Check from outside: `curl -sI https://play.l3m0nctf.xyz/auth/ctftime` answers 302 with a `Location` at `oauth.ctftime.org/authorize` that carries the callback address above, the scopes `profile:read team:read` and a 32-character `state`.
+5. Sign in with a real CTFtime account (the event must still be upcoming or running on CTFtime). If CTFtime answers the token request with a 403, send CTFtime the server's fixed IP address (section 3).
+
+**What is proved, and what is not.** Proved with a stand-in that speaks the documented answers and fails the ways CTFtime has failed for others: the new player, the teammate, the full studio, the name clash, a taken email, an administrator, a suspended account, closed registration, every malformed profile, a wrong or old or reused state, a cancelled approval, a 403 from Cloudflare, an error, a timeout, a redirect, an unusable token, and two callbacks at once. **Not proved:** what the real CTFtime returns in each field (especially whether `email` and `team` arrive with these scopes), and that it lists only teams the person belongs to. The first real sign-in is the test, and the plugin refuses what it does not understand rather than guessing.

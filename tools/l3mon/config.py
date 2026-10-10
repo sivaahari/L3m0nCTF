@@ -83,6 +83,12 @@ def validate(data: dict) -> list[str]:
             errors.append("admin.name must be 3 to 32 letters, digits, dots, dashes or underscores")
         if not isinstance(adm.get("email"), str) or not EMAIL.match(adm["email"]):
             errors.append("admin.email must be an email address")
+    # Login with CTFtime is optional: without [ctftime] client_id the sign-in route does not exist (the secret never goes in this file)
+    ct = data.get("ctftime", {})
+    if not isinstance(ct, dict):
+        errors.append("the section [ctftime] must be a table")
+    elif "client_id" in ct and not (isinstance(ct["client_id"], str) and (ct["client_id"] == "" or re.fullmatch(r"[0-9]{1,9}", ct["client_id"]))):
+        errors.append("ctftime.client_id must be the CTFtime event number in quotes (digits only), or empty")
     return errors
 
 
@@ -120,7 +126,7 @@ def render(data: dict, out_dir: Path) -> dict[str, Path]:
     """Write the generated deployment files. Returns {file name: path}.
 
     preset_configs.json  one line of JSON for CTFd's PRESET_CONFIGS
-    compose.env          the few values compose and nginx need (host name, the preset admin's name and address)
+    compose.env          the few values compose and nginx need (host name, the preset admin's name and address, the CTFtime event number)
     """
     errors = validate(data)
     if errors:
@@ -141,6 +147,7 @@ def render(data: dict, out_dir: Path) -> dict[str, Path]:
         f"PLATFORM_HOST={data['event']['platform_host']}",
         f"PRESET_ADMIN_NAME={data['admin']['name']}",
         f"PRESET_ADMIN_EMAIL={data['admin']['email']}",
+        f"CTFTIME_CLIENT_ID={data.get('ctftime', {}).get('client_id', '')}",
         "",
     ]
     env = out_dir / "compose.env"

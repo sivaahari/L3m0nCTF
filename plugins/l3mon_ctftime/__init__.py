@@ -71,4 +71,7 @@ def final():
 
 
 def load(app):
+    from CTFd.plugins.l3mon_ctftime import oauth
+
     app.register_blueprint(feeds)
+    app.register_blueprint(oauth.oauth)
