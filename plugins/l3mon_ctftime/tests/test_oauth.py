@@ -16,7 +16,7 @@ from CTFd.models import Teams, Users, db
 from CTFd.plugins.l3mon_ctftime import oauth
 from CTFd.utils import set_config
 from ctftime_mock import MockCTFtime, profile
-from tests.helpers import create_ctfd, destroy_ctfd, gen_team, gen_user, login_as_user
+from tests.helpers import create_ctfd, destroy_ctfd, gen_team, gen_user, login_as_user, register_user
 
 START, CALLBACK = "/auth/ctftime", "/auth/ctftime/callback"
 MOTH = (4321, "Moth Cipher")
@@ -41,6 +41,24 @@ def world(provider):
     with app.app_context():
         yield SimpleNamespace(app=app, provider=provider)
     destroy_ctfd(app)
+
+
+@pytest.fixture()
+def logins():
+    """Everything CTFd's `logins` logger writes (it does not propagate to the root logger, so caplog cannot see it)."""
+    lines = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    handler, logger = Collect(), logging.getLogger("logins")
+    old_level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    yield lines
+    logger.removeHandler(handler)
+    logger.setLevel(old_level)
 
 
 def sign_in(world, code, prof, next_path=None, client=None):
@@ -176,16 +194,211 @@ def test_a_player_whose_ctftime_profile_has_no_team_gets_an_account_and_no_studi
     assert me(client)["team_id"] is None and Teams.query.count() == 0
 
 
-def test_a_teammate_joins_the_studio_of_the_same_ctftime_team_and_the_studio_size_is_kept(world):
-    set_config("team_size", 2)
+def test_a_later_player_of_the_same_ctftime_team_gets_an_account_and_no_studio_and_the_studio_is_never_changed(world, logins):
+    """A CTFtime team's member list is not the event's roster (it holds former members), so nobody is put into a studio that exists."""
     sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
-    sign_in(world, "c2", profile(2, "B", "b@example.com", MOTH))
-    team = Teams.query.filter_by(oauth_id=4321).one()
-    assert sorted(m.name for m in team.members) == ["A", "B"]
-    client, r = sign_in(world, "c3", profile(3, "C", "c@example.com", MOTH))
-    assert r.status_code == 302 and me(client) is not None, "the third is signed in"
-    assert Users.query.filter_by(oauth_id=3).one().team_id is None and len(Teams.query.filter_by(oauth_id=4321).one().members) == 2, "but the studio is full"
-    assert Teams.query.count() == 1
+    client, r = sign_in(world, "c2", profile(2, "B", "b@example.com", MOTH))
+    assert r.status_code == 302 and me(client) is not None, "signed in"
+    assert me(client)["team_id"] is None, "but with no studio: the captain's invite is the way in"
+    assert [m.name for m in moth_studio().members] == ["A"] and moth_studio().captain_id == Users.query.filter_by(oauth_id=1).one().id and Teams.query.count() == 1
+    assert any("already has a studio" in line for line in logins)
+
+
+def moth_studio():
+    return Teams.query.filter_by(oauth_id=4321).one()
+
+
+def test_a_player_who_signs_in_again_is_never_put_back_in_a_studio_the_crew_took_them_out_of(world):
+    client, _ = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    user = Users.query.filter_by(oauth_id=1).one()
+    user.team_id = None  # what the crew's removal of a member leaves
+    db.session.commit()
+    again, r = sign_in(world, "c2", profile(1, "A", "a@example.com", MOTH))
+    assert r.status_code == 302 and me(again)["team_id"] is None
+    assert Users.query.filter_by(oauth_id=1).one().team_id is None and Teams.query.count() == 1 and len(moth_studio().members) == 0
+
+
+def test_a_suspended_studio_is_not_joined_either(world):
+    gen_team(db, name="Banned Studio", email="b@example.com", member_count=1, oauth_id=4321, banned=True)
+    client, r = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    assert r.status_code == 302 and me(client)["team_id"] is None
+    assert len(Teams.query.filter_by(oauth_id=4321).one().members) == 1
+
+
+def test_a_studio_made_by_the_sign_in_cannot_be_joined_by_name_and_password_and_the_join_form_does_not_crash(world):
+    sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    register_user(world.app, name="other", email="other@example.com")
+    client = login_as_user(world.app, "other")
+    client.get("/teams/join")
+    with client.session_transaction() as sess:
+        nonce = sess["nonce"]
+    r = client.post("/teams/join", data={"name": "Moth Cipher", "password": "guess", "nonce": nonce})
+    assert r.status_code == 200 and "incorrect" in r.get_data(as_text=True).lower(), "CTFd's own refusal, not a crash"
+    assert Users.query.filter_by(name="other").one().team_id is None
+
+
+def test_the_crew_can_close_the_making_of_studios_and_the_sign_in_still_makes_the_account(world):
+    set_config("team_creation", False)
+    client, _ = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    assert me(client)["team_id"] is None and Teams.query.count() == 0
+
+
+def test_in_users_mode_there_are_no_studios_at_all(provider):
+    app = create_ctfd(user_mode="users", enable_plugins=True)
+    with app.app_context():
+        client, r = sign_in(SimpleNamespace(app=app, provider=provider), "c1", profile(1, "A", "a@example.com", MOTH))
+        assert r.status_code == 302 and me(client) is not None and Teams.query.count() == 0
+    destroy_ctfd(app)
+
+
+def test_a_player_already_in_a_studio_of_their_own_is_not_moved(world):
+    gen_team(db, name="Own Studio", email="own@example.com", member_count=1)
+    member = Teams.query.filter_by(name="Own Studio").one().members[0]
+    member.oauth_id = 15
+    db.session.commit()
+    client, _ = sign_in(world, "c1", profile(15, "A", "a@example.com", MOTH))
+    assert me(client)["team_id"] == member.team_id and Teams.query.filter_by(oauth_id=4321).first() is None
+
+
+def test_two_studios_made_at_the_same_moment_with_one_name_leave_the_earlier_one(world, monkeypatch):
+    earlier = gen_team(db, name="Moth Cipher", email="e@example.com", member_count=1)
+    monkeypatch.setattr(oauth, "_studio_name_taken", lambda name: False)  # the race: nobody had the name when this request looked
+    client, r = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    assert r.status_code == 302 and me(client) is not None and me(client)["team_id"] is None
+    assert Teams.query.filter_by(name="Moth Cipher").count() == 1 and Teams.query.filter_by(name="Moth Cipher").one().id == earlier.id
+
+
+def test_a_name_taken_by_another_studio_is_logged_for_the_crew_with_the_ctftime_team(world, caplog):
+    caplog.set_level(logging.WARNING, logger="l3mon")
+    gen_team(db, name="Moth Cipher", email="t@example.com", member_count=1)
+    sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    assert any("4321" in r.getMessage() and "Moth Cipher" in r.getMessage() and "already has that name" in r.getMessage() for r in caplog.records)
+
+
+# ---- registration rules that normal sign-up enforces
+
+
+def test_a_registration_code_the_sign_in_cannot_give_means_no_new_account(world):
+    set_config("registration_code", "sesame")
+    client, r = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    assert_refused(world, client, r, oauth.NEEDS_CODE)
+    assert Users.query.filter_by(oauth_id=1).first() is None
+
+
+def test_the_email_allow_list_and_block_list_apply_to_a_ctftime_email_too(world):
+    set_config("domain_whitelist", "college.example")
+    client, r = sign_in(world, "c1", profile(1, "A", "a@elsewhere.example", MOTH))
+    assert_refused(world, client, r, oauth.EMAIL_USED)
+    client, r = sign_in(world, "c2", profile(2, "B", "b@college.example", MOTH))
+    assert r.status_code == 302 and me(client) is not None, "an address on the list is fine"
+    set_config("domain_whitelist", "")
+    set_config("domain_blacklist", "spam.example")
+    client, r = sign_in(world, "c3", profile(3, "C", "c@spam.example", MOTH))
+    assert_refused(world, client, r, oauth.EMAIL_USED)
+    assert Users.query.filter(Users.oauth_id.in_([1, 3])).count() == 0
+
+
+# ---- names that draw nothing, and names that are all taken
+
+
+@pytest.mark.parametrize("blank", ["\u3164", "\u2800", "\u115f\u1160", "\u206a", "\u034f", "\u200d", "\ufff9", "\uffa0", "★★★", "  .  "])
+def test_a_name_that_shows_nothing_becomes_the_numbered_fallback_for_players_and_studios(world, blank):
+    sign_in(world, "c1", profile(1, blank, "a@example.com", (60, blank)))
+    assert Users.query.filter_by(oauth_id=1).one().name == "ctftime-1" and Teams.query.filter_by(oauth_id=60).one().name == "ctftime-team-60"
+
+
+@pytest.mark.parametrize("sneaky", ["Mo⁪th", "Cipher⁢Moth", "A￹B", "Team­7"])
+def test_a_name_with_a_hidden_format_character_among_its_letters_is_replaced(world, sneaky):
+    sign_in(world, "c1", profile(1, sneaky, "a@example.com", (62, sneaky)))
+    assert Users.query.filter_by(oauth_id=1).one().name == "ctftime-1" and Teams.query.filter_by(oauth_id=62).one().name == "ctftime-team-62"
+
+
+@pytest.mark.parametrize("fine", ["നമസ്കാരം", "Asha_K", "Team 7", "Zoë", "क‍ष", "ک‌ب"])
+def test_a_name_in_any_script_is_kept_when_it_shows_something(world, fine):
+    sign_in(world, "c1", profile(1, fine, "a@example.com", (61, fine)))
+    assert Users.query.filter_by(oauth_id=1).one().name == fine and Teams.query.filter_by(oauth_id=61).one().name == fine
+
+
+def test_when_every_name_is_taken_no_account_is_made_and_no_taken_name_is_reused(world):
+    for name in ["Asha", "ctftime-1"] + [f"Asha-{n}" for n in range(2, 50)] + [f"ctftime-1-{n}" for n in range(2, 50)]:
+        gen_user(db, name=name, email=f"{name}@example.com", password="password", verified=True)
+    client, r = sign_in(world, "c1", profile(1, "Asha", "a@example.com", MOTH))
+    assert_refused(world, client, r, oauth.NO_NAME)
+    assert Users.query.filter_by(oauth_id=1).first() is None and Users.query.filter_by(name="ctftime-1").count() == 1
+
+
+# ---- HEAD, the session, the database, the secret
+
+
+def test_a_head_request_counts_against_the_same_limit(world):
+    client = world.app.test_client()
+    first = [client.head(START).status_code for _ in range(60)] + [client.get(START).status_code for _ in range(60)]
+    assert first == [302] * 120
+    assert client.head(START).status_code == 429 and client.get(START).status_code == 429, "one counter for both"
+    other = world.app.test_client()
+    assert [other.head(f"{CALLBACK}?code=x&state=y").status_code for _ in range(122)][-1] == 429
+
+
+def test_a_signed_in_visitor_is_not_swapped_to_another_account_by_a_state_kept_from_before(world):
+    gen_user(db, name="password-user", email="pw@example.com", password="password", verified=True)
+    world.provider.profiles["c1"] = profile(1, "Ctf", "ctf@example.com", MOTH)
+    client = world.app.test_client()
+    state = parse_qs(urlsplit(client.get(START).headers["Location"]).query)["state"][0]
+    client.get("/login")
+    with client.session_transaction() as sess:
+        nonce = sess["nonce"]
+    client.post("/login", data={"name": "password-user", "password": "password", "nonce": nonce})
+    assert me(client)["name"] == "password-user"
+    r = client.get(f"{CALLBACK}?code=c1&state={state}")
+    assert r.status_code == 302 and urlsplit(r.headers["Location"]).path == "/"
+    assert me(client)["name"] == "password-user" and world.provider.seen == [] and Users.query.filter_by(oauth_id=1).first() is None
+
+
+def test_no_database_transaction_is_held_while_ctftime_is_being_asked(world):
+    """A transaction holds a pooled connection: a slow CTFtime would use up a worker's connections and stop flag submissions."""
+    held = []
+    real_post, real_get = oauth.requests.post, oauth.requests.get
+
+    def spy(real):
+        def call(*args, **kwargs):
+            held.append(db.session().in_transaction())
+            return real(*args, **kwargs)
+        return call
+
+    with mock.patch.object(oauth.requests, "post", side_effect=spy(real_post)), mock.patch.object(oauth.requests, "get", side_effect=spy(real_get)):
+        sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
+    assert held == [False, False], held
+
+
+def test_the_limits_in_the_code_are_the_documented_ones():
+    assert oauth.TIMEOUT == (3.05, 8) and oauth.STATE_SECONDS == 600
+
+
+def test_a_state_nine_minutes_old_is_still_good(world):
+    world.provider.profiles["c1"] = profile(1, "A", "a@example.com", MOTH)
+    client = world.app.test_client()
+    state = parse_qs(urlsplit(client.get(START).headers["Location"]).query)["state"][0]
+    with client.session_transaction() as sess:
+        sess["l3mon_ctftime"] = {**sess["l3mon_ctftime"], "at": sess["l3mon_ctftime"]["at"] - 540}
+    assert me(client) is None
+    r = client.get(f"{CALLBACK}?code=c1&state={state}")
+    assert r.status_code == 302 and urlsplit(r.headers["Location"]).path == "/" and me(client) is not None
+
+
+def test_a_half_configured_platform_says_so_once_at_load(monkeypatch, caplog):
+    caplog.set_level(logging.WARNING, logger="l3mon")
+    monkeypatch.setenv("CTFTIME_CLIENT_ID", "4242")
+    monkeypatch.delenv("CTFTIME_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("CTFTIME_CLIENT_SECRET_FILE", raising=False)
+    oauth.warn_if_half_configured()
+    assert any("no CTFtime secret can be read" in r.getMessage() for r in caplog.records)
+    caplog.clear()
+    monkeypatch.setenv("CTFTIME_CLIENT_SECRET", "x")
+    oauth.warn_if_half_configured()
+    monkeypatch.delenv("CTFTIME_CLIENT_ID")
+    monkeypatch.delenv("CTFTIME_CLIENT_SECRET")
+    oauth.warn_if_half_configured()
+    assert caplog.records == [], "set up completely, or not at all: nothing to say"
 
 
 def test_the_same_player_signing_in_again_is_the_same_account_and_nothing_is_changed(world):
@@ -225,13 +438,6 @@ def test_a_name_taken_by_another_studio_leaves_the_player_without_a_studio_and_t
     client, r = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
     assert r.status_code == 302 and me(client)["team_id"] is None and Teams.query.count() == before
     assert Teams.query.filter_by(oauth_id=4321).first() is None
-
-
-def test_a_suspended_studio_is_not_joined(world):
-    gen_team(db, name="Banned Studio", email="b@example.com", member_count=1, oauth_id=4321, banned=True)
-    client, r = sign_in(world, "c1", profile(1, "A", "a@example.com", MOTH))
-    assert r.status_code == 302 and me(client)["team_id"] is None
-    assert len(Teams.query.filter_by(oauth_id=4321).one().members) == 1
 
 
 def test_the_limit_of_studios_and_of_accounts_is_respected(world):
@@ -307,7 +513,7 @@ def test_a_profile_without_a_usable_email_makes_no_account(world):
     assert Users.query.filter(Users.oauth_id >= 100).count() == 0
 
 
-@pytest.mark.parametrize("bad_id", [None, 0, -4, "abc", 1.5, True, 2**31, [1], {"a": 1}])
+@pytest.mark.parametrize("bad_id", [None, 0, -4, "abc", 1.5, True, 2**31, [1], {"a": 1}, "\u00b2", "\u0663\u0662\u0661", "1" * 10, " 12", "12 "])
 def test_a_profile_without_a_real_id_is_not_trusted(world, bad_id):
     client, r = sign_in(world, "c1", {"id": bad_id, "name": "P", "email": "p@example.com"})
     assert_refused(world, client, r, oauth.BAD_PROFILE)
@@ -353,14 +559,14 @@ def test_a_missing_or_odd_state_is_refused_without_an_error(world, given):
     assert_refused(world, client, client.get(f"{CALLBACK}?code=c1&state={given}"), oauth.STATE)
 
 
-def test_a_state_works_once_only(world):
+def test_a_callback_replayed_by_someone_now_signed_in_goes_to_the_front_page_and_asks_ctftime_nothing(world):
     world.provider.profiles["c1"] = profile(1, "A", "a@example.com", MOTH)
     client = world.app.test_client()
     state = parse_qs(urlsplit(client.get(START).headers["Location"]).query)["state"][0]
     first = client.get(f"{CALLBACK}?code=c1&state={state}")
     assert first.status_code == 302 and urlsplit(first.headers["Location"]).path == "/" and me(client) is not None
     replay = client.get(f"{CALLBACK}?code=c1&state={state}")
-    assert replay.status_code == 302 and urlsplit(replay.headers["Location"]).path == "/login", "the same state again is refused"
+    assert replay.status_code == 302 and urlsplit(replay.headers["Location"]).path == "/"
     assert len(world.provider.seen) == 2, "and CTFtime was not asked again"
 
 
@@ -402,14 +608,15 @@ def test_a_code_that_ctftime_does_not_know_is_a_failure_not_a_crash(world):
 
 @pytest.mark.parametrize("field,mode", [("token_mode", "403"), ("token_mode", "500"), ("token_mode", "not_json"), ("token_mode", "not_object"), ("token_mode", "no_token"),
                                         ("token_mode", "bad_token"), ("token_mode", "spaced_token"), ("token_mode", "500_with_token"), ("token_mode", "redirect"),
-                                        ("user_mode", "403"), ("user_mode", "403_with_profile"), ("user_mode", "not_json"), ("user_mode", "not_object")])
-def test_every_way_ctftime_can_fail_ends_in_the_same_quiet_refusal_and_no_account(world, field, mode, caplog):
+                                        ("user_mode", "403"), ("user_mode", "403_with_profile"), ("user_mode", "redirect"), ("user_mode", "not_json"), ("user_mode", "not_object")])
+def test_every_way_ctftime_can_fail_ends_in_the_same_quiet_refusal_and_no_account(world, field, mode, caplog, logins):
     caplog.set_level(logging.WARNING, logger="l3mon")
     setattr(world.provider, field, mode)
     client, r = sign_in(world, "c-secret-code", profile(1, "A", "a@example.com", MOTH))
     assert_refused(world, client, r, oauth.UNAVAILABLE)
     assert Users.query.filter_by(oauth_id=1).first() is None and Teams.query.count() == 0
-    logged = " ".join(record.getMessage() for record in caplog.records)
+    assert any("refused" in line for line in logins), "the refusal is in the logins log, so the check below can see that log"
+    logged = " ".join(record.getMessage() for record in caplog.records) + " ".join(logins)
     assert "unavailable" in logged and "c-secret-code" not in logged and "tok-" not in logged and world.provider.client_secret not in logged
 
 
@@ -432,11 +639,12 @@ def test_a_provider_that_cannot_be_reached_at_all_is_unavailable_too(world, monk
     assert_refused(world, client, client.get(f"{CALLBACK}?code=c1&state={state}"), oauth.UNAVAILABLE)
 
 
-def test_nothing_secret_is_ever_logged_on_the_good_path_either(world, caplog, capsys):
+def test_nothing_secret_is_ever_logged_on_the_good_path_either(world, caplog, capsys, logins):
     caplog.set_level(logging.DEBUG)
     sign_in(world, "c-secret-code", profile(1, "A", "a@example.com", MOTH))
     out, err = capsys.readouterr()
-    everything = " ".join(record.getMessage() for record in caplog.records) + out + err
+    assert any("signed in with CTFtime" in line for line in logins), "the sign-in is in the logins log, so the check below can see that log"
+    everything = " ".join(record.getMessage() for record in caplog.records) + " ".join(logins) + out + err
     assert "c-secret-code" not in everything and "tok-c-secret-code" not in everything and world.provider.client_secret not in everything
 
 
@@ -460,25 +668,38 @@ def test_the_callback_is_limited_to_120_a_minute_for_an_address(world):
     assert codes[:120] == [302] * 120 and 429 in codes[120:]
 
 
-def test_two_callbacks_for_the_same_new_player_at_once_never_end_in_an_error_page(world):
-    """The second request finds the account the first made (the unique id catches the race): it signs in or refuses, it never crashes."""
+def _lose_the_race(world, racing_row):
+    """The callback of a new player whose own insert loses a race: `racing_row` is what another request committed just before it."""
     client = world.app.test_client()
     world.provider.profiles["c1"] = profile(7, "A", "a@example.com", MOTH)
     state = parse_qs(urlsplit(client.get(START).headers["Location"]).query)["state"][0]
     real = db.session.commit
-    calls = {"n": 0}
+    lost = {"done": False}
 
-    def commit_that_loses_the_race():
-        calls["n"] += 1
-        if calls["n"] == 1:
+    def commit():
+        if not lost["done"] and any(isinstance(obj, Users) and obj.oauth_id == 7 for obj in db.session.new):
+            lost["done"] = True
             db.session.rollback()
-            other = Users(name="A", email="a@example.com", oauth_id=7, verified=False)
-            db.session.add(other)
+            db.session.add(racing_row)
             real()
             raise IntegrityError("insert", {}, Exception("duplicate"))
         return real()
 
-    with mock.patch.object(db.session, "commit", side_effect=commit_that_loses_the_race):
-        r = client.get(f"{CALLBACK}?code=c1&state={state}")
+    with mock.patch.object(db.session, "commit", side_effect=commit):
+        return client, client.get(f"{CALLBACK}?code=c1&state={state}")
+
+
+def test_two_callbacks_for_the_same_new_player_at_once_never_end_in_an_error_page(world):
+    """The second request finds the account the first made (the unique id catches the race): it signs in, it never crashes."""
+    client, r = _lose_the_race(world, Users(name="A", email="a@example.com", oauth_id=7, verified=False))
     assert r.status_code == 302 and Users.query.filter_by(oauth_id=7).count() == 1
     assert me(client) is not None, "the account that was there first is the one signed in"
+
+
+def test_a_race_lost_to_another_account_with_the_same_email_never_signs_in_as_that_account(world):
+    """The racing row is somebody else's account (a password account with this email): the loser must be refused, not signed in as it."""
+    client, r = _lose_the_race(world, Users(name="victim", email="a@example.com", password="password", verified=True))
+    assert_refused(world, client, r, oauth.EMAIL_USED)
+    assert Users.query.filter_by(email="a@example.com").one().oauth_id is None
+
+

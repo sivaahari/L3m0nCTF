@@ -13,15 +13,19 @@ so this is a small flow of our own with these rules:
 - **Who is who.** An account is found by the CTFtime user id (`Users.oauth_id`) and never by email. A new account needs an email
   address that no other account uses; it starts **unverified**, because CTFtime's email may come from an unverified social account, so
   the platform's own email check still applies. A CTFtime sign-in can never open an administrator's account, a suspended account, or an
-  account that registration would refuse (closed registration, the limit of accounts).
-- **Studios.** In team mode the CTFtime team becomes a studio (`Teams.oauth_id` is the CTFtime team id, the name is kept exactly, because
-  CTFtime's feed finds a team by its name), with the first member as captain. A later member of the same CTFtime team joins it while
-  there is room. A name that another studio already has, a full studio or the limit of studios leaves the player without a studio, who then
-  sets one up the normal way; nothing is taken over.
+  account that registration would refuse (closed registration, a registration code, the email allow-list and block-list, the limit of
+  accounts).
+- **Studios.** In team mode the first player of a CTFtime team to sign in gets a studio made for the team (`Teams.oauth_id` is the CTFtime
+  team id, the name is kept exactly, because CTFtime's feed finds a team by its name), with that player as captain. **Nobody is ever put
+  into a studio that already exists**: a CTFtime team's list of members is not the event's roster (it holds former members), so a later
+  player of the same team gets an account and no studio, and joins with the captain's invite like anyone else. A studio is made only for a
+  new account, never for one that signs in again (so a member the crew removed does not come back), and not when the crew has closed the
+  making of studios, when another studio already has the name (it is logged with the CTFtime team, for the crew) or at the limit of studios.
 - **Failure is quiet and safe.** CTFtime or its Cloudflare answering with an error, a timeout or something that is not what the documented
   answer looks like all end the same way: no account is made, nobody is signed in, the player is told to use the normal sign-in, and the
   log says which step failed (never the code, the token or the secret).
-- **Rate.** 120 starts and 120 callbacks a minute per address: a campus can share one.
+- **Rate.** 120 starts and 120 callbacks a minute per address (a HEAD request counts like a GET): a campus can share one. The database
+  connection is let go before CTFtime is called, so a slow CTFtime cannot use up a worker's connections.
 """
 import hmac
 import logging
@@ -29,6 +33,7 @@ import os
 import re
 import secrets
 import time
+import unicodedata
 from urllib.parse import urlencode, urlsplit
 
 import requests
@@ -41,6 +46,7 @@ from CTFd.plugins.l3mon_core.text import crew_text
 from CTFd.utils import get_config, validators
 from CTFd.utils.config.visibility import registration_visible
 from CTFd.utils.decorators import ratelimit
+from CTFd.utils.email import check_email_is_blacklisted, check_email_is_whitelisted
 from CTFd.utils.logging import log
 from CTFd.utils.security.auth import login_user
 from CTFd.utils.user import authed
@@ -53,6 +59,7 @@ STATE_SECONDS = 600
 TIMEOUT = (3.05, 8)  # connect, read: CTFtime sits behind Cloudflare and must never hold a worker for long
 SESSION_KEY = "l3mon_ctftime"
 NAME_LIMIT = 64
+BLANKS = set("\u3164\u115f\u1160\uffa0\u2800\u034f")  # characters that draw nothing but are not spaces
 BEARER = re.compile(r"[A-Za-z0-9._~+/=-]{1,4096}")  # the characters a bearer token is made of (RFC 6750): nothing that could end a header line
 
 DENIED = "CTFtime sign-in was cancelled."
@@ -62,6 +69,8 @@ BAD_PROFILE = "CTFtime did not send what we need. Use the normal sign-in instead
 NO_EMAIL = "CTFtime did not share an email address. Register with your email and password instead."
 EMAIL_USED = "This email address cannot be used here. Use the normal sign-in or registration instead."
 CLOSED = "Registration is closed."
+NEEDS_CODE = "Registration needs a code. Register with your email and password instead."
+NO_NAME = "No free name could be found for this account. Register with your email and password instead."
 FULL = "The platform has reached its limit of accounts."
 REFUSED = "This account cannot sign in with CTFtime."
 BANNED = "This account has been suspended."
@@ -124,6 +133,7 @@ def safe_next(value):
 
 @oauth.route("/auth/ctftime")
 @ratelimit(method="GET", limit=120, interval=60)
+@ratelimit(method="HEAD", limit=120, interval=60)  # (CTFd counts only the method it is given; both share one counter)
 def start():
     if not configured():
         abort(404)
@@ -183,7 +193,7 @@ def fetch_profile(token) -> dict:
 def _positive_id(value):
     if isinstance(value, bool):
         return None
-    if isinstance(value, str) and value.isdigit() and len(value) <= 9:
+    if isinstance(value, str) and re.fullmatch(r"[0-9]{1,9}", value):  # ASCII digits only (str.isdigit() takes other scripts and superscripts)
         value = int(value)
     return value if isinstance(value, int) and 0 < value < 2**31 else None
 
@@ -206,35 +216,51 @@ def parse_profile(data):
     return {"id": user_id, "name": name, "email": email, "team": team}
 
 
+def _readable(text):
+    """True when a name shows something: a letter or a digit, and none of the fillers and format characters that draw nothing
+    (the zero-width joiner and non-joiner stay, real scripts need them)."""
+    if any(char in BLANKS for char in text) or any(unicodedata.category(char) == "Cf" and char not in "\u200c\u200d" for char in text):
+        return False
+    return any(char.isalnum() for char in text)
+
+
+def _plain(raw):
+    """The name as plain, readable text (the shared rule of the plugins), or None."""
+    clean, problem = crew_text(raw.strip(), NAME_LIMIT, required=True)
+    return clean if not problem and clean and _readable(clean) else None
+
+
 def _name(raw, fallback, taken):
-    """A name that is plain text and not taken: the CTFtime name as it is when it can be, else the part before an @, else the fallback."""
+    """A name that is plain text and free: the CTFtime name as it is when it can be, else the part before an @, else the fallback; a
+    number is added to a name that is taken. None when nothing is free (names are not unique in the database, so nothing is reused)."""
     candidate = raw.strip()
     if "@" in candidate:
         candidate = candidate.split("@", 1)[0]
-    clean, problem = crew_text(candidate, NAME_LIMIT, required=True)
-    if problem or not clean:
-        clean = fallback
-    if not taken(clean):
-        return clean
-    for number in range(2, 50):
-        attempt = f"{clean[: NAME_LIMIT - 4]}-{number}"
-        if not taken(attempt):
-            return attempt
-    return fallback
+    for base in dict.fromkeys([_plain(candidate) or fallback, fallback]):
+        for attempt in [base] + [f"{base[: NAME_LIMIT - 4]}-{number}" for number in range(2, 50)]:
+            if not taken(attempt):
+                return attempt
+    return None
 
 
 def _new_user(profile):
-    """-> (user, None) or (None, the message for the player)."""
+    """-> (user, None, made) or (None, the message for the player, False). `made` is False for the account another request made first."""
     if not registration_visible():
-        return None, CLOSED
+        return None, CLOSED, False
+    if get_config("registration_code"):  # a code is a gate this sign-in cannot pass
+        return None, NEEDS_CODE, False
     limit = int(get_config("num_users", default=0) or 0)
     if limit and Users.query.filter_by(banned=False, hidden=False).count() >= limit:
-        return None, FULL
+        return None, FULL, False
     if not profile["email"]:
-        return None, NO_EMAIL
+        return None, NO_EMAIL, False
+    if check_email_is_whitelisted(profile["email"]) is False or check_email_is_blacklisted(profile["email"]) is True:
+        return None, EMAIL_USED, False
     if Users.query.filter_by(email=profile["email"]).first() is not None:
-        return None, EMAIL_USED
+        return None, EMAIL_USED, False
     name = _name(profile["name"], f"ctftime-{profile['id']}", lambda n: Users.query.filter_by(name=n).first() is not None)
+    if name is None:
+        return None, NO_NAME, False
     user = Users(name=name, email=profile["email"], oauth_id=profile["id"], verified=False)
     db.session.add(user)
     try:
@@ -242,43 +268,46 @@ def _new_user(profile):
     except IntegrityError:  # another request made it first (the same person, twice at once): the account that exists decides
         db.session.rollback()
         user = Users.query.filter_by(oauth_id=profile["id"]).first()
-        return (user, None) if user is not None else (None, EMAIL_USED)
+        return (user, None, False) if user is not None else (None, EMAIL_USED, False)
     clear_user_session(user_id=user.id)
-    return user, None
+    return user, None, True
 
 
-def _studio(user, team):
-    """Put the player in the studio of their CTFtime team (making it for the first one). Returns a note for the log, or None."""
-    existing = Teams.query.filter_by(oauth_id=team["id"]).first()
-    if existing is None:
-        limit = int(get_config("num_teams", default=0) or 0)
-        if limit and Teams.query.filter_by(banned=False, hidden=False).count() >= limit:
-            return "the limit of studios is reached"
-        name, problem = crew_text(team["name"].strip(), NAME_LIMIT, required=True)
-        if problem or not name:
-            name = f"ctftime-team-{team['id']}"
-        if Teams.query.filter_by(name=name).first() is not None:
-            return "another studio already has that name"
-        existing = Teams(name=name, oauth_id=team["id"], captain_id=user.id)
-        db.session.add(existing)
-        try:
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            existing = Teams.query.filter_by(oauth_id=team["id"]).first()
-            if existing is None:
-                return "the studio could not be made"
-        clear_team_session(team_id=existing.id)
-    if existing.banned:
-        return "that studio is suspended"
-    size = int(get_config("team_size", default=0) or 0)
-    if user not in existing.members:
-        if size and len(existing.members) >= size:
-            return "that studio is full"
-        existing.members.append(user)
+def _studio_name_taken(name):
+    return Teams.query.filter_by(name=name).first() is not None
+
+
+def _new_studio(user, team):
+    """Make the studio of the player's CTFtime team, when nobody has yet. Returns a note for the log, or None. An existing studio is never
+    joined (see the header)."""
+    if Teams.query.filter_by(oauth_id=team["id"]).first() is not None:
+        return "that CTFtime team already has a studio: its captain invites the player"
+    if not bool(get_config("team_creation", default=True)):
+        return "the crew has closed the making of studios"
+    limit = int(get_config("num_teams", default=0) or 0)
+    if limit and Teams.query.filter_by(banned=False, hidden=False).count() >= limit:
+        return "the limit of studios is reached"
+    name = _plain(team["name"]) or f"ctftime-team-{team['id']}"
+    if _studio_name_taken(name):
+        _log.warning("l3mon: CTFtime team %s (%r) could not get its studio: another studio already has that name", team["id"], team["name"][:80])
+        return "another studio already has that name"
+    # nobody can ever sign in to this studio by name and password: the password is a secret nobody is told (a studio with none breaks CTFd's join form)
+    studio = Teams(name=name, oauth_id=team["id"], captain_id=user.id, password=secrets.token_urlsafe(24))
+    db.session.add(studio)
+    try:
         db.session.commit()
-        clear_user_session(user_id=user.id)
-        clear_team_session(team_id=existing.id)
+    except IntegrityError:
+        db.session.rollback()
+        return "the studio could not be made"
+    earlier = Teams.query.filter_by(name=name).order_by(Teams.id).first()  # names are not unique in the database: of two made at the same moment the earlier stays
+    if earlier is not None and earlier.id != studio.id:
+        db.session.delete(studio)
+        db.session.commit()
+        return "another studio took that name at the same moment"
+    studio.members.append(user)
+    db.session.commit()
+    clear_user_session(user_id=user.id)
+    clear_team_session(team_id=studio.id)
     return None
 
 
@@ -292,9 +321,13 @@ def _fail(message, note):
 
 @oauth.route("/auth/ctftime/callback")
 @ratelimit(method="GET", limit=120, interval=60)
+@ratelimit(method="HEAD", limit=120, interval=60)
 def callback():
     if not configured():
         abort(404)
+    if authed():  # already signed in: nothing to do, and a state kept from before must not swap the session to another account
+        session.pop(SESSION_KEY, None)
+        return redirect("/")
     kept = session.pop(SESSION_KEY, None)
     given = request.args.get("state", "")
     if not isinstance(kept, dict) or not isinstance(given, str) or not isinstance(kept.get("state"), str):
@@ -306,6 +339,7 @@ def callback():
     code = request.args.get("code", "")
     if not code or len(code) > 1024:
         return _fail(STATE, "no code came back")
+    db.session.commit()  # end the transaction the request's own hooks began: it must not be held while CTFtime is slow (it holds a pooled connection)
     try:
         profile = parse_profile(fetch_profile(exchange(code)))
     except Unavailable as problem:
@@ -315,17 +349,17 @@ def callback():
         _log.warning("l3mon: CTFtime sign-in: the profile is not what CTFtime documents")
         return _fail(BAD_PROFILE, "the profile was not usable")
 
-    user = Users.query.filter_by(oauth_id=profile["id"]).first()
+    user, made = Users.query.filter_by(oauth_id=profile["id"]).first(), False
     if user is None:
-        user, message = _new_user(profile)
+        user, message, made = _new_user(profile)
         if user is None:
             return _fail(message, "no account was made")
     if user.type == "admin":
         return _fail(REFUSED, "an administrator's account is never opened this way")
     if user.banned:
         return _fail(BANNED, "the account is suspended")
-    if get_config("user_mode") == "teams" and user.team_id is None and profile["team"] is not None:
-        note = _studio(user, profile["team"])
+    if made and get_config("user_mode") == "teams" and profile["team"] is not None:
+        note = _new_studio(user, profile["team"])
         if note:
             log("logins", "[{date}] {ip} - CTFtime sign-in: no studio for the player ({note})", note=note)
 
@@ -334,3 +368,9 @@ def callback():
     log("logins", "[{date}] {ip} - {name} signed in with CTFtime", name=user.name)
     return redirect(safe_next(kept.get("next")) or "/")
 
+
+def warn_if_half_configured():
+    """At load: an event number without a secret it can read (a file the container's user cannot open is the usual cause) switches the sign-in
+    off without a word, so say it once."""
+    if client_id() and not client_secret():
+        _log.warning("l3mon: CTFTIME_CLIENT_ID is set but no CTFtime secret can be read (CTFTIME_CLIENT_SECRET or the file CTFTIME_CLIENT_SECRET_FILE, readable by the CTFd user): Login with CTFtime is off")

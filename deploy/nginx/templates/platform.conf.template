@@ -74,14 +74,10 @@ server {
     include /etc/nginx/snippets/security-headers.conf;
     include /etc/nginx/snippets/proxy.conf;
   }
-  # Login with CTFtime (plugin l3mon_ctftime): the same slow-down as the other sign-in routes. The route answers 404 until the event
-  # number and the secret are set.
-  location ~ ^/auth/ctftime(/|$) {
-    limit_req zone=general burst=200 nodelay;
-    limit_req zone=login burst=40 nodelay;
-    include /etc/nginx/snippets/security-headers.conf;
-    include /etc/nginx/snippets/proxy.conf;
-  }
+  # CTFd's own OAuth sign-in (for another provider) finds accounts by email, marks them verified and shares the id columns with Login with
+  # CTFtime (plugin l3mon_ctftime, /auth/ctftime, which is rate limited by the plugin: nginx's login zone counts only POSTs). It is not used here.
+  location = /oauth    { return 404; }
+  location = /redirect { return 404; }
 
   # Flag submission: generous per address, because a whole campus can share one.
   location = /api/v1/challenges/attempt {

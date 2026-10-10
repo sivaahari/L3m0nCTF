@@ -25,7 +25,7 @@ class MockCTFtime:
         self.client_id, self.client_secret, self.redirect_uri = client_id, client_secret, redirect_uri
         self.profiles = {}  # authorization code -> the answer of /user
         self.token_mode = "ok"  # ok | 403 | 500 | not_json | not_object | no_token | bad_token | spaced_token | 500_with_token | redirect | slow
-        self.user_mode = "ok"  # ok | 403 | 403_with_profile | not_json | not_object | slow
+        self.user_mode = "ok"  # ok | 403 | 403_with_profile | redirect | not_json | not_object | slow
         self.delay = 3.0  # how long "slow" waits
         self.moved_token = None
         self.seen = []  # every request: {"method", "path", "form", "authorization"}
@@ -92,6 +92,8 @@ class MockCTFtime:
 
             def do_GET(self):
                 mock.seen.append({"method": "GET", "path": self.path, "form": {}, "authorization": self.headers.get("Authorization")})
+                if self.path == "/moved-user":
+                    return self._send(200, next(iter(mock.profiles.values())))
                 if self.path == "/moved-token" and mock.moved_token:
                     return self._send(200, {"access_token": mock.moved_token, "token_type": "Bearer"})
                 if self.path != "/user":
@@ -101,6 +103,12 @@ class MockCTFtime:
                     time.sleep(mock.delay)
                 if mode == "403":
                     return self._send(403, b"<html>Cloudflare</html>", "text/html")
+                if mode == "redirect":
+                    self.send_response(302)
+                    self.send_header("Location", "/moved-user")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return None
                 if mode == "not_json":
                     return self._send(200, b"<html>maintenance</html>", "text/html")
                 if mode == "not_object":

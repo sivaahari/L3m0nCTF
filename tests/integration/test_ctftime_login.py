@@ -20,6 +20,12 @@ def test_01_without_an_event_number_and_a_secret_the_sign_in_routes_do_not_exist
     assert t.header_values(pairs, "X-Content-Type-Options") == ["nosniff"], "nginx's own headers are there"
 
 
+@pytest.mark.parametrize("path", ["/oauth", "/redirect", "/redirect?code=x&state=y"])
+def test_01b_ctfds_own_oauth_routes_are_closed_at_nginx(path):
+    status, _, _ = t.request(path)
+    assert status == 404, (path, status)
+
+
 def test_02_the_event_number_reaches_the_container_and_the_secret_is_a_file_never_an_environment_variable():
     env = dict(line.split("=", 1) for line in t.inspect("ctfd")["Config"]["Env"] if "=" in line)
     assert env.get("CTFTIME_CLIENT_ID") == "", "empty until CTFtime approves the event (event.toml, [ctftime])"

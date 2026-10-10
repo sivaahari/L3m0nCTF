@@ -75,3 +75,4 @@ def load(app):
 
     app.register_blueprint(feeds)
     app.register_blueprint(oauth.oauth)
+    oauth.warn_if_half_configured()
