@@ -19,7 +19,7 @@ tools/compose.sh up -d --wait
 ```
 
 1. Clone and switch to the `pre-deployment` branch.
-2. Generate **new random secrets** (into `.secrets/`, never committed) and the settings CTFd starts with (into `deploy/compose/generated/`). Nothing is printed. Run it once; it refuses to overwrite existing secrets.
+2. Generate **new random secrets** (into `.secrets/`, never committed) and the settings CTFd starts with (into `deploy/compose/generated/`). Nothing is printed. Run it once; it refuses to overwrite existing secrets. A machine set up before a new secret was added (the instancer's, the operations stack's, the CAPTCHA's and Google's) takes just the new ones with `python -m l3mon secrets generate --dir ../.secrets --only-missing` (run in the tools folder): it writes the files that are not there, leaves every existing secret as it is, and makes an empty file for each secret that somebody outside has to give.
 3. Build the platform image (the official CTFd 3.8.8, upgraded libraries, our plugin and theme). About one to two minutes the first time.
 4. Start everything and wait until every container reports healthy (the first start also creates the database, which takes about a minute).
 

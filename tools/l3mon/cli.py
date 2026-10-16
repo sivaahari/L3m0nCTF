@@ -30,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
     ssub = s.add_subparsers(dest="secrets_cmd", required=True)
     sg = ssub.add_parser("generate", help="write one file per secret; values are never printed")
     sg.add_argument("--dir", default=".secrets", help="where to write them (default: .secrets)")
-    sg.add_argument("--force", action="store_true", help="replace secrets that already exist")
+    mode = sg.add_mutually_exclusive_group()
+    mode.add_argument("--force", action="store_true", help="replace secrets that already exist")
+    mode.add_argument("--only-missing", action="store_true", help="write only the secrets whose file does not exist yet; change nothing else")
 
     a = sub.add_parser("api-rules", help="the nginx rules that keep CTFd's administrator API for the organisers' addresses")
     a.add_argument("action", choices=["generate", "check"], help="generate rewrites the two snippet files; check fails when they are out of date")
@@ -107,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "secrets":
         try:
-            made = secrets_gen.generate(Path(args.dir), force=args.force)
+            made = secrets_gen.generate(Path(args.dir), force=args.force, only_missing=args.only_missing)
         except FileExistsError as exc:
             print(f"error: {exc}")
             return 1
