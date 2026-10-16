@@ -18,7 +18,8 @@
     {"id": 1, "name": "studio-a", "members": ["alice", "abe"]},
     {"id": 2, "name": "studio-b", "members": ["bob"]},
     {"id": 3, "name": "studio-c", "members": ["cara"]},
-    {"id": 4, "name": "studio-h", "members": ["hal"]}
+    {"id": 4, "name": "studio-h", "members": ["hal"]},
+    {"id": 5, "name": "studio-d", "members": ["dina"]}
   ],
   "steps": [
     {"label": "before the start", "do": [{"phase": "before"}],
@@ -53,6 +54,18 @@
      "ask": [{"board": "alice"}, {"board": "bob"}, {"panel": ["alice", "moth_cipher"]}, {"guide": "alice"}, {"guide": "bob"}, {"bell": "alice"}, {"bell": "bob"}, {"scoreboard": "alice"}, {"epg": "alice"}]},
     {"label": "and puts them back", "do": [{"restore": "moth_cipher"}],
      "ask": [{"board": "alice"}, {"board": "bob"}, {"panel": ["alice", "moth_cipher"]}, {"guide": "alice"}, {"guide": "bob"}, {"bell": "alice"}, {"bell": "bob"}, {"scoreboard": "alice"}]},
+    {"label": "the scoreboard freezes", "do": [{"phase": "frozen"}],
+     "ask": [{"board": "alice"}, {"board": "bob"}, {"scoreboard": "alice"}, {"scoreboard": "bob"}, {"guide": "alice"}, {"guide": "bob"}, {"epg": "alice"}]},
+    {"label": "studios solve during the freeze: a dynamic value stands still, the others learn nothing, a studio knows its own", "do": [{"attempt": ["dina", "moth_cipher", "right"]}, {"attempt": ["alice", "noodle_ledger", "right"]}, {"attempt": ["bob", "coffee_break", "right"]}, {"hint": ["alice", "lantern_walk", 1]}],
+     "ask": [{"board": "dina"}, {"board": "alice"}, {"board": "bob"}, {"scoreboard": "alice"}, {"scoreboard": "bob"}, {"scoreboard": "dina"}, {"guide": "alice"}, {"guide": "dina"}, {"epg": "alice"}, {"panel": ["dina", "moth_cipher"]}, {"panel": ["bob", "moth_cipher"]}, {"panel": ["alice", "noodle_ledger"]}]},
+    {"label": "the crew sets a programme's solves aside during the freeze", "do": [{"void": ["moth_cipher", "frozen checker"]}],
+     "ask": [{"board": "alice"}, {"board": "dina"}, {"guide": "alice"}, {"bell": "dina"}]},
+    {"label": "and puts them back", "do": [{"restore": "moth_cipher"}],
+     "ask": [{"board": "alice"}, {"board": "dina"}, {"board": "bob"}, {"guide": "alice"}, {"scoreboard": "alice"}, {"scoreboard": "dina"}, {"panel": ["dina", "moth_cipher"]}]},
+    {"label": "a bonus during the freeze", "do": [{"bonus": ["studio-b", 30, "late bonus"]}],
+     "ask": [{"board": "bob"}, {"guide": "bob"}, {"scoreboard": "bob"}, {"bell": "bob"}, {"board": "alice"}, {"scoreboard": "alice"}]},
+    {"label": "the freeze is lifted", "do": [{"phase": "live"}],
+     "ask": [{"board": "alice"}, {"board": "bob"}, {"board": "dina"}, {"scoreboard": "alice"}, {"scoreboard": "bob"}, {"scoreboard": "dina"}, {"guide": "alice"}, {"guide": "dina"}, {"epg": "alice"}, {"panel": ["dina", "moth_cipher"]}, {"panel": ["bob", "moth_cipher"]}]},
     {"label": "paused", "do": [{"phase": "paused"}],
      "ask": [{"board": "alice"}, {"attempt": ["alice", "noodle_ledger", "right"]}, {"hint": ["alice", "lantern_walk", 1]}, {"guide": "alice"}, {"scoreboard": "alice"}]},
     {"label": "the broadcast has ended", "do": [{"phase": "ended"}],

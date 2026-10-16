@@ -23,7 +23,7 @@ from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.clock import now
 from CTFd.plugins.l3mon_core.counting import counted_solve_counts
 from CTFd.plugins.l3mon_core.models import Bonus, Void
-from CTFd.plugins.l3mon_scoring import bonus, values, voids
+from CTFd.plugins.l3mon_scoring import bonus, freeze, values, voids
 from CTFd.plugins.l3mon_scoring.errors import Refused
 from CTFd.utils.decorators import admins_only
 
@@ -165,6 +165,7 @@ def get_scoring():
     return _answer(
         {
             "now": int(now()),
+            "frozen": freeze.held(),  # the scoreboard is frozen: no value is written until the freeze is lifted ("wanted" is what each will become)
             "restore_note": voids.DEFAULT_RESTORE_NOTE,
             "challenges": _challenges(),
             "teams": _teams(),
@@ -212,6 +213,8 @@ def post_recalculate():
         return _refuse(problems)
 
     def run():
+        if freeze.held():
+            raise Refused({"frozen": ["the scoreboard is frozen and the values stand still; lift the freeze first, and every value is put right at once"]}, 409)
         changed = values.recalculate(lock=True)
         names = dict(db.session.query(Challenges.id, Challenges.name).filter(Challenges.id.in_([c[0] for c in changed])).all()) if changed else {}
         if changed:

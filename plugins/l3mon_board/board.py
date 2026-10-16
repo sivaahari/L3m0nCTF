@@ -19,13 +19,12 @@ import hashlib
 import json
 
 from CTFd.models import Challenges, Teams, db
-from CTFd.plugins.l3mon_board import hooks, news
+from CTFd.plugins.l3mon_board import counts as solve_counts, hooks, news
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.models import LIVE_DELIVERIES, Channel, Programme
 from CTFd.plugins.l3mon_core.settings import show_coming_count
 from CTFd.plugins.l3mon_core.tick import signature
 from CTFd.plugins.l3mon_core.visibility import visible_challenge_ids
-from CTFd.utils.challenges import get_solve_counts_for_challenges
 
 
 def _signal(solved, total) -> float:
@@ -57,7 +56,7 @@ def build(viewer):
     programmes, per_channel = [], {channel.id: [] for channel in channels}
     if not before:
         shown = visible_challenge_ids(solved_ids=viewer.solved)
-        counts = get_solve_counts_for_challenges(admin=False) or {}
+        counts = solve_counts.for_viewer(viewer)  # CTFd's count, the frozen one while the scoreboard is frozen, plus the studio's own later solves
         rows = (
             db.session.query(Programme, Challenges)
             .join(Challenges, Programme.challenge_id == Challenges.id)

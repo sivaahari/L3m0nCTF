@@ -27,12 +27,14 @@ Inside a web request the counter moves when the request ends, not at the commit:
 returns, and a request that read the new number in between would pair it with old data. Outside a request (a script, a test) it
 moves at once. A counter that cannot be moved (the cache is down) is logged and never stops the commit.
 """
+import calendar
 import logging
 import secrets
 
 from flask import g, has_request_context
-from sqlalchemy import event
+from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.base import NO_VALUE
 
 from CTFd.cache import cache
 from CTFd.models import (
@@ -52,7 +54,7 @@ from CTFd.models import (
     Unlocks,
     Users,
 )
-from CTFd.plugins.l3mon_core.clock import current_phase
+from CTFd.plugins.l3mon_core.clock import current_phase, window
 from CTFd.plugins.l3mon_core.models import Bonus, Channel, Note, Programme, Void
 
 KEY = "l3mon:ver"
@@ -125,18 +127,50 @@ def _bump_quietly():
         _log.warning("l3mon: the tick could not be moved", exc_info=True)
 
 
+def _solves_are_held_back() -> bool:
+    """True while the scoreboard is frozen: a solve made after the freeze then moves nothing. If the phase cannot be read, nothing is held back (a page that
+    fetches once too often is harmless; one that never learns of a change is not)."""
+    try:
+        return bool(current_phase().frozen)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _from_before_the_freeze(row) -> bool:
+    """True for a solve dated before the freeze: the public list shows it, so a change to it (the crew marks a submission correct or incorrect, or
+    deletes the solve) is a change the public pages must refetch. A date that is not at hand (a deleted row whose date was never loaded) counts as
+    before: moving the tick once too often is harmless."""
+    try:
+        date = inspect(row).attrs.date.loaded_value
+        freeze = window().freeze
+        if date is NO_VALUE or date is None or not freeze:
+            return True
+        return calendar.timegm(date.utctimetuple()) < freeze
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def _noted(session, context):
     if session.info.get(_FLAG):
         return
+    held = None  # read when a solve is first seen
     for row in (*session.new, *session.dirty, *session.deleted):
-        if isinstance(row, WATCHED):
-            session.info[_FLAG] = True
-            return
+        if not isinstance(row, WATCHED):
+            continue
+        if isinstance(row, Solves):
+            if held is None:
+                held = _solves_are_held_back()
+            if held and not _from_before_the_freeze(row):
+                continue
+        session.info[_FLAG] = True
+        return
 
 
 def _noted_bulk(context):
     """Query.update() and Query.delete() skip the flush events; CTFd's admin API deletes challenges and users that way."""
     if issubclass(context.mapper.class_, WATCHED):
+        if issubclass(context.mapper.class_, Solves) and _solves_are_held_back():
+            return
         context.session.info[_FLAG] = True
 
 

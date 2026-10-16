@@ -107,7 +107,7 @@
     var rows = data.challenges.map(function (c) {
       var curve = c.type === 'dynamic' ? c.initial + ' → ' + c.floor + ' over ' + plural(c.decay, 'solve') : '—';
       var studios = String(c.solves) + (c.held > c.solves ? ' (' + c.held + ' held)' : '');
-      var check = c.value === c.wanted ? 'ok' : node('span', { 'class': 'sc-differs', text: 'formula says ' + c.wanted + ' TRP' });
+      var check = c.value === c.wanted ? 'ok' : node('span', { 'class': 'sc-differs', text: (data.frozen ? 'held; it becomes ' : 'formula says ') + c.wanted + ' TRP' });
       var revoke = node('button', { type: 'button', 'class': 'btn btn-sm btn-outline-danger', text: 'Set aside solves' });
       var restore = node('button', { type: 'button', 'class': 'btn btn-sm btn-outline-success', text: 'Put back' });
       if (c.held === 0) revoke.setAttribute('disabled', 'disabled');
@@ -250,7 +250,7 @@
     var summary = node('p', { 'class': 'sc-summary' });
     var top = node('div', {});
     var bottom = node('div', {});
-    shell = { reasonBox: reasonBox, summary: summary, top: top, bottom: bottom };
+    shell = { reasonBox: reasonBox, summary: summary, top: top, bottom: bottom, recalc: recalc };
     var form = buildBonusForm();
     say('', false); // "Loading the scores…" has done its job
     while (app.firstChild) app.removeChild(app.firstChild);
@@ -271,7 +271,9 @@
     if (!shell) buildShell(); // built once: a refresh only replaces the tables, so the reason, the choice and the message typed are kept
     var differ = data.challenges.filter(function (c) { return c.value !== c.wanted; }).length;
     shell.summary.textContent = 'Now ' + istText(data.now) + ' · ' + plural(data.challenges.length, 'challenge') + ' · ' +
-      (differ ? differ + ' with a value that is not its formula\'s' : 'every value is its formula\'s');
+      (data.frozen ? 'the scoreboard is frozen: the values stand still until the freeze is lifted, then every value is put right at once'
+        : differ ? differ + ' with a value that is not its formula\'s' : 'every value is its formula\'s');
+    if (data.frozen) shell.recalc.setAttribute('disabled', 'disabled'); else shell.recalc.removeAttribute('disabled');
     fill(shell.top, [valuesSection()]);
     fillStudios();
     fill(shell.bottom, [voidsSection(), bonusesSection(), auditSection()]);

@@ -17,7 +17,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -102,7 +102,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4,
+       "of": 5,
        "solves": 0,
        "hints_used": 0,
        "instances_live": 0,
@@ -208,7 +208,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -278,7 +278,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4,
+       "of": 5,
        "solves": 0,
        "hints_used": 0,
        "instances_live": 0,
@@ -397,7 +397,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -484,7 +484,7 @@
        "name": "studio-b",
        "score": 0,
        "place": null,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -619,7 +619,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4,
+       "of": 5,
        "solves": 0,
        "hints_used": 0,
        "instances_live": 0,
@@ -816,7 +816,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -1035,7 +1035,7 @@
        "name": "studio-a",
        "score": 0,
        "place": null,
-       "of": 4,
+       "of": 5,
        "solves": 0,
        "hints_used": 0,
        "instances_live": 0,
@@ -1174,7 +1174,7 @@
        "name": "studio-a",
        "score": 600,
        "place": 1,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -1306,7 +1306,7 @@
        "name": "studio-b",
        "score": 100,
        "place": 2,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -1438,7 +1438,7 @@
        "name": "studio-c",
        "score": 0,
        "place": null,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -1640,7 +1640,7 @@
        "name": "studio-a",
        "score": 600,
        "place": 1,
-       "of": 4,
+       "of": 5,
        "solves": 2,
        "hints_used": 0,
        "instances_live": 0,
@@ -1710,7 +1710,7 @@
        "name": "studio-b",
        "score": 100,
        "place": 2,
-       "of": 4,
+       "of": 5,
        "solves": 1,
        "hints_used": 0,
        "instances_live": 0,
@@ -1772,7 +1772,7 @@
        "name": "studio-c",
        "score": 0,
        "place": null,
-       "of": 4,
+       "of": 5,
        "solves": 0,
        "hints_used": 0,
        "instances_live": 0,
@@ -2114,7 +2114,7 @@
        "name": "studio-b",
        "score": 599,
        "place": 2,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -2282,7 +2282,7 @@
        "name": "studio-b",
        "score": 599,
        "place": 2,
-       "of": 4,
+       "of": 5,
        "solves": 2,
        "hints_used": 0,
        "instances_live": 0,
@@ -2517,7 +2517,7 @@
        "name": "studio-c",
        "score": 0,
        "place": null,
-       "of": 4,
+       "of": 5,
        "solves": 0,
        "hints_used": 0,
        "instances_live": 0,
@@ -2635,7 +2635,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -2803,7 +2803,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 4,
+       "of": 5,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -2912,7 +2912,7 @@
        "name": "studio-b",
        "score": 639,
        "place": 1,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -3044,7 +3044,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -3178,7 +3178,7 @@
        "name": "studio-b",
        "score": 639,
        "place": 1,
-       "of": 4,
+       "of": 5,
        "solves": 2,
        "hints_used": 0,
        "instances_live": 0,
@@ -3245,7 +3245,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 4,
+       "of": 5,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -3401,7 +3401,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 4
+       "of": 5
       },
       "channels": [
        {
@@ -3584,7 +3584,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 4,
+       "of": 5,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -3794,7 +3794,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 3
+       "of": 4
       },
       "channels": [
        {
@@ -3941,7 +3941,7 @@
        "name": "studio-h",
        "score": 549,
        "place": null,
-       "of": 3
+       "of": 4
       },
       "channels": [
        {
@@ -4124,7 +4124,7 @@
        "name": "studio-h",
        "score": 549,
        "place": null,
-       "of": 3,
+       "of": 4,
        "solves": 2,
        "hints_used": 0,
        "instances_live": 0,
@@ -4376,7 +4376,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -4595,7 +4595,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2,
+       "of": 3,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -4668,7 +4668,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -4800,7 +4800,7 @@
        "name": "studio-b",
        "score": 639,
        "place": 1,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -4934,7 +4934,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2,
+       "of": 3,
        "solves": 1,
        "hints_used": 1,
        "instances_live": 0,
@@ -5128,7 +5128,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -5277,7 +5277,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2,
+       "of": 3,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -5443,7 +5443,7 @@
        "name": "studio-a",
        "score": 90,
        "place": 2,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -5590,7 +5590,7 @@
        "name": "studio-b",
        "score": 140,
        "place": 1,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -5773,7 +5773,7 @@
        "name": "studio-a",
        "score": 90,
        "place": 2,
-       "of": 2,
+       "of": 3,
        "solves": 1,
        "hints_used": 1,
        "instances_live": 0,
@@ -5848,7 +5848,7 @@
        "name": "studio-b",
        "score": 140,
        "place": 1,
-       "of": 2,
+       "of": 3,
        "solves": 1,
        "hints_used": 0,
        "instances_live": 0,
@@ -6077,7 +6077,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -6224,7 +6224,7 @@
        "name": "studio-b",
        "score": 639,
        "place": 1,
-       "of": 2
+       "of": 3
       },
       "channels": [
        {
@@ -6407,7 +6407,7 @@
        "name": "studio-a",
        "score": 589,
        "place": 2,
-       "of": 2,
+       "of": 3,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -6486,7 +6486,7 @@
        "name": "studio-b",
        "score": 639,
        "place": 1,
-       "of": 2,
+       "of": 3,
        "solves": 2,
        "hints_used": 0,
        "instances_live": 0,
@@ -6619,7 +6619,7 @@
    ]
   },
   {
-   "label": "paused",
+   "label": "the scoreboard freezes",
    "results": [
     {
      "ask": {
@@ -6627,14 +6627,14 @@
      },
      "value": {
       "phase": {
-       "state": "paused",
-       "frozen": false
+       "state": "live",
+       "frozen": true
       },
       "team": {
        "name": "studio-a",
        "score": 589,
-       "place": 2,
-       "of": 2
+       "place": null,
+       "of": 3
       },
       "channels": [
        {
@@ -6770,29 +6770,231 @@
     },
     {
      "ask": {
-      "attempt": [
-       "alice",
-       "noodle_ledger",
-       "right"
-      ]
+      "board": "bob"
      },
      "value": {
-      "http": 403,
-      "kind": "paused"
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-b",
+       "score": 639,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
      }
     },
     {
      "ask": {
-      "hint": [
-       "alice",
-       "lantern_walk",
-       1
-      ]
+      "scoreboard": "alice"
      },
      "value": {
-      "http": 403,
-      "kind": "phase_closed",
-      "phase": "paused"
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 589,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-b",
+       "score": 639,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
      }
     },
     {
@@ -6801,21 +7003,21 @@
      },
      "value": {
       "phase": {
-       "state": "paused",
-       "frozen": false
+       "state": "live",
+       "frozen": true
       },
       "banner": {
-       "id": "paused",
-       "cls": "banner-warn",
-       "lead": "PAUSED.",
-       "text": "Submissions are paused for a moment. Your progress is safe."
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
       },
       "has_grid": true,
       "team": {
        "name": "studio-a",
        "score": 589,
-       "place": 2,
-       "of": 2,
+       "place": null,
+       "of": 3,
        "solves": 2,
        "hints_used": 1,
        "instances_live": 0,
@@ -6881,64 +7083,279 @@
     },
     {
      "ask": {
-      "scoreboard": "alice"
+      "guide": "bob"
      },
      "value": {
       "phase": {
-       "state": "paused",
-       "frozen": false
+       "state": "live",
+       "frozen": true
       },
       "banner": {
-       "id": "paused",
-       "cls": "banner-warn",
-       "lead": "PAUSED.",
-       "text": "Submissions are paused for a moment. Your progress is safe."
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
       },
-      "total": 2,
-      "shown": 2,
-      "me": {
-       "name": "studio-a",
-       "score": 589,
-       "pos": 2,
-       "of": 2
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 639,
+       "place": null,
+       "of": 3,
+       "solves": 2,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 599,
+         "pct": 100
+        }
+       ],
+       "bonus": 40,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Bonus +40 TRP",
+         "content": "found a bug"
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
       },
-      "rows": [
-       {
-        "pos": 1,
-        "name": "studio-b",
-        "solves": 2,
-        "score": 639,
-        "you": false
-       },
-       {
-        "pos": 2,
-        "name": "studio-a",
-        "solves": 2,
-        "score": 589,
-        "you": true
-       }
-      ]
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.33
+      }
      }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-open",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
     }
    ]
   },
   {
-   "label": "the broadcast has ended",
+   "label": "studios solve during the freeze: a dynamic value stands still, the others learn nothing, a studio knows its own",
    "results": [
     {
      "ask": {
-      "board": "alice"
+      "attempt": [
+       "dina",
+       "moth_cipher",
+       "right"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "kind": "correct",
+      "extra": {
+       "value": 499,
+       "reel": 1,
+       "reels_needed": 3,
+       "channel_signal": 0.33,
+       "channel_complete": false,
+       "first_blood": false,
+       "solves": 3
+      }
+     }
+    },
+    {
+     "ask": {
+      "attempt": [
+       "alice",
+       "noodle_ledger",
+       "right"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "kind": "correct",
+      "extra": {
+       "value": 200,
+       "reel": 3,
+       "reels_needed": 3,
+       "channel_signal": 0.33,
+       "channel_complete": false,
+       "first_blood": true,
+       "solves": 1
+      }
+     }
+    },
+    {
+     "ask": {
+      "attempt": [
+       "bob",
+       "coffee_break",
+       "right"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "kind": "correct",
+      "extra": {
+       "value": 50,
+       "reel": 3,
+       "reels_needed": 3,
+       "channel_signal": 1,
+       "channel_complete": true,
+       "first_blood": true,
+       "solves": 1
+      }
+     }
+    },
+    {
+     "ask": {
+      "hint": [
+       "alice",
+       "lantern_walk",
+       1
+      ]
+     },
+     "value": {
+      "http": 200,
+      "kind": "unlocked",
+      "extra": {
+       "score": 764,
+       "cost": 25
+      }
+     }
+    },
+    {
+     "ask": {
+      "board": "dina"
      },
      "value": {
       "phase": {
-       "state": "ended",
-       "frozen": false
+       "state": "live",
+       "frozen": true
       },
       "team": {
-       "name": "studio-a",
-       "score": 589,
-       "place": 2,
-       "of": 2
+       "name": "studio-d",
+       "score": 499,
+       "place": null,
+       "of": 3
       },
       "channels": [
        {
@@ -6947,10 +7364,10 @@
         "synopsis": "A loud street.",
         "accent": "ch1",
         "total": 3,
-        "solved": 2,
-        "signal": 0.67,
-        "on_air": 3,
-        "coming": 0,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 2,
+        "coming": 1,
         "sponsor": null
        },
        {
@@ -6961,6 +7378,153 @@
         "total": 3,
         "solved": 0,
         "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 764,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
         "on_air": 3,
         "coming": 0,
         "sponsor": null
@@ -7010,15 +7574,915 @@
         "live": false
        },
        {
-        "slug": "hush_alley",
-        "number": 103,
-        "channel": "street",
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
         "order": 2,
         "cell": 2,
-        "name": "Hush Alley",
-        "category": "forensics",
-        "difficulty": "hard",
-        "value": 300,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-b",
+       "score": 689,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 1,
+        "signal": 1,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 764,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-b",
+       "score": 689,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-d",
+       "score": 499,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 764,
+       "place": null,
+       "of": 3,
+       "solves": 3,
+       "hints_used": 2,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 3,
+         "trp": 799,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 3,
+       "reels_needed": 3,
+       "on_air": 0.42
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-d",
+       "score": 499,
+       "place": null,
+       "of": 3,
+       "solves": 1,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "dina",
+         "captain": true,
+         "you": true,
+         "solves": 1,
+         "trp": 499,
+         "pct": 100
+        }
+       ],
+       "bonus": 0,
+       "notes": [],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 1,
+       "reels_needed": 3,
+       "on_air": 0.42
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "499",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-solved",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "panel": [
+       "dina",
+       "moth_cipher"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "slug": "moth_cipher",
+      "number": 102,
+      "name": "Moth Cipher",
+      "category": "crypto",
+      "channel_name": "Mighty Street",
+      "sponsor": null,
+      "difficulty": "easy",
+      "author": "Bram",
+      "live": false,
+      "decay": true,
+      "start": 500,
+      "floor": 200,
+      "value": 499,
+      "solves": 3,
+      "solved_by_me": true,
+      "first_blood_open": false,
+      "max_attempts": 0,
+      "tries_left": null,
+      "score": 499,
+      "phase": {
+       "state": "live",
+       "frozen": true
+      }
+     }
+    },
+    {
+     "ask": {
+      "panel": [
+       "bob",
+       "moth_cipher"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "slug": "moth_cipher",
+      "number": 102,
+      "name": "Moth Cipher",
+      "category": "crypto",
+      "channel_name": "Mighty Street",
+      "sponsor": null,
+      "difficulty": "easy",
+      "author": "Bram",
+      "live": false,
+      "decay": true,
+      "start": 500,
+      "floor": 200,
+      "value": 499,
+      "solves": 2,
+      "solved_by_me": true,
+      "first_blood_open": false,
+      "max_attempts": 0,
+      "tries_left": null,
+      "score": 689,
+      "phase": {
+       "state": "live",
+       "frozen": true
+      }
+     }
+    },
+    {
+     "ask": {
+      "panel": [
+       "alice",
+       "noodle_ledger"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "slug": "noodle_ledger",
+      "number": 201,
+      "name": "Noodle Ledger",
+      "category": "osint",
+      "channel_name": "Snack Square",
+      "sponsor": null,
+      "difficulty": "medium",
+      "author": "Dev",
+      "live": false,
+      "decay": false,
+      "start": null,
+      "floor": null,
+      "value": 200,
+      "solves": 1,
+      "solved_by_me": true,
+      "first_blood_open": false,
+      "max_attempts": 0,
+      "tries_left": null,
+      "score": 764,
+      "phase": {
+       "state": "live",
+       "frozen": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "label": "the crew sets a programme's solves aside during the freeze",
+   "results": [
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 265,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-d",
+       "score": 0,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
         "solves": 0,
         "solved_by_me": false,
         "first_blood_open": true,
@@ -7089,6 +8553,2639 @@
     },
     {
      "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 265,
+       "place": null,
+       "of": 3,
+       "solves": 2,
+       "hints_used": 2,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 2,
+         "trp": 300,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 2,
+       "reels_needed": 3,
+       "on_air": 0.25
+      }
+     }
+    },
+    {
+     "ask": {
+      "bell": "dina"
+     },
+     "value": [
+      {
+       "title": "Solve voided",
+       "content": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "label": "and puts them back",
+   "results": [
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 764,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-d",
+       "score": 499,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-b",
+       "score": 689,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 1,
+        "signal": 1,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 764,
+       "place": null,
+       "of": 3,
+       "solves": 3,
+       "hints_used": 2,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 3,
+         "trp": 799,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 3,
+       "reels_needed": 3,
+       "on_air": 0.42
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 764,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-d",
+       "score": 499,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "panel": [
+       "dina",
+       "moth_cipher"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "slug": "moth_cipher",
+      "number": 102,
+      "name": "Moth Cipher",
+      "category": "crypto",
+      "channel_name": "Mighty Street",
+      "sponsor": null,
+      "difficulty": "easy",
+      "author": "Bram",
+      "live": false,
+      "decay": true,
+      "start": 500,
+      "floor": 200,
+      "value": 499,
+      "solves": 3,
+      "solved_by_me": true,
+      "first_blood_open": false,
+      "max_attempts": 0,
+      "tries_left": null,
+      "score": 499,
+      "phase": {
+       "state": "live",
+       "frozen": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "label": "a bonus during the freeze",
+   "results": [
+    {
+     "ask": {
+      "board": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-b",
+       "score": 719,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 1,
+        "signal": 1,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "guide": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-b",
+       "score": 719,
+       "place": null,
+       "of": 3,
+       "solves": 3,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "bob",
+         "captain": true,
+         "you": true,
+         "solves": 3,
+         "trp": 649,
+         "pct": 100
+        }
+       ],
+       "bonus": 70,
+       "notes": [
+        {
+         "title": "Bonus +30 TRP",
+         "content": "late bonus"
+        },
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 1,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 3,
+       "reels_needed": 3,
+       "on_air": 0.42
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-b",
+       "score": 719,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "bell": "bob"
+     },
+     "value": [
+      {
+       "title": "Bonus +40 TRP",
+       "content": "found a bug"
+      },
+      {
+       "title": "Solve voided",
+       "content": ""
+      },
+      {
+       "title": "Solve restored",
+       "content": ""
+      },
+      {
+       "title": "Solve voided",
+       "content": ""
+      },
+      {
+       "title": "Solve restored",
+       "content": ""
+      },
+      {
+       "title": "Bonus +30 TRP",
+       "content": "late bonus"
+      }
+     ]
+    },
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 764,
+       "place": null,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 499,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": true
+      },
+      "banner": {
+       "id": "frozen",
+       "cls": "banner-info",
+       "lead": "SCOREBOARD FROZEN.",
+       "text": "Standings are frozen for the final hour. Your solves still count."
+      },
+      "total": 2,
+      "shown": 2,
+      "me": {
+       "name": "studio-a",
+       "score": 764,
+       "pos": null,
+       "of": 2
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-b",
+        "solves": 2,
+        "score": 639,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-a",
+        "solves": 2,
+        "score": 589,
+        "you": true
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "label": "the freeze is lifted",
+   "results": [
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 760,
+       "place": 1,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 495,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "team": {
+       "name": "studio-b",
+       "score": 715,
+       "place": 2,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 1,
+        "signal": 1,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 495,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "board": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "team": {
+       "name": "studio-d",
+       "score": 495,
+       "place": 3,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 495,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 3,
+      "shown": 3,
+      "me": {
+       "name": "studio-a",
+       "score": 760,
+       "pos": 1,
+       "of": 3
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 3,
+        "score": 760,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 3,
+        "score": 715,
+        "you": false
+       },
+       {
+        "pos": 3,
+        "name": "studio-d",
+        "solves": 1,
+        "score": 495,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "bob"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 3,
+      "shown": 3,
+      "me": {
+       "name": "studio-b",
+       "score": 715,
+       "pos": 2,
+       "of": 3
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 3,
+        "score": 760,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 3,
+        "score": 715,
+        "you": true
+       },
+       {
+        "pos": 3,
+        "name": "studio-d",
+        "solves": 1,
+        "score": 495,
+        "you": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "total": 3,
+      "shown": 3,
+      "me": {
+       "name": "studio-d",
+       "score": 495,
+       "pos": 3,
+       "of": 3
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 3,
+        "score": 760,
+        "you": false
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 3,
+        "score": 715,
+        "you": false
+       },
+       {
+        "pos": 3,
+        "name": "studio-d",
+        "solves": 1,
+        "score": 495,
+        "you": true
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 760,
+       "place": 1,
+       "of": 3,
+       "solves": 3,
+       "hints_used": 2,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 3,
+         "trp": 795,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 3,
+       "reels_needed": 3,
+       "on_air": 0.58
+      }
+     }
+    },
+    {
+     "ask": {
+      "guide": "dina"
+     },
+     "value": {
+      "phase": {
+       "state": "live",
+       "frozen": false
+      },
+      "banner": null,
+      "has_grid": true,
+      "team": {
+       "name": "studio-d",
+       "score": 495,
+       "place": 3,
+       "of": 3,
+       "solves": 1,
+       "hints_used": 0,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "dina",
+         "captain": true,
+         "you": true,
+         "solves": 1,
+         "trp": 495,
+         "pct": 100
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 0,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 1,
+       "reels_needed": 3,
+       "on_air": 0.58
+      }
+     }
+    },
+    {
+     "ask": {
+      "epg": "alice"
+     },
+     "value": [
+      {
+       "name": "Mighty Street",
+       "meta": "2 on air",
+       "soon": "1 coming up",
+       "ad": "",
+       "tiers": [
+        [
+         {
+          "slug": "lantern_walk",
+          "name": "Lantern Walk",
+          "value": "100",
+          "cls": "is-solved",
+          "label": "Lantern Walk, Web, warm-up, 100 TRP, solved"
+         }
+        ],
+        [
+         {
+          "slug": "moth_cipher",
+          "name": "Moth Cipher",
+          "value": "495",
+          "cls": "is-solved",
+          "label": "Moth Cipher, Crypto, easy, 495 TRP, solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      },
+      {
+       "name": "Snack Square",
+       "meta": "3 on air",
+       "soon": "",
+       "ad": "",
+       "tiers": [
+        [],
+        [],
+        [
+         {
+          "slug": "noodle_ledger",
+          "name": "Noodle Ledger",
+          "value": "200",
+          "cls": "is-solved",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, solved"
+         },
+         {
+          "slug": "careful_door",
+          "name": "Careful Door",
+          "value": "80",
+          "cls": "is-open",
+          "label": "Careful Door, Misc, medium, 80 TRP, not solved"
+         }
+        ],
+        [],
+        [
+         {
+          "slug": "steam_tunnel",
+          "name": "Steam Tunnel",
+          "value": "400",
+          "cls": "is-open",
+          "label": "Steam Tunnel, Pwn, insane, 400 TRP, not solved"
+         }
+        ]
+       ]
+      },
+      {
+       "name": "Sponsored Break",
+       "meta": "1 on air",
+       "soon": "",
+       "ad": "Sponsored by Acme",
+       "tiers": [
+        [],
+        [
+         {
+          "slug": "coffee_break",
+          "name": "Coffee Break",
+          "value": "50",
+          "cls": "is-open",
+          "label": "Coffee Break, Misc, easy, 50 TRP, not solved"
+         }
+        ],
+        [],
+        [],
+        []
+       ]
+      }
+     ]
+    },
+    {
+     "ask": {
+      "panel": [
+       "dina",
+       "moth_cipher"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "slug": "moth_cipher",
+      "number": 102,
+      "name": "Moth Cipher",
+      "category": "crypto",
+      "channel_name": "Mighty Street",
+      "sponsor": null,
+      "difficulty": "easy",
+      "author": "Bram",
+      "live": false,
+      "decay": true,
+      "start": 500,
+      "floor": 200,
+      "value": 495,
+      "solves": 3,
+      "solved_by_me": true,
+      "first_blood_open": false,
+      "max_attempts": 0,
+      "tries_left": null,
+      "score": 495,
+      "phase": {
+       "state": "live",
+       "frozen": false
+      }
+     }
+    },
+    {
+     "ask": {
+      "panel": [
+       "bob",
+       "moth_cipher"
+      ]
+     },
+     "value": {
+      "http": 200,
+      "slug": "moth_cipher",
+      "number": 102,
+      "name": "Moth Cipher",
+      "category": "crypto",
+      "channel_name": "Mighty Street",
+      "sponsor": null,
+      "difficulty": "easy",
+      "author": "Bram",
+      "live": false,
+      "decay": true,
+      "start": 500,
+      "floor": 200,
+      "value": 495,
+      "solves": 3,
+      "solved_by_me": true,
+      "first_blood_open": false,
+      "max_attempts": 0,
+      "tries_left": null,
+      "score": 715,
+      "phase": {
+       "state": "live",
+       "frozen": false
+      }
+     }
+    }
+   ]
+  },
+  {
+   "label": "paused",
+   "results": [
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "paused",
+       "frozen": false
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 760,
+       "place": 1,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 2,
+        "coming": 1,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 495,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
+      "attempt": [
+       "alice",
+       "noodle_ledger",
+       "right"
+      ]
+     },
+     "value": {
+      "http": 403,
+      "kind": "paused"
+     }
+    },
+    {
+     "ask": {
+      "hint": [
+       "alice",
+       "lantern_walk",
+       1
+      ]
+     },
+     "value": {
+      "http": 403,
+      "kind": "phase_closed",
+      "phase": "paused"
+     }
+    },
+    {
+     "ask": {
+      "guide": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "paused",
+       "frozen": false
+      },
+      "banner": {
+       "id": "paused",
+       "cls": "banner-warn",
+       "lead": "PAUSED.",
+       "text": "Submissions are paused for a moment. Your progress is safe."
+      },
+      "has_grid": true,
+      "team": {
+       "name": "studio-a",
+       "score": 760,
+       "place": 1,
+       "of": 3,
+       "solves": 3,
+       "hints_used": 2,
+       "instances_live": 0,
+       "members": [
+        {
+         "name": "alice",
+         "captain": true,
+         "you": true,
+         "solves": 3,
+         "trp": 795,
+         "pct": 100
+        },
+        {
+         "name": "abe",
+         "captain": false,
+         "you": false,
+         "solves": 0,
+         "trp": 0,
+         "pct": 0
+        }
+       ],
+       "bonus": 0,
+       "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        }
+       ],
+       "by_channel": [
+        {
+         "slug": "street",
+         "name": "Mighty Street",
+         "sponsor": null,
+         "solved": 2,
+         "total": 3
+        },
+        {
+         "slug": "snack",
+         "name": "Snack Square",
+         "sponsor": null,
+         "solved": 1,
+         "total": 3
+        },
+        {
+         "slug": "break",
+         "name": "Sponsored Break",
+         "sponsor": "Acme",
+         "solved": 0,
+         "total": 1
+        }
+       ]
+      },
+      "story": {
+       "reels": 3,
+       "reels_needed": 3,
+       "on_air": 0.58
+      }
+     }
+    },
+    {
+     "ask": {
+      "scoreboard": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "paused",
+       "frozen": false
+      },
+      "banner": {
+       "id": "paused",
+       "cls": "banner-warn",
+       "lead": "PAUSED.",
+       "text": "Submissions are paused for a moment. Your progress is safe."
+      },
+      "total": 3,
+      "shown": 3,
+      "me": {
+       "name": "studio-a",
+       "score": 760,
+       "pos": 1,
+       "of": 3
+      },
+      "rows": [
+       {
+        "pos": 1,
+        "name": "studio-a",
+        "solves": 3,
+        "score": 760,
+        "you": true
+       },
+       {
+        "pos": 2,
+        "name": "studio-b",
+        "solves": 3,
+        "score": 715,
+        "you": false
+       },
+       {
+        "pos": 3,
+        "name": "studio-d",
+        "solves": 1,
+        "score": 495,
+        "you": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "label": "the broadcast has ended",
+   "results": [
+    {
+     "ask": {
+      "board": "alice"
+     },
+     "value": {
+      "phase": {
+       "state": "ended",
+       "frozen": false
+      },
+      "team": {
+       "name": "studio-a",
+       "score": 760,
+       "place": 1,
+       "of": 3
+      },
+      "channels": [
+       {
+        "slug": "street",
+        "name": "Mighty Street",
+        "synopsis": "A loud street.",
+        "accent": "ch1",
+        "total": 3,
+        "solved": 2,
+        "signal": 0.67,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "snack",
+        "name": "Snack Square",
+        "synopsis": "A hungry square.",
+        "accent": "ch2",
+        "total": 3,
+        "solved": 1,
+        "signal": 0.33,
+        "on_air": 3,
+        "coming": 0,
+        "sponsor": null
+       },
+       {
+        "slug": "break",
+        "name": "Sponsored Break",
+        "synopsis": "We will be right back.",
+        "accent": "ch7",
+        "total": 1,
+        "solved": 0,
+        "signal": 0,
+        "on_air": 1,
+        "coming": 0,
+        "sponsor": "Acme"
+       }
+      ],
+      "programmes": [
+       {
+        "slug": "lantern_walk",
+        "number": 101,
+        "channel": "street",
+        "order": 0,
+        "cell": 0,
+        "name": "Lantern Walk",
+        "category": "web",
+        "difficulty": "warmup",
+        "value": 100,
+        "solves": 2,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "moth_cipher",
+        "number": 102,
+        "channel": "street",
+        "order": 1,
+        "cell": 1,
+        "name": "Moth Cipher",
+        "category": "crypto",
+        "difficulty": "easy",
+        "value": 495,
+        "solves": 3,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "hush_alley",
+        "number": 103,
+        "channel": "street",
+        "order": 2,
+        "cell": 2,
+        "name": "Hush Alley",
+        "category": "forensics",
+        "difficulty": "hard",
+        "value": 300,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "noodle_ledger",
+        "number": 201,
+        "channel": "snack",
+        "order": 0,
+        "cell": 0,
+        "name": "Noodle Ledger",
+        "category": "osint",
+        "difficulty": "medium",
+        "value": 200,
+        "solves": 1,
+        "solved_by_me": true,
+        "first_blood_open": false,
+        "live": false
+       },
+       {
+        "slug": "steam_tunnel",
+        "number": 202,
+        "channel": "snack",
+        "order": 1,
+        "cell": 1,
+        "name": "Steam Tunnel",
+        "category": "pwn",
+        "difficulty": "insane",
+        "value": 400,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": true
+       },
+       {
+        "slug": "careful_door",
+        "number": 203,
+        "channel": "snack",
+        "order": 2,
+        "cell": 2,
+        "name": "Careful Door",
+        "category": "misc",
+        "difficulty": "medium",
+        "value": 80,
+        "solves": 0,
+        "solved_by_me": false,
+        "first_blood_open": true,
+        "live": false
+       },
+       {
+        "slug": "coffee_break",
+        "number": 701,
+        "channel": "break",
+        "order": 0,
+        "cell": 0,
+        "name": "Coffee Break",
+        "category": "misc",
+        "difficulty": "easy",
+        "value": 50,
+        "solves": 1,
+        "solved_by_me": false,
+        "first_blood_open": false,
+        "live": false
+       }
+      ]
+     }
+    },
+    {
+     "ask": {
       "panel": [
        "alice",
        "hush_alley"
@@ -7114,7 +11211,7 @@
       "first_blood_open": true,
       "max_attempts": 0,
       "tries_left": null,
-      "score": 589,
+      "score": 760,
       "phase": {
        "state": "ended",
        "frozen": false
@@ -7179,19 +11276,19 @@
       "has_grid": true,
       "team": {
        "name": "studio-a",
-       "score": 589,
-       "place": 2,
-       "of": 2,
-       "solves": 2,
-       "hints_used": 1,
+       "score": 760,
+       "place": 1,
+       "of": 3,
+       "solves": 3,
+       "hints_used": 2,
        "instances_live": 0,
        "members": [
         {
          "name": "alice",
          "captain": true,
          "you": true,
-         "solves": 2,
-         "trp": 599,
+         "solves": 3,
+         "trp": 795,
          "pct": 100
         },
         {
@@ -7205,6 +11302,14 @@
        ],
        "bonus": 0,
        "notes": [
+        {
+         "title": "Solve restored",
+         "content": ""
+        },
+        {
+         "title": "Solve voided",
+         "content": ""
+        },
         {
          "title": "Solve restored",
          "content": ""
@@ -7226,7 +11331,7 @@
          "slug": "snack",
          "name": "Snack Square",
          "sponsor": null,
-         "solved": 0,
+         "solved": 1,
          "total": 3
         },
         {
@@ -7239,9 +11344,9 @@
        ]
       },
       "story": {
-       "reels": 2,
+       "reels": 3,
        "reels_needed": 3,
-       "on_air": 0.33
+       "on_air": 0.58
       }
      }
     },
@@ -7260,28 +11365,35 @@
        "lead": "THAT'S A WRAP.",
        "text": "The broadcast has ended. You can still read every programme."
       },
-      "total": 2,
-      "shown": 2,
+      "total": 3,
+      "shown": 3,
       "me": {
        "name": "studio-a",
-       "score": 589,
-       "pos": 2,
-       "of": 2
+       "score": 760,
+       "pos": 1,
+       "of": 3
       },
       "rows": [
        {
         "pos": 1,
-        "name": "studio-b",
-        "solves": 2,
-        "score": 639,
-        "you": false
+        "name": "studio-a",
+        "solves": 3,
+        "score": 760,
+        "you": true
        },
        {
         "pos": 2,
-        "name": "studio-a",
-        "solves": 2,
-        "score": 589,
-        "you": true
+        "name": "studio-b",
+        "solves": 3,
+        "score": 715,
+        "you": false
+       },
+       {
+        "pos": 3,
+        "name": "studio-d",
+        "solves": 1,
+        "score": 495,
+        "you": false
        }
       ]
      }
@@ -7310,9 +11422,9 @@
          {
           "slug": "moth_cipher",
           "name": "Moth Cipher",
-          "value": "499",
+          "value": "495",
           "cls": "is-solved",
-          "label": "Moth Cipher, Crypto, easy, 499 TRP, solved"
+          "label": "Moth Cipher, Crypto, easy, 495 TRP, solved"
          }
         ],
         [],
@@ -7341,8 +11453,8 @@
           "slug": "noodle_ledger",
           "name": "Noodle Ledger",
           "value": "200",
-          "cls": "is-open",
-          "label": "Noodle Ledger, OSINT, medium, 200 TRP, not solved"
+          "cls": "is-solved",
+          "label": "Noodle Ledger, OSINT, medium, 200 TRP, solved"
          },
          {
           "slug": "careful_door",
@@ -7392,6 +11504,14 @@
       "bell": "alice"
      },
      "value": [
+      {
+       "title": "Solve voided",
+       "content": ""
+      },
+      {
+       "title": "Solve restored",
+       "content": ""
+      },
       {
        "title": "Solve voided",
        "content": ""

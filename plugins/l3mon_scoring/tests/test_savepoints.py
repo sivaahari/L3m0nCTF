@@ -66,7 +66,7 @@ def test_a_flush_only_notes_what_changed_and_the_end_of_the_request_recalculates
     cid, team_id, user_id = dynamic("dyn").id, team.id, team.captain_id
     calls = []
     real = values.recalculate
-    with app.test_request_context("/api/v1/some/crew/action"), mock.patch.object(values, "recalculate", side_effect=lambda ids=None, lock=False: calls.append(ids) or real(ids, lock)):
+    with app.test_request_context("/api/v1/some/crew/action"), mock.patch.object(values, "recalculate", side_effect=lambda ids=None, lock=False, as_of_freeze=False: calls.append(ids) or real(ids, lock, as_of_freeze)):
         db.session.add(Solves(user_id=user_id, team_id=team_id, challenge_id=cid, ip="127.0.0.1", provided="x", date=datetime.datetime(2026, 11, 28, 4, 0)))
         db.session.commit()
         assert calls == [], "nothing is recalculated inside the transaction that added the solve"
@@ -84,7 +84,7 @@ def test_a_players_own_flag_is_left_to_ctfd_and_a_ban_recalculates_everything(ap
     cid, team_id, user_id = dynamic("dyn").id, team.id, team.captain_id
     calls = []
     real = values.recalculate
-    spy = mock.patch.object(values, "recalculate", side_effect=lambda ids=None, lock=False: calls.append(ids) or real(ids, lock))
+    spy = mock.patch.object(values, "recalculate", side_effect=lambda ids=None, lock=False, as_of_freeze=False: calls.append(ids) or real(ids, lock, as_of_freeze))
     with app.test_request_context(triggers.ATTEMPT, method="POST"), spy:
         db.session.add(Solves(user_id=user_id, team_id=team_id, challenge_id=cid, ip="127.0.0.1", provided="x", date=datetime.datetime(2026, 11, 28, 4, 0)))
         db.session.commit()
@@ -108,7 +108,7 @@ def test_outside_a_request_nothing_is_noted_and_nothing_recalculated(app):
     team = studio("alpha")
     cid, team_id, user_id = dynamic("dyn").id, team.id, team.captain_id
     calls = []
-    with mock.patch.object(values, "recalculate", side_effect=lambda ids=None, lock=False: calls.append(ids)):
+    with mock.patch.object(values, "recalculate", side_effect=lambda ids=None, lock=False, as_of_freeze=False: calls.append(ids)):
         db.session.add(Solves(user_id=user_id, team_id=team_id, challenge_id=cid, ip="127.0.0.1", provided="x", date=datetime.datetime(2026, 11, 28, 4, 0)))
         db.session.commit()
     assert calls == []

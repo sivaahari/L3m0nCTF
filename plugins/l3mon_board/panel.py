@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from flask import abort, request
 
 from CTFd.models import Challenges, Fails, Solves, db
-from CTFd.plugins.l3mon_board import envelope, viewer
+from CTFd.plugins.l3mon_board import counts, envelope, viewer
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.models import LIVE_DELIVERIES, Channel, Programme
 from CTFd.plugins.l3mon_core.visibility import is_visible
@@ -121,9 +121,13 @@ def decorate(response):
     if challenge is None:
         return response
     team = viewer.current_team()
-    extra = block(challenge, inner.get("solves"), team, current_phase())
+    # while frozen: the public count plus the studio's own later solve; when CTFd hides the counts (`solves: null`) they stay hidden
+    solves = None if inner.get("solves") is None else counts.for_challenge(team, challenge.id, inner.get("solves"))
+    extra = block(challenge, solves, team, current_phase())
     if extra is not None:
         inner["l3mon"] = extra
+        if solves is not None:
+            inner["solves"] = solves
         if team is not None:
             # CTFd reads "solved by me" from the public solve counts and says false when no studio that counts has solved the challenge:
             # wrong for a hidden studio, and for a studio whose only solve came after the freeze. The studio's own record is the truth.

@@ -11,12 +11,11 @@ The crew belongs to no studio: `team` is null for them. Nothing here is a date o
 import math
 
 from CTFd.models import Awards, Solves, Unlocks, Users, db
-from CTFd.plugins.l3mon_board import banner, board, envelope, epg, figures, hooks, plan
+from CTFd.plugins.l3mon_board import banner, board, counts, envelope, epg, figures, hooks, plan
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.models import LIVE_DELIVERIES, Note
 from CTFd.plugins.l3mon_core.settings import story_air_target, story_meter
 from CTFd.plugins.l3mon_core.tick import signature
-from CTFd.utils.challenges import get_solve_counts_for_challenges
 
 NOTES = 5  # the studio's newest private lines that are sent
 EARLIER = "Earlier solves"
@@ -88,11 +87,16 @@ def _story(viewer, view):
     target = story_air_target()
     on_air = 0
     if target and not view.before:
-        counts = get_solve_counts_for_challenges(admin=False) or {}
-        every = sum(int(counts.get(challenge.id, 0)) for _, challenge in view.rows if challenge.id in view.shown)
+        known = counts.for_viewer(viewer)
+        every = sum(int(known.get(challenge.id, 0)) for _, challenge in view.rows if challenge.id in view.shown)
         on_air = figures.js_round(min(1, every / target) * 100) / 100
         on_air = int(on_air) if on_air == int(on_air) else on_air
     return {"reels": min(needed, mine), "reels_needed": needed, "on_air": on_air}
+
+
+def meter(viewer):
+    """The Guide's `story` block alone (what `build` puts under `story`), for a viewer; the finale's gate needs only this."""
+    return _story(viewer, plan.read(viewer, current_phase()))
 
 
 def build(viewer):

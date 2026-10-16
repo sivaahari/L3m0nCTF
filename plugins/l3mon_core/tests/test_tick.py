@@ -399,3 +399,189 @@ def test_a_signature_part_from_a_later_plugin_changes_it_and_a_commit_changes_it
         tick_module._parts.remove(part)
 
     with_app(run)
+
+
+# ---- while the scoreboard is frozen (SP3 part 3.6) ---------------------------------------------------------------------------------------------
+
+def test_while_the_scoreboard_is_frozen_a_solve_does_not_move_the_shared_tick_but_everything_else_does():
+    """Other studios must not learn from the tick that somebody solved after the freeze. The solver's own page follows its own number (`own`)."""
+    import time
+
+    from CTFd.models import Awards
+
+    def run(app):
+        chal = gen_challenge(db)
+        team = gen_team(db, name="t", email="t@e.com", member_count=1)
+        other = gen_team(db, name="u", email="u@e.com", member_count=1)
+        chal_id, team_id, user_id, other_id, other_user = chal.id, team.id, team.members[0].id, other.id, other.members[0].id
+        set_config("freeze", int(time.time()) - 60)
+        v = tick.value()
+        gen_solve(db, user_id=user_id, team_id=team_id, challenge_id=chal_id)
+        assert tick.value() == v, "a solve made while the scoreboard is frozen moves nothing for anybody"
+        db.session.add(Awards(user_id=other_user, team_id=other_id, name="Bonus +10 TRP", value=10, category="bonus"))
+        db.session.commit()
+        assert tick.value() == v + 1, "a bonus is the crew's action and tells nothing about the solves"
+        Solves.query.filter_by(team_id=team_id).delete()
+        db.session.commit()
+        assert tick.value() == v + 1, "a solve set aside in bulk (the crew) is held back too"
+        gen_challenge(db, name="another")
+        assert tick.value() == v + 2, "a challenge is not a solve"
+        set_config("freeze", None)
+        assert tick.value() == v + 3, "lifting the freeze moves it"
+        gen_solve(db, user_id=user_id, team_id=team_id, challenge_id=chal_id)
+        assert tick.value() == v + 4, "and a solve moves it again"
+
+    with_app(run)
+
+
+def test_a_solve_deleted_through_the_orm_while_frozen_is_held_back_too_and_a_solve_before_the_freeze_moves_it():
+    import time
+
+    def run(app):
+        chal = gen_challenge(db)
+        team = gen_team(db, name="t", email="t@e.com", member_count=1)
+        chal_id, team_id, user_id = chal.id, team.id, team.members[0].id
+        set_config("freeze", int(time.time()) + 3600)  # a freeze that has not begun holds nothing
+        v = tick.value()
+        row = gen_solve(db, user_id=user_id, team_id=team_id, challenge_id=chal_id)
+        assert tick.value() == v + 1
+        set_config("freeze", int(time.time()) - 60)
+        v = tick.value()
+        db.session.delete(Solves.query.filter_by(team_id=team_id).first())
+        db.session.commit()
+        assert tick.value() == v, "a solve deleted one by one while frozen"
+        assert row is not None
+
+    with_app(run)
+
+
+def test_a_commit_that_holds_a_solve_and_something_a_player_sees_moves_the_tick_once_while_frozen():
+    import time
+
+    def run(app):
+        chal = gen_challenge(db)
+        team = gen_team(db, name="t", email="t@e.com", member_count=1)
+        chal_id, team_id, user_id = chal.id, team.id, team.members[0].id
+        set_config("freeze", int(time.time()) - 60)
+        v = tick.value()
+        db.session.add(Solves(user_id=user_id, team_id=team_id, challenge_id=chal_id, ip="127.0.0.1", provided="x"))
+        db.session.add(Notifications(title="News", content="Something"))
+        db.session.commit()
+        assert tick.value() == v + 1, "the notification is watched even though the solve is not"
+
+    with_app(run)
+
+
+def dated_solve(user_id, team_id, challenge_id, date):
+    """A solve with the date given (CTFd's own helper always dates it now)."""
+    row = Solves(user_id=user_id, team_id=team_id, challenge_id=challenge_id, ip="127.0.0.1", provided="x", date=date)
+    db.session.add(row)
+    db.session.commit()
+    return row
+
+
+def test_a_change_to_a_solve_dated_before_the_freeze_moves_the_tick_and_one_dated_after_it_does_not():
+    """The crew's own routes (mark a submission correct or incorrect, delete a solve) change what the public list shows when the solve is from before
+    the freeze, and the public pages must refetch; a solve from after the freeze is hidden from the public, so changing it tells nothing."""
+    import datetime
+    import time
+
+    def run(app):
+        chal = gen_challenge(db)
+        team = gen_team(db, name="t", email="t@e.com", member_count=1)
+        other = gen_team(db, name="u", email="u@e.com", member_count=1)
+        chal_id, team_id, user_id, other_id, other_user = chal.id, team.id, team.members[0].id, other.id, other.members[0].id
+        set_config("freeze", int(time.time()) - 600)
+        v = tick.value()
+        early = dated_solve(user_id, team_id, chal_id, datetime.datetime.utcnow() - datetime.timedelta(hours=2))
+        assert tick.value() == v + 1, "a solve dated before the freeze is public: it moves the tick (the crew marked an old submission correct)"
+        late = dated_solve(other_user, other_id, chal_id, datetime.datetime.utcnow() - datetime.timedelta(minutes=1))
+        assert tick.value() == v + 1, "a solve dated after the freeze is hidden: nothing moves"
+        db.session.delete(db.session.get(Solves, late.id))
+        db.session.commit()
+        assert tick.value() == v + 1, "and neither does deleting it"
+        db.session.delete(early)  # the object was expired by the commit that made it: its date is not at hand, and the tick moves (once too often is harmless)
+        db.session.commit()
+        assert tick.value() == v + 2, "deleting a solve from before the freeze changes the public list: it moves the tick"
+
+    with_app(run)
+
+
+def test_a_solve_changed_in_place_moves_the_tick_by_its_own_date():
+    import datetime
+    import time
+
+    def run(app):
+        chal = gen_challenge(db)
+        team = gen_team(db, name="t", email="t@e.com", member_count=1)
+        other = gen_team(db, name="u", email="u@e.com", member_count=1)
+        chal_id, team_id, user_id, other_id, other_user = chal.id, team.id, team.members[0].id, other.id, other.members[0].id
+        early = dated_solve(user_id, team_id, chal_id, datetime.datetime.utcnow() - datetime.timedelta(hours=2))
+        late = dated_solve(other_user, other_id, chal_id, datetime.datetime.utcnow() - datetime.timedelta(minutes=1))
+        early_id, late_id = early.id, late.id
+        set_config("freeze", int(time.time()) - 600)
+        v = tick.value()
+        db.session.get(Solves, late_id).provided = "edited"
+        db.session.commit()
+        assert tick.value() == v, "a solve from after the freeze, edited"
+        db.session.get(Solves, early_id).provided = "edited"
+        db.session.commit()
+        assert tick.value() == v + 1, "a solve from before the freeze, edited"
+
+    with_app(run)
+
+
+def test_a_solve_is_before_the_freeze_only_if_it_is_dated_before_the_freeze_second():
+    """CTFd leaves out a solve dated at or after the freeze: the second of the freeze itself, and any part of it, is after."""
+    import datetime
+    import time
+
+    def run(app):
+        chal = gen_challenge(db)
+        teams = [gen_team(db, name=f"t{n}", email=f"t{n}@e.com", member_count=1) for n in range(3)]
+        ids = [(t.id, t.members[0].id) for t in teams]
+        freeze = int(time.time()) - 600
+        set_config("freeze", freeze)
+        at = datetime.datetime.utcfromtimestamp(freeze)
+        v = tick.value()
+        dated_solve(ids[0][1], ids[0][0], chal.id, at)
+        assert tick.value() == v, "dated exactly at the freeze second: after it (CTFd leaves it out), nothing moves"
+        dated_solve(ids[1][1], ids[1][0], chal.id, at + datetime.timedelta(microseconds=500_000))
+        assert tick.value() == v, "half a second into the freeze second: still after it"
+        dated_solve(ids[2][1], ids[2][0], chal.id, at - datetime.timedelta(seconds=1))
+        assert tick.value() == v + 1, "one second before the freeze: public, so it moves the tick"
+
+    with_app(run)
+
+
+def test_a_solve_whose_date_is_not_at_hand_counts_as_before_the_freeze_so_the_tick_moves_once_too_often_rather_than_not_at_all():
+    import datetime
+    import time
+
+    def run(app):
+        set_config("freeze", int(time.time()) - 600)
+        assert tick_module._from_before_the_freeze(Solves()) is True, "no date at all: not known to be hidden"
+        assert tick_module._from_before_the_freeze(Solves(date=datetime.datetime.utcnow() - datetime.timedelta(minutes=1))) is False, "after the freeze: hidden"
+        assert tick_module._from_before_the_freeze(Solves(date=datetime.datetime.utcnow() - datetime.timedelta(hours=1))) is True, "before the freeze: public"
+        set_config("freeze", None)
+        assert tick_module._from_before_the_freeze(Solves(date=datetime.datetime.utcnow())) is True, "no freeze at all: nothing is hidden"
+
+    with_app(run)
+
+
+def test_a_failure_to_read_the_freeze_never_hides_a_change(monkeypatch):
+    """If the phase cannot be read, the tick moves (a page that fetches once too often is harmless; one that never learns is not)."""
+    def run(app):
+        chal = gen_challenge(db)
+        team = gen_team(db, name="t", email="t@e.com", member_count=1)
+        chal_id, team_id, user_id = chal.id, team.id, team.members[0].id
+
+        def broken():
+            raise RuntimeError("no config")
+
+        monkeypatch.setattr(tick_module, "current_phase", broken)
+        v = tick.value()
+        gen_solve(db, user_id=user_id, team_id=team_id, challenge_id=chal_id)
+        assert tick.value() == v + 1
+
+    with_app(run)

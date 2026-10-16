@@ -10,6 +10,12 @@ that finds anything no hook saw.
 `formula` is CTFd's arithmetic, expression for expression, over a count we supply (so one grouped query values every challenge);
 test_values.py compares it with CTFd's own functions for every count from 0 to 80, so the two cannot drift apart.
 
+While the scoreboard is frozen nothing here writes a value (`freeze.held`) except at the moment the freeze is set or moved: the values stand still,
+so no answer can show that other studios have solved since the freeze. `recalculate`, `heal` and `drifted` do nothing then, and lifting the freeze
+puts every value right (freeze.py). When the freeze is set or moved, `recalculate(as_of_freeze=True)` values every challenge by the studios that
+solved it BEFORE the freeze time, which is what the public list shows (a freeze set to a time already past would otherwise hold a value made
+from solves it hides, found by the independent review).
+
 Recalculating does not clear the caches by itself: it marks the session, and the plugin's `after_commit` hook clears CTFd's challenge
 and standings caches once the change is really committed (clearing before the commit would let another request cache the old
 numbers again).
@@ -21,6 +27,7 @@ from CTFd.models import Challenges, db
 from CTFd.plugins.dynamic_challenges import DynamicChallenge
 from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.counting import counted_solve_counts
+from CTFd.plugins.l3mon_scoring import freeze
 
 _log = logging.getLogger("l3mon")
 CLEAR_FLAG = "l3mon_scoring_clear_caches"
@@ -73,9 +80,10 @@ def decaying_rows(challenge_ids=None, lock=False) -> list:
     return sorted(dynamic.all() + plain_rows, key=lambda row: row.id)
 
 
-def _wanted(challenge_ids=None, lock=False):
+def _wanted(challenge_ids=None, lock=False, before=None):
     """-> [(challenge, wanted value)] for the curve-valued challenges asked for (all by default), in id order. A challenge with no start
-    value or no floor is malformed: it is named in the log and skipped, never allowed to stop the others."""
+    value or no floor is malformed: it is named in the log and skipped, never allowed to stop the others. `before`: count only the solves made
+    before that time (see counting.counted_solve_counts)."""
     rows = decaying_rows(challenge_ids, lock)
     usable = []
     for row in rows:
@@ -83,16 +91,29 @@ def _wanted(challenge_ids=None, lock=False):
             _log.warning("l3mon: challenge %r (%s) is valued by a curve but has no start value or no floor; its value is left alone", row.name, row.id)
             continue
         usable.append(row)
-    counts = counted_solve_counts([r.id for r in usable])
+    counts = counted_solve_counts([r.id for r in usable], before=before)
     return [(r, formula(r, counts[r.id])) for r in usable]
 
 
 def drifted(challenge_ids=None) -> list:
-    """-> [(id, stored, wanted)] for every dynamic challenge whose stored value is not its formula's. Reads only."""
+    """-> [(id, stored, wanted)] for every dynamic challenge whose stored value is not its formula's. Reads only. Nothing is reported while
+    the scoreboard is frozen: the values are held on purpose."""
+    if freeze.held():
+        return []
     return [(r.id, r.value, want) for r, want in _wanted(challenge_ids) if r.value != want]
 
 
-def recalculate(challenge_ids=None, lock=False) -> list:
+def start_value(challenge_id):
+    """A curve-valued challenge made while the scoreboard is frozen and sent with no value: CTFd's create counts on its valuation to give it one,
+    and the held valuation does not write. It starts at what it is worth for the studios that solved it before the freeze (none, for a new one)."""
+    for row, want in _wanted([challenge_id], before=freeze.cutoff()):
+        if row.value is None:
+            row.value = want
+            mark_changed()
+    db.session.commit()
+
+
+def recalculate(challenge_ids=None, lock=False, as_of_freeze=False) -> list:
     """Set every dynamic value (or those asked for) to its formula; -> [(id, old, new)] for the ones that changed. The caller commits
     (the change is part of its transaction); the caches are cleared after that commit.
 
@@ -101,11 +122,17 @@ def recalculate(challenge_ids=None, lock=False) -> list:
     until a Revoke or a Restore that holds the challenge has committed. A count taken before waiting for that lock is out of date when
     the value is written, and would overwrite the crew action's number (found by the independent audit). A locking read starts no
     read view; the counts that follow see everything committed before the locks were won. Revoke and Restore themselves already hold
-    their challenge's row and do not ask."""
+    their challenge's row and do not ask.
+
+    While the scoreboard is frozen nothing is written and the answer is empty (`freeze.held`), except with `as_of_freeze` (the freeze has just been
+    set or moved): then each value is the formula over the studios that solved it before the freeze time, whether or not the freeze has begun."""
+    before = freeze.cutoff() if as_of_freeze else None
+    if freeze.held() and not as_of_freeze:
+        return []
     if lock:
         db.session.commit()
     changed = []
-    for row, want in _wanted(challenge_ids, lock):
+    for row, want in _wanted(challenge_ids, lock, before):
         if row.value != want:
             changed.append((row.id, row.value, want))
             row.value = want
@@ -119,6 +146,7 @@ def heal(system=True) -> list:
     -> the list of changes; nothing is written when nothing was wrong."""
     changed = recalculate(lock=True)
     if not changed:
+        db.session.commit()  # ends the transaction: the locking read above holds its rows' locks until then, and this runs before a request
         return []
     names = dict(db.session.query(Challenges.id, Challenges.name).filter(Challenges.id.in_([c[0] for c in changed])).all())
     detail = "; ".join(f"{names.get(cid, cid)}: {old} -> {new}" for cid, old, new in changed)

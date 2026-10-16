@@ -5,6 +5,10 @@ hidden and a banned studio, a pull-back, a void and a restore, a pause, the end)
 step (written by the private repo's tools/golden.mjs). This test plays the same steps through the real platform, with the crew's real
 calls and the studios' real routes, and compares field by field after ids are replaced by slugs.
 
+The public ranking is the one difference of the freeze that is not compared (the void during the freeze asks no scoreboard): the demo keeps
+the ranking as a picture taken at the freeze, the platform computes it from the data (CTFd's way), so a Revoke, a ban or a hide during the
+freeze takes a studio's pre-freeze points off the public list at once, which is what a moderator needs (test_freeze_board.py pins it).
+
 The only differences allowed are the ones the design chose, and they are not in the compared form at all: the channel ids, the tick
 (`ver`), the news numbers, the art, the instance details, the picture key, the channel number and the sponsor's logo. Where the demo and
 CTFd say the same thing in different words (CTFd's own `ratelimited` where the demo said `incorrect`), the compared form is the reason.
@@ -20,7 +24,8 @@ import re
 import pytest
 from freezegun import freeze_time
 
-from CTFd.models import Hints, Teams, db
+from CTFd.cache import clear_challenges, clear_standings
+from CTFd.models import Awards, Hints, Solves, Teams, Unlocks, db
 from CTFd.plugins.l3mon_core.models import Channel, Programme
 from CTFd.utils import set_config
 from board_world import BOARD, PROGRAMMES, RELEASE, T_END, T_START, dynamic, fixed, join_client, make_app, started, team_client
@@ -35,6 +40,7 @@ SCOREBOARD_ROWS = "/api/v1/l3mon/scoreboard/rows"
 BELL = "/api/v1/notifications"
 BY_DESIGN = ("Solve voided", "Solve restored")  # the real platform words these two lines itself (the crew's reason, or a fixed sentence): only the title is compared
 STORY_TARGET = 12  # the same target the demo's recorder sets for the story meter
+REAL_START = datetime.datetime.utcnow()  # CTFd dates a solve, an award and an unlock with the real clock; the scenario has its own clock (see settle)
 BEFORE = T_START - 3600
 LIVE = T_START + 60  # minute 0 of the scenario
 
@@ -106,11 +112,43 @@ class Round:
             self.channel_ids = {row.slug: row.id for row in Channel.query.all()}
             self.channel_slug = {row_id: slug for slug, row_id in self.channel_ids.items()}
 
+    def settle(self):
+        """CTFd dates a solve, an award and an unlock with the real clock. The freeze is a time on the scenario's clock, so every row an
+        action has just made is dated at the scenario's now (the scenario moves one second between its own actions)."""
+        real_end = datetime.datetime.utcnow() + datetime.timedelta(seconds=5)
+        moment = datetime.datetime.utcfromtimestamp(self.now())
+        changed = False
+        for model in (Solves, Awards, Unlocks):
+            for row in model.query.filter(model.date >= REAL_START, model.date <= real_end).all():
+                row.date = moment
+                changed = True
+        if changed:
+            db.session.commit()
+            clear_standings()
+            clear_challenges()
+
     # -- the crew's actions --------------------------------------------------------------------------------------------------
     def do(self, kind, args):
+        result = self.act(kind, args)
+        if kind in ("attempt", "hint", "bonus", "void", "restore"):
+            self.settle()
+        return result
+
+    def act(self, kind, args):
         if kind == "phase":
             self.phase = args[0]
             set_config("paused", args[0] == "paused")
+            # a phase is one word in the demo, so every phase but "frozen" has no freeze; the crew's own call sets and lifts it
+            if args[0] == "frozen":
+                self.offset += 1  # a second on, so that every earlier row is dated before the freeze and every later one at or after it
+                freeze = int(self.now())
+            else:
+                freeze = None
+            with self.at():
+                r = self.admin.patch("/api/v1/configs", json={"freeze": freeze})
+            assert r.status_code == 200, r.get_data(as_text=True)
+            clear_standings()
+            clear_challenges()
             return None
         if kind == "advance":
             self.offset += args[0] * 60

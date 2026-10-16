@@ -24,22 +24,24 @@ def is_counted_user(user) -> bool:
     return user is not None and not user.banned and not user.hidden
 
 
-def counted_solve_counts(challenge_ids) -> dict:
+def counted_solve_counts(challenge_ids, before=None) -> dict:
     """How many counted accounts solved each challenge, in one grouped query (several for a very long list, so no database's limit
-    on a list of values is ever met). Every asked id is in the answer (0 for none); asking for an id twice is harmless."""
+    on a list of values is ever met). Every asked id is in the answer (0 for none); asking for an id twice is harmless. With `before` (a
+    naive UTC time, as CTFd dates a solve) only the solves made before that time are counted: what the public list shows once a freeze begins."""
     ids = list(dict.fromkeys(challenge_ids))
     if not ids:
         return {}
     Model = get_model() or Users  # CTFd's setup always sets the mode; with none set, the user is the account
     found = {}
     for i in range(0, len(ids), CHUNK):
-        rows = (
+        query = (
             db.session.query(Solves.challenge_id, func.count(Solves.id))
             .join(Model, Solves.account_id == Model.id)
             .filter(Solves.challenge_id.in_(ids[i : i + CHUNK]), Model.hidden == False, Model.banned == False)  # noqa: E712 (SQL, not Python)
-            .group_by(Solves.challenge_id)
-            .all()
         )
+        if before is not None:
+            query = query.filter(Solves.date < before)
+        rows = query.group_by(Solves.challenge_id).all()
         found.update(dict(rows))
     return {i: int(found.get(i, 0)) for i in ids}
 

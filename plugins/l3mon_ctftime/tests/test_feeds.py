@@ -223,3 +223,28 @@ def test_before_the_start_the_live_feed_is_empty_whatever_was_given_to_a_studio_
         _, data = feed(client)
         assert [(row["team"], row["score"]) for row in data["standings"]] == [("Early", 140)]
     destroy_ctfd(app)
+
+
+def test_the_final_feed_waits_for_the_freeze_to_be_lifted_because_the_stored_values_are_held_while_the_scoreboard_is_frozen():
+    """While the scoreboard is frozen the dynamic values stand still (SP3 part 3.6), so the totals of an administrator's view (which the final
+    feed uses) would be made from held values. Lifting the freeze puts every value right; only then are the final standings true."""
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context(), app.test_client() as client:
+        chal = gen_challenge(db, value=100)
+        t = gen_team(db, name="Winner", email="w@example.com", member_count=1)
+        gen_solve(db, user_id=t.members[0].id, team_id=t.id, challenge_id=chal.id)
+        set_config("end", int(time.time()) - 10)
+        set_config("l3mon_final_standings_published", True)
+        set_config("freeze", int(time.time()) - 3600)
+        clear_standings()
+        r = client.get(FINAL)
+        body = json.loads(r.get_data(as_text=True))
+        assert r.status_code == 404 and body["error"] == "not_found" and "freeze" in body["message"], body
+        set_config("freeze", int(time.time()) + 3600)  # moved to a time that has not come: lifted
+        clear_standings()
+        r, data = feed(client, FINAL)
+        assert r.status_code == 200 and data["standings"][0]["team"] == "Winner"
+        set_config("freeze", None)
+        clear_standings()
+        assert client.get(FINAL).status_code == 200
+    destroy_ctfd(app)

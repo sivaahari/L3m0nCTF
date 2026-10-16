@@ -35,12 +35,13 @@ from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
 from CTFd.cache import cache, clear_challenges, clear_standings
-from CTFd.models import Solves, Submissions, Teams, Users, db
+from CTFd.models import Configs, Solves, Submissions, Teams, Users, db
+from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_scoring import values
 
 _log = logging.getLogger("l3mon")
 
-ON = {"flush": True, "bulk": True, "check": True}
+ON = {"flush": True, "bulk": True, "check": True, "freeze": True}
 CHECK_KEY = "l3mon:scoring:checked"
 CHECK_SECONDS = 60
 WATCHED = (Teams, Users, Solves)  # a flush that deletes one of these, or bans or hides a studio or user, changes who counts
@@ -48,10 +49,12 @@ WATCHED_BULK = (Teams, Users, Solves, Submissions)  # CTFd also removes a member
 ATTEMPT = "/api/v1/challenges/attempt"
 
 _EVERYTHING = "l3mon_scoring_recalculate_everything"  # on `g`: who counts changed, so every curve-valued challenge
+_FREEZE_SET = "l3mon_scoring_freeze_set"  # on `g`: the freeze was set, moved or removed in this request: value as of the freeze time
 _THESE = "l3mon_scoring_recalculate_these"  # on `g`: solves were added, so only their challenges
 _SKIP_PREFIXES = ("/themes/", "/plugins/", "/static/")
 _SKIP_PATHS = ("/healthcheck", "/l3mon/healthz")
 _installed = False
+_lift = {"frozen": None}  # whether this process saw the scoreboard frozen at its last request (a lift made outside a request is noticed by the next one)
 
 
 # -- noticing ---------------------------------------------------------------------------------------------------------------------
@@ -75,9 +78,22 @@ def _who_counts_changed(session) -> bool:
     return any(isinstance(obj, WATCHED) for obj in session.deleted)
 
 
+def _freeze_changed(session) -> bool:
+    """True when this flush sets, changes or removes CTFd's `freeze` setting. Lifting a freeze (unsetting it, or moving it to a later time)
+    ends the hold on the values, and every value must then be put right (freeze.py)."""
+    for obj in (*session.new, *session.dirty, *session.deleted):
+        if isinstance(obj, Configs) and obj.key == "freeze":
+            return True
+    return False
+
+
 def _after_flush(session, context):
     """Notice, while the history of each object still exists, that who counts has changed or that a solve was added. Nothing is
     written here: the value is recalculated when the request ends."""
+    if ON["freeze"] and _freeze_changed(session):
+        _note_everything()
+        if has_request_context():
+            g.setdefault(_FREEZE_SET, True)
     if not ON["flush"]:
         return
     if _who_counts_changed(session):
@@ -96,6 +112,7 @@ def _after_bulk_delete(context):
 
 def _end_of_request(response):
     everything = g.pop(_EVERYTHING, False)
+    freeze_set = g.pop(_FREEZE_SET, False)
     these = g.pop(_THESE, None)
     if request.path.rstrip("/") == ATTEMPT:
         these = None  # CTFd values the challenge itself, in its own transaction, right after a player's solve
@@ -104,7 +121,7 @@ def _end_of_request(response):
     try:
         # A view that returned an error may have left work uncommitted; it is rolled back at teardown anyway, and must not be committed by us.
         db.session.rollback()
-        if values.recalculate(None if everything else these, lock=True):
+        if values.recalculate(None if everything else these, lock=True, as_of_freeze=freeze_set):
             db.session.commit()  # the caches are cleared by the after_commit hook
     except Exception:  # noqa: BLE001  (the ban, the delete or the solve itself went through; the minute check will put it right)
         db.session.rollback()
@@ -146,6 +163,22 @@ def _minute_check():
     return None
 
 
+def _watch_for_a_lift():
+    """The freeze lifted by a script or the shell (no request, so no hook saw it): the next request that finds the scoreboard no longer frozen, where
+    this process saw it frozen before, puts every value right when it ends."""
+    path = request.path
+    if not ON["freeze"] or path in _SKIP_PATHS or path.startswith(_SKIP_PREFIXES) or request.method == "OPTIONS":
+        return None
+    try:
+        frozen = bool(current_phase().frozen)
+    except Exception:  # noqa: BLE001  (a page must never fail because of this)
+        return None
+    was, _lift["frozen"] = _lift["frozen"], frozen
+    if was and not frozen:
+        _note_everything()
+    return None
+
+
 def install(app):
     """Listen to every database session in the process (once, however many apps are created: the tests create many), and give each
     app its request hooks."""
@@ -158,5 +191,6 @@ def install(app):
         _installed = True
     if "l3mon_scoring_triggers" not in app.extensions:
         app.extensions["l3mon_scoring_triggers"] = True
+        app.before_request(_watch_for_a_lift)
         app.before_request(_minute_check)
         app.after_request(_end_of_request)

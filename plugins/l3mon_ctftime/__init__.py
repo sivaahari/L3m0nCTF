@@ -6,13 +6,15 @@ plugin serves both in the smallest format CTFtime documents (it warns against se
     {"standings": [{"pos": 1, "team": "Team name exactly as registered", "score": 4200}]}
 
     GET /ctftime/standings.json        the live standings (empty before the start); while the scoreboard is frozen, the frozen ones
-    GET /ctftime/final-standings.json  the final standings, only once the event has ended AND an organiser has published them
+    GET /ctftime/final-standings.json  the final standings, only once the event has ended, an organiser has published them AND the scoreboard
+                                       freeze (if one was set) has been lifted: the dynamic values are held while it lasts
 
 Public means no sign-in, no personal data (only the public team name and its score) and a short shared cache. The rows come
 from CTFd's own standings, so the order, the tie-break (who reached the score first) and the freeze are exactly what the
 platform's scoreboard shows. Banned and hidden accounts never appear; neither does anyone with a score of zero or less.
 
-Publishing the final standings is a deliberate step, taken after cheating cases are settled and bans are applied:
+Publishing the final standings is a deliberate step, taken after cheating cases are settled and bans are applied and the freeze is lifted
+(lifting it puts every value right):
 
     PATCH /api/v1/configs   {"l3mon_final_standings_published": true}      (administrator token)
 """
@@ -57,6 +59,10 @@ def live():
 def final():
     if not (ctf_ended() and _published()):
         body = json.dumps({"success": False, "error": "not_found", "message": "The final standings are not published yet."})
+        return Response(body, status=404, mimetype="application/json", headers={"Cache-Control": "no-store"})
+    if current_phase().frozen:
+        # while the scoreboard is frozen the stored dynamic values are held (l3mon_scoring/freeze.py), so the totals would not be final: lift the freeze first
+        body = json.dumps({"success": False, "error": "not_found", "message": "The final standings wait until the scoreboard freeze is lifted."})
         return Response(body, status=404, mimetype="application/json", headers={"Cache-Control": "no-store"})
     # admin=True ignores the freeze, so late solves count; the rows carry hidden and banned flags, which are dropped here
     visible = [row for row in get_standings(admin=True) if not row.hidden and not row.banned]
