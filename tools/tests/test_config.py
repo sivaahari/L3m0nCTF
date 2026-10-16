@@ -168,3 +168,54 @@ def test_the_ctftime_event_number_is_optional_digits_in_quotes_and_goes_to_the_c
     env = config.render(data, tmp_path)["compose.env"].read_text(encoding="utf-8")
     assert "CTFTIME_CLIENT_ID=3456" in env.splitlines() and "SECRET" not in env
 
+
+
+# ---- the optional [mail] section: how the platform sends the verification and password-reset messages --------------------------------------------
+
+def with_mail(**over):
+    data = copy.deepcopy(example())
+    data["mail"] = {"host": "smtp.example.org", "port": 587, "username": "mailer@l3m0nctf.xyz", "from_addr": "no-reply@l3m0nctf.xyz", "security": "starttls", **over}
+    return data
+
+
+def test_the_mail_section_is_optional_and_a_good_one_is_valid():
+    assert config.validate(example()) == []
+    assert config.validate(with_mail()) == []
+
+
+@pytest.mark.parametrize("over", [
+    {"host": "not a host"}, {"host": "smtp.example.org" + chr(10)}, {"host": ""}, {"port": 0}, {"port": 70000}, {"port": "587"}, {"port": True},
+    {"username": "has space"}, {"username": "a" * 200}, {"from_addr": "nobody"}, {"from_addr": "no-reply@l3m0nctf.xyz" + chr(10)},
+    {"security": "plain"}, {"security": True},
+])
+def test_a_bad_mail_setting_is_refused(over):
+    errors = config.validate(with_mail(**over))
+    assert errors and any("mail." in e for e in errors), (over, errors)
+
+
+def test_the_mail_section_must_be_a_table_and_may_not_carry_a_password_or_unknown_keys():
+    data = copy.deepcopy(example())
+    data["mail"] = "smtp.example.org"
+    assert any("[mail]" in e for e in config.validate(data))
+    for key in ("password", "api_key", "token", "secret"):
+        errors = config.validate(with_mail(**{key: "x"}))
+        assert any(f"mail.{key}" in e and "secret" in e for e in errors), key
+
+
+def test_the_mail_settings_reach_the_compose_environment_in_the_names_ctfd_reads(tmp_path):
+    out = config.render(with_mail(), tmp_path)["compose.env"].read_text(encoding="utf-8")
+    lines = dict(line.split("=", 1) for line in out.splitlines() if "=" in line and not line.startswith("#"))
+    assert lines["MAIL_SERVER"] == "smtp.example.org" and lines["MAIL_PORT"] == "587"
+    assert lines["MAIL_USEAUTH"] == "true" and lines["MAIL_USERNAME"] == "mailer@l3m0nctf.xyz"
+    assert lines["MAIL_TLS"] == "true" and lines["MAIL_SSL"] == "" and lines["MAILFROM_ADDR"] == "no-reply@l3m0nctf.xyz"
+    assert "MAIL_PASSWORD" not in out, "the password is a Docker secret, never in this file"
+
+
+def test_implicit_tls_and_no_login_are_written_as_ctfd_expects(tmp_path):
+    ssl = config.render(with_mail(port=465, security="ssl", username=""), tmp_path)["compose.env"].read_text(encoding="utf-8")
+    assert "MAIL_SSL=true" in ssl and "MAIL_TLS=" in ssl and "MAIL_TLS=true" not in ssl and "MAIL_USEAUTH=" in ssl and "MAIL_USEAUTH=true" not in ssl
+
+
+def test_without_a_mail_section_no_mail_line_is_written(tmp_path):
+    out = config.render(example(), tmp_path)["compose.env"].read_text(encoding="utf-8")
+    assert "MAIL_" not in out and "MAILFROM" not in out

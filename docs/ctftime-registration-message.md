@@ -1,4 +1,4 @@
-# Message to the superiors: registering L3m0nCTF 2026 on CTFtime (draft of 2026-10-10)
+# Message to the superiors: registering L3m0nCTF 2026 on CTFtime (updated 2026-10-17)
 
 Subject: L3m0nCTF 2026: registering the event on CTFtime (what we file, what we need from you, and where the build stands)
 
@@ -44,29 +44,28 @@ We want to list L3m0nCTF 2026 on CTFtime (ctftime.org), the international site w
 - An email-sending service for verification emails (the free plans have daily limits, and hundreds of people register on the first day).
 - The campus network addresses from which the organisers reach the admin pages, and two named people on call during the 12 hours.
 
-## 5. Where the build stands (10 October 2026)
+## 5. Where the build stands (17 October 2026)
 
-Done and tested:
+**The two addresses CTFtime will ask for are built and tested. What is missing is a server to put them on, and filing the event does not need one.**
 
-- **Public website** at l3m0nctf.xyz on Cloudflare: countdown, rules, privacy, calendar file. It already shows the new 10:00 to 22:00 IST time.
-- **Platform foundation:** hardened CTFd 3.8.8 with a database, cache and web server in containers, settings kept as code, automatic backups with a tested restore, and a checking pipeline that runs on every change. Leadership's penetration testers have a ready bundle.
-- **Challenge author kit** for our ~30 authors, with nine sample challenges converted.
-- **Release control:** the crew decides which challenges go on air and when, with scheduled drops.
-- **Scoring:** values that fall as more teams solve, a cost per hint, ties won by whoever got there first, "revoke" and "restore" for a broken challenge, and bonus points with a private message.
-- **The player's board** (channels, programmes, flag replies) and **seven drawn cartoon "cold open" comics** that open from each channel for registered players.
-- **CTFtime pieces:** the live and final scoreboard feeds, and Login with CTFtime. Login is switched off until CTFtime approves the event.
-- **How well it is checked:** about 1,100 automated tests, all of CTFd's own 676 tests, 78 tests on a running copy of the whole system, and an independent security review of each part, with every finding fixed or recorded.
+- **The live scoreboard feed** (`/ctftime/standings.json`) and the final results file are built, in CTFtime's own format, with the platform's real standings and its freeze, and tested inside the platform and through the web server.
+- **Login with CTFtime** is built and tested against a stand-in for CTFtime. It stays off until CTFtime approves the event and gives us the event number and the secret; only then can it be tried for real.
+- **The production web server set-up is built and was tried** on 17 October with throwaway certificates: a complete production-mode copy of the platform started, answered only to Cloudflare's certificate, kept its session cookie secure, served the feed with no cookie, and sent the CTFtime sign-in to CTFtime with the right return address. A computer-run checklist (`deploy check`) tells the person deploying what is still missing, and never shows a secret.
+- **Public website** at l3m0nctf.xyz on Cloudflare: countdown, rules, privacy, calendar file, and (being updated now) the cartoon pictures.
+- **The platform itself:** release control (the crew decides what is on air and when), scoring that falls as more teams solve, hints that cost, bonuses and voids, the board, the Guide, the scoreboard, the notification bell, the scoreboard freeze, and the painted cold-open comics and the finale. The whole of this back end (SP3) is finished, measured and audited.
+- **How well it is checked:** over 3,000 automated checks, all of CTFd's own 676 tests on our image, a complete system run from nothing before every step, deliberate breakage of the code to prove the checks notice, and an independent security review of each part by a second model, with every finding fixed or written down.
 
 Still ahead:
 
-- **Nothing is deployed publicly yet except the website.** The platform runs on development machines and in testing only. Putting it online depends on the decisions in section 4.
-- **Remaining build:** the Guide, Scoreboard and notifications pages (starting now), the scoreboard freeze, a whole-system security audit, the live-server launcher for challenges that need one, anti-abuse protections, sign-in with Google, then monitoring, backups off the machine and the load test.
+- **A server.** Nothing but the website is online. The platform runs on development machines. Going online needs the decisions in section 4. **The size of the server is a decision for you:** we measured that the platform needs about 2.8 processor cores for 300 players at once, about 9 for 1,000 and about 15 for 1,600 (`docs/remaining-work.md`).
+- **The pages players see** (sign-in, channels, Guide, scoreboard, notifications) on the real platform: the approved design exists as a demo and is being rebuilt on CTFd. Then anti-abuse protections, challenge launchers for web and pwn challenges, sign-in with Google, monitoring, off-machine backups and the load test.
 - **Dates:** feature freeze 21 November, dress rehearsal 27 November, event 28 November.
 
 ## 6. Risks to be aware of
 
-- CTFtime's approval time is unknown, so filing early is the safest course.
-- The server decisions in section 4 are on the critical path: the platform cannot go live, and CTFtime sign-in cannot be tested, until they are made.
+- CTFtime's approval time is unknown, so filing early is the safest course. Approval must come before we can test the sign-in for real.
+- The server decisions in section 4 are on the critical path for everything players touch, and for the live feed.
+- The number of players the first event can carry depends on the size of the server (section 5).
 - One routine automated security check is flagging an advisory in a standard third-party image. It is not in our code, and we will refresh that image on the owner's go-ahead.
 
 We can file as soon as items 1 to 5 in section 2 are settled. Please reply with those details, and we will register the event the same day.

@@ -28,6 +28,13 @@ MAKERS = {
 }
 
 
+# Secrets that do not exist yet when the machine is set up: CTFtime gives its secret only after it approves the event, and the mail service's password
+# only once the sending account is made. Production mounts both as Docker secrets, and compose refuses to start when a secret's file is missing, so an
+# EMPTY file is made for each. The platform treats an empty one as "off" (no sign-in with CTFtime, no mail). Never replaced, not even with --force:
+# a filled one is a real secret.
+PLACEHOLDERS = ("CTFTIME_CLIENT_SECRET", "MAIL_PASSWORD")
+
+
 def generate(directory: Path, force: bool = False) -> dict[str, Path]:
     """Write one file per secret. Refuses to replace existing files unless force is true. Returns {name: path}."""
     directory = Path(directory)
@@ -53,4 +60,13 @@ def generate(directory: Path, force: bool = False) -> dict[str, Path]:
         except OSError:
             pass
         made[name] = path
+    for name in PLACEHOLDERS:
+        path = directory / name
+        if not path.exists():
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT, READABLE_FILE)
+            os.close(fd)
+            try:
+                path.chmod(READABLE_FILE)
+            except OSError:
+                pass
     return made

@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import api_rules, config, hygiene, secrets_gen, story
+from . import api_rules, config, deploy, hygiene, secrets_gen, story
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +36,15 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("action", choices=["generate", "check"], help="generate rewrites the two snippet files; check fails when they are out of date")
     a.add_argument("--image", default="l3mon/ctfd:dev", help="the platform image to read CTFd's routes from")
 
+    d = sub.add_parser("deploy", help="what is missing before the production stack can start")
+    dsub = d.add_subparsers(dest="deploy_cmd", required=True)
+    dc = dsub.add_parser("check", help="read the event settings, the secrets, the TLS files and the organisers' addresses; exit 1 when anything is BLOCKED")
+    dc.add_argument("--root", default=".", help="the repository folder (default: the current folder)")
+    dc.add_argument("--event", help="the event settings file (default: config/event.toml)")
+    dc.add_argument("--secrets", help="the secrets folder (default: .secrets)")
+    dc.add_argument("--tls", help="the folder with origin.pem, origin.key and cloudflare-origin-pull-ca.pem (default: $TLS_DIR or /etc/l3mon/tls)")
+    dc.add_argument("--admin-nets", help="the organisers' addresses file (default: $ADMIN_NETS_FILE)")
+
     st = sub.add_parser("story", help="compile and check the cold-open comics (the private story folder) into the files the platform serves")
     ssub2 = st.add_subparsers(dest="story_cmd", required=True)
     sb = ssub2.add_parser("build", help="check every channel's script and picture and write one bundle per channel")
@@ -47,6 +56,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.cmd == "deploy":
+        items = deploy.run_checks(
+            Path(args.root), event_file=Path(args.event) if args.event else None, secrets_dir=Path(args.secrets) if args.secrets else None,
+            tls_dir=Path(args.tls) if args.tls else None, admin_nets=Path(args.admin_nets) if args.admin_nets else None,
+        )
+        for item in items:
+            print(item.human())
+        blocked = [i for i in items if i.status == deploy.BLOCKED]
+        print(f"{len(blocked)} blocked, {sum(1 for i in items if i.status == deploy.TODO)} to do, {sum(1 for i in items if i.status == deploy.OK)} in place")
+        return 1 if blocked else 0
 
     if args.cmd == "hygiene":
         words = [w for w in args.deny_words.split(",") if w.strip()]

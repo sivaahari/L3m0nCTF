@@ -1,0 +1,43 @@
+# The platform in production: HTTPS on 8443 (the host publishes it as 443), behind Cloudflare. The ${...} names are filled in from the environment when nginx starts.
+# The rules of the server block are the same file the development stack uses (snippets/platform-server.conf).
+#
+# Who may connect: only Cloudflare. A request without Cloudflare's client certificate is refused in the TLS handshake of the real host name
+# ("400 No required SSL certificate was sent"), so a visitor who finds the server's address cannot reach CTFd, and neither can another Cloudflare
+# account (the certificate must be the one we trust: docs/deploy/platform-deployment.md, C3). The firewall of the VM lets in only Cloudflare's addresses as well.
+
+# Any connection whose server name is not ours: no certificate is shown. A request that gets here by Host header gets nothing at all.
+server {
+  listen 8443 ssl default_server;
+  ssl_reject_handshake on;
+  return 444;
+}
+
+server {
+  listen 8443 ssl;
+  http2 on;
+  server_name ${PLATFORM_HOST} ${EXTRA_HOST};
+
+  ssl_certificate         /etc/nginx/tls/origin.pem;
+  ssl_certificate_key     /etc/nginx/tls/origin.key;
+  ssl_client_certificate  /etc/nginx/tls/cloudflare-origin-pull-ca.pem;
+  ssl_verify_client       on;
+  ssl_protocols           TLSv1.2 TLSv1.3;
+  ssl_prefer_server_ciphers off;
+  ssl_session_cache       shared:SSL:10m;
+  ssl_session_timeout     1h;
+  ssl_session_tickets     off;
+
+  include /etc/nginx/snippets/platform-server.conf;
+}
+
+# The container's own health check, from inside the container only (nothing publishes this port).
+server {
+  listen 127.0.0.1:8080;
+  server_name _;
+  location = /__nginx_health {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+  location / { return 444; }
+}

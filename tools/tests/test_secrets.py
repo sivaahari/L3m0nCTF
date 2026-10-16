@@ -73,7 +73,8 @@ def test_the_command_never_prints_a_value(tmp_path, capsys):
     assert main(["secrets", "generate", "--dir", str(tmp_path / "s")]) == 0
     out = capsys.readouterr().out
     for path in (tmp_path / "s").iterdir():
-        assert read(path) not in out
+        if read(path):  # the two later secrets start as empty files: nothing in them to leak
+            assert read(path) not in out
     assert "SECRET_KEY" in out  # names are fine, values are not
     assert main(["secrets", "generate", "--dir", str(tmp_path / "s")]) == 1  # refuses to overwrite
 
@@ -89,3 +90,23 @@ def test_the_config_commands(tmp_path, capsys):
     bad.write_text("[event]\nname = ''\n", encoding="utf-8")
     assert main(["config", "validate", str(bad)]) == 1
     assert "event.name" in capsys.readouterr().out
+
+
+def test_the_two_secrets_that_come_later_start_as_empty_files_and_are_never_replaced(tmp_path):
+    folder = tmp_path / "s"
+    secrets_gen.generate(folder)
+    for name in secrets_gen.PLACEHOLDERS:
+        assert (folder / name).exists() and (folder / name).read_text(encoding="utf-8") == "", name
+        if sys.platform != "win32":
+            assert stat.S_IMODE((folder / name).stat().st_mode) == 0o644, name
+    (folder / "CTFTIME_CLIENT_SECRET").write_text("the-real-secret", encoding="utf-8")
+    secrets_gen.generate(folder, force=True)
+    assert (folder / "CTFTIME_CLIENT_SECRET").read_text(encoding="utf-8") == "the-real-secret", "a filled one is a real secret: not even --force replaces it"
+    assert set(secrets_gen.PLACEHOLDERS).isdisjoint(secrets_gen.MAKERS)
+
+
+def test_a_folder_that_holds_only_placeholders_is_not_taken_for_one_that_holds_secrets(tmp_path):
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "MAIL_PASSWORD").write_text("", encoding="utf-8")
+    secrets_gen.generate(folder)  # does not raise: nothing that matters was there

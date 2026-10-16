@@ -1,0 +1,45 @@
+# Production: compose.base.yml plus this file.
+#
+#   L3MON_ENV=production tools/compose.sh up -d --wait
+#
+# What it changes, and why (docs/deploy/platform-deployment.md, Part D):
+#   nginx   speaks HTTPS on 8443 (published as 443) and accepts only connections that present Cloudflare's client certificate; the plain HTTP port
+#           of development is gone (only a loopback health check remains inside the container). The origin certificate, its key and the Cloudflare
+#           client-certificate authority come from a folder outside the repository (TLS_DIR, default /etc/l3mon/tls).
+#   ctfd    the session cookie is `__Host-session` with Secure; the host names it answers for are the platform's and the crew's; it sends mail through
+#           the settings of the `[mail]` section of event.toml, and reads the CTFtime secret and the mail password from Docker secrets (files in
+#           .secrets/ that start empty: the sign-in with CTFtime and the sending of mail switch on when they are filled).
+#   There is NO development administrator token: the secret PRESET_ADMIN_TOKEN is not given to any service, and `tools/l3mon deploy check` refuses a
+#   folder that still holds the file. Administrators make their tokens inside CTFd, with an expiry.
+#
+# `python -m l3mon deploy check` (from the tools folder) tells you what is missing before you start.
+
+services:
+  ctfd:
+    environment:
+      L3MON_SECURE_COOKIES: "true"
+      TRUSTED_HOSTS: "${PLATFORM_HOST},${EXTRA_HOST:-${PLATFORM_HOST}}"
+      MAIL_SERVER: "${MAIL_SERVER:-}"
+      MAIL_PORT: "${MAIL_PORT:-587}"
+      MAIL_USEAUTH: "${MAIL_USEAUTH:-}"
+      MAIL_USERNAME: "${MAIL_USERNAME:-}"
+      MAIL_TLS: "${MAIL_TLS:-}"
+      MAIL_SSL: "${MAIL_SSL:-}"
+      MAILFROM_ADDR: "${MAILFROM_ADDR:-}"
+    secrets: [SECRET_KEY, DATABASE_PASSWORD, REDIS_PASSWORD, PRESET_ADMIN_PASSWORD, CTFTIME_CLIENT_SECRET, MAIL_PASSWORD]
+
+  nginx:
+    ports:
+      - "443:8443"
+    volumes:
+      - ../nginx/templates-production:/etc/nginx/templates:ro
+      - ${TLS_DIR:-/etc/l3mon/tls}:/etc/nginx/tls:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/__nginx_health"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+
+secrets:
+  CTFTIME_CLIENT_SECRET: { file: ../../.secrets/CTFTIME_CLIENT_SECRET }
+  MAIL_PASSWORD: { file: ../../.secrets/MAIL_PASSWORD }

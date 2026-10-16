@@ -6,7 +6,7 @@
 #   /run/secrets/<NAME>             one secret per file (Docker secrets)
 #   /run/config/preset_configs.json CTFd's PRESET_CONFIGS settings, rendered from the event settings file
 
-for name in SECRET_KEY DATABASE_PASSWORD REDIS_PASSWORD PRESET_ADMIN_PASSWORD PRESET_ADMIN_TOKEN; do
+for name in SECRET_KEY DATABASE_PASSWORD REDIS_PASSWORD PRESET_ADMIN_PASSWORD PRESET_ADMIN_TOKEN MAIL_PASSWORD; do  # (MAIL_PASSWORD only in production; an empty file means no mail login)
   file="/run/secrets/${name}"
   if [[ -f "$file" ]]; then
     value="$(<"$file")"

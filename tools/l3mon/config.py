@@ -90,6 +90,40 @@ def validate(data: dict) -> list[str]:
         errors.append("the section [ctftime] must be a table")
     elif "client_id" in ct and not (isinstance(ct["client_id"], str) and (ct["client_id"] == "" or re.fullmatch(r"[0-9]{1,9}", ct["client_id"]))):
         errors.append("ctftime.client_id must be the CTFtime event number in quotes (digits only), or empty")
+    errors += _validate_mail(data.get("mail"))
+    return errors
+
+
+MAIL_KEYS = ("host", "port", "username", "from_addr", "security")
+MAIL_SECURITY = ("starttls", "ssl", "none")
+SECRET_LOOKING = ("password", "passwd", "secret", "token", "api_key", "key")
+
+
+def _validate_mail(mail) -> list[str]:
+    """The optional [mail] section: where verification and password-reset messages are sent from. The password is never here (it is the Docker secret MAIL_PASSWORD)."""
+    if mail is None:
+        return []
+    if not isinstance(mail, dict):
+        return ["the section [mail] must be a table"]
+    errors = []
+    for key in mail:
+        if key in MAIL_KEYS:
+            continue
+        if any(word in key.lower() for word in SECRET_LOOKING):
+            errors.append(f"mail.{key} looks like a secret and must not be in this file: the mail password goes in .secrets/MAIL_PASSWORD")
+        else:
+            errors.append(f"mail.{key} is not a known setting (known: {', '.join(MAIL_KEYS)})")
+    if not isinstance(mail.get("host"), str) or not HOST.match(mail["host"]):
+        errors.append("mail.host must be the mail server's host name, such as smtp.example.org")
+    if not _is_int(mail.get("port")) or not 1 <= mail["port"] <= 65535:
+        errors.append("mail.port must be a whole number from 1 to 65535 (587 for STARTTLS, 465 for implicit TLS)")
+    username = mail.get("username", "")
+    if not isinstance(username, str) or len(username) > 120 or (username and not re.fullmatch(r"[A-Za-z0-9_.@+-]+", username)):
+        errors.append("mail.username must be the login name of the mail account (letters, digits and . _ @ + -), or empty for a server that needs none")
+    if not isinstance(mail.get("from_addr"), str) or not EMAIL.match(mail["from_addr"]):
+        errors.append("mail.from_addr must be the address the messages come from")
+    if mail.get("security", "starttls") not in MAIL_SECURITY:
+        errors.append(f"mail.security must be one of: {', '.join(MAIL_SECURITY)}")
     return errors
 
 
@@ -149,8 +183,20 @@ def render(data: dict, out_dir: Path) -> dict[str, Path]:
         f"PRESET_ADMIN_NAME={data['admin']['name']}",
         f"PRESET_ADMIN_EMAIL={data['admin']['email']}",
         f"CTFTIME_CLIENT_ID={data.get('ctftime', {}).get('client_id', '')}",
-        "",
     ]
+    mail = data.get("mail")
+    if mail:  # the password is the Docker secret MAIL_PASSWORD (.secrets/), never a line in this file
+        security = mail.get("security", "starttls")
+        lines += [
+            f"MAIL_SERVER={mail['host']}",
+            f"MAIL_PORT={mail['port']}",
+            f"MAIL_USEAUTH={'true' if mail.get('username') else ''}",
+            f"MAIL_USERNAME={mail.get('username', '')}",
+            f"MAIL_TLS={'true' if security == 'starttls' else ''}",
+            f"MAIL_SSL={'true' if security == 'ssl' else ''}",
+            f"MAILFROM_ADDR={mail['from_addr']}",
+        ]
+    lines.append("")
     env = out_dir / "compose.env"
     env.write_bytes(chr(10).join(lines).encode("utf-8"))
     return {"preset_configs.json": preset, "compose.env": env}

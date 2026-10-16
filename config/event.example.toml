@@ -28,6 +28,15 @@ verify_emails = true
 # .secrets/CTFTIME_CLIENT_SECRET (see docs/ctftime-endpoints.md). While this is empty the sign-in route does not exist.
 client_id = ""
 
+# [mail]
+# Where verification and password-reset messages are sent from (production only; development prints nothing and sends nothing). Remove the # signs and
+# fill it in once the sending service is made (docs/deploy/platform-deployment.md, A3). The password is NOT here: it goes in .secrets/MAIL_PASSWORD.
+# host = "smtp.example.org"
+# port = 587                      # 587 with security = "starttls", 465 with "ssl"
+# username = "mailer@l3m0nctf.xyz"
+# from_addr = "no-reply@l3m0nctf.xyz"
+# security = "starttls"           # "starttls", "ssl" or "none"
+
 [admin]
 # The preset organiser account CTFd creates at first sign-in. The password and token are secrets (see .secrets/).
 name = "organiser"

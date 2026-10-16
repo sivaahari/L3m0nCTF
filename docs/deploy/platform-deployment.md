@@ -380,11 +380,11 @@ Remember the limit of Access: it works only if every request goes through Cloudf
 |---|---|---|
 | The CTFd image (hardened, our plugins) and `tools/compose.sh` | Built and tested (`docs/deploy/local.md`) | already there |
 | The stack for one computer (nginx on plain HTTP, 127.0.0.1 only) | Works | already there |
-| **Production settings**: nginx on 443 with the origin certificate and the client-certificate check; the admin host name; `L3MON_SECURE_COOKIES=true`; mail settings; no preset admin token | **Not built** | SP9 |
+| **The production front door and settings**: nginx on 443 (8443 inside) with the origin certificate and the Cloudflare client-certificate check; the crew's host name; `L3MON_SECURE_COOKIES=true`; mail settings; no preset admin token; `python -m l3mon deploy check` | **Built and tried (2026-10-17)**: `deploy/compose/compose.production.yml`, `deploy/nginx/templates-production/`, `deploy/compose/production.env.example`. Tried for real: a whole production stack was started beside the development one with throwaway certificates (healthy; `__Host-session` with `Secure`; HSTS; the live feed 200 with no cookie; a request without Cloudflare's certificate refused; Login with CTFtime redirecting to `oauth.ctftime.org` with the `https://play.l3m0nctf.xyz/auth/ctftime/callback` address). Not tried: Cloudflare itself and a real VM | done |
 | The metadata block, the egress limits, encrypted off-host backups, monitoring, the status page | **Not built** | SP9 |
 | Real pages (Channels, Guide, Scoreboard, crew pages) | The demo only | SP3 and SP6 |
 
-So the commands below are the **intended sequence**. The first five run unchanged today on any machine (that is how the stack is tested); the production file and the certificate mounting are added by SP9, and I will update this section with the exact lines and re-test it on a second VM before the rehearsal.
+So the commands below are the sequence. They run unchanged on any machine (that is how the stack is tested), and the production file has been tried locally with throwaway certificates; the first run on a real VM is the part that is still untried, so do it on the staging VM before anything depends on it.
 
 ## D1. Get the code
 
@@ -403,6 +403,7 @@ cd tools && python3 -m l3mon secrets generate --dir ../.secrets && cd ..
 
 This writes new random secrets into `.secrets/` and prints nothing. It refuses to overwrite existing ones. Then:
 
+0. The two files `CTFTIME_CLIENT_SECRET` and `MAIL_PASSWORD` are made **empty** on purpose: CTFtime gives its secret only after it approves the event, and the mail account may not exist yet. The platform treats an empty one as "off". Fill them when you have the values (a filled one is never overwritten by `secrets generate`).
 1. Open each file and copy it into the vault (`cat .secrets/FLAG_HMAC_SECRET` and so on; do not paste them into chat). **`FLAG_HMAC_SECRET` matters most: losing it during the round changes every team's flag.**
 2. Delete the file `.secrets/PRESET_ADMIN_TOKEN`. Production never uses it.
 3. The folder must be readable only by the deploy user (`chmod 700 .secrets`).
@@ -413,7 +414,7 @@ This writes new random secrets into `.secrets/` and prints nothing. It refuses t
 cp config/event.example.toml config/event.toml
 ```
 
-Check the file: the name, the two dates (10:00 IST on 28 November is `2026-11-28T04:30:00Z`, and 22:00 IST that day is `2026-11-28T16:30:00Z`), `platform_host = "play.l3m0nctf.xyz"`, `size_max = 4`, `verify_emails = true`. Then turn it into the settings the stack reads:
+Check the file (and, if the mail service is ready, remove the `#` signs of the `[mail]` section: host, port, login name, the address the messages come from, and `security`; **the password is not in this file**, it goes in `.secrets/MAIL_PASSWORD`): the name, the two dates (10:00 IST on 28 November is `2026-11-28T04:30:00Z`, and 22:00 IST that day is `2026-11-28T16:30:00Z`), `platform_host = "play.l3m0nctf.xyz"`, `size_max = 4`, `verify_emails = true`. Then turn it into the settings the stack reads:
 
 ```bash
 cd tools && python3 -m l3mon config render ../config/event.toml --out ../deploy/compose/generated && cd ..
@@ -426,8 +427,9 @@ cd tools && python3 -m l3mon config render ../config/event.toml --out ../deploy/
 | Organisers' addresses | a file **outside** the repository, for example `/etc/l3mon/admin-nets.conf`, named by `ADMIN_NETS_FILE` | Start from `deploy/nginx/snippets/admin-nets.production.example.conf`. Explicit addresses only, no private range; a test refuses the file otherwise |
 | The origin certificate and key | `/etc/l3mon/tls/origin.pem` and `origin.key` | Key readable by root and the nginx group only. From the vault |
 | The Cloudflare client-certificate authority | `/etc/l3mon/tls/cloudflare-origin-pull-ca.pem` | That is `rootca.crt` from C3, public |
-| Mail settings | the host, port, username and password from A3 | CTFd reads `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USEAUTH`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_TLS` or `MAIL_SSL`, and `MAILFROM_ADDR` (I read these names from CTFd 3.8.8 in our image). The password goes in as a secret file, not in the admin panel, because a value typed into the panel is stored in the database and so in every backup |
-| `L3MON_SECURE_COOKIES=true` | the production settings | Makes the session cookie `__Host-session` with `Secure` |
+| Mail settings | the `[mail]` section of `config/event.toml` (host, port, login name, from address, `security`) and the file `.secrets/MAIL_PASSWORD` | `config render` turns the section into the names CTFd reads (`MAIL_SERVER`, `MAIL_PORT`, `MAIL_USEAUTH`, `MAIL_USERNAME`, `MAIL_TLS` or `MAIL_SSL`, `MAILFROM_ADDR`; read from CTFd 3.8.8 in our image); the password reaches CTFd as a Docker secret, not through the admin panel, because a value typed into the panel is stored in the database and so in every backup. **Without mail nobody can finish registering** (verification emails), though the CTFtime feed and sign-in still work |
+| The shell settings | `/etc/l3mon/production.env`, from `deploy/compose/production.env.example` | `L3MON_ENV`, `L3MON_IMAGE_TAG`, `TLS_DIR`, `ADMIN_NETS_FILE`, `EXTRA_HOST` |
+| `L3MON_SECURE_COOKIES=true` | `compose.production.yml` sets it | Makes the session cookie `__Host-session` with `Secure` (checked in the local rehearsal) |
 | The Cloudflare address list | `python3 tools/update_cloudflare_ips.py`, then read the diff | Run before every deploy |
 
 ## D5. Build and check the image
@@ -440,11 +442,13 @@ tools/verify-image.sh l3mon/ctfd:<tag>        # about 30 seconds; must pass
 ## D6. Start
 
 ```bash
-L3MON_ENV=production tools/compose.sh up -d --wait
-tools/compose.sh ps                            # every service "healthy"
+set -a; . /etc/l3mon/production.env; set +a          # L3MON_ENV=production and the other shell settings (D4)
+cd tools && python3 -m l3mon deploy check && cd ..   # it must end with "0 blocked"; every "todo" line says what it waits for
+tools/compose.sh up -d --wait
+tools/compose.sh ps                                  # every service "healthy"
 ```
 
-(`L3MON_ENV=production` picks up the production file SP9 adds. Today only `dev` exists.)
+`deploy check` reads files only. It refuses (BLOCKED) a missing secret, a leftover development token, generated settings that are older than `event.toml`, a missing certificate, a key every user can read, an organisers' list that is the example, the development list or holds private ranges, and an event number without its secret. It never prints a secret.
 
 ## D7. First sign-in and the crew's accounts
 
@@ -465,7 +469,7 @@ Run each and write the result in [verification-log.md](verification-log.md):
 | The cookie | sign in, look at the response | `Set-Cookie: __Host-session=...; Secure; HttpOnly; SameSite=Lax` |
 | The admin pages are closed | open `https://play.l3m0nctf.xyz/admin` | blocked; the same on the admin host without Access: the Access login |
 | The real visitor address reaches nginx | read the access log (`tools/compose.sh logs nginx`) | your own public address, not a Docker or Cloudflare one |
-| A forged header earns nothing | send `X-Forwarded-Proto: https` | no HSTS in the answer |
+| No client certificate, no answer | `curl -sk https://play.l3m0nctf.xyz --resolve play.l3m0nctf.xyz:443:<VM address>` from your own computer | `400 No required SSL certificate was sent` (the same as the line above; HSTS comes with every answer that is given, because nginx itself ends the TLS) |
 | Email | register a test account with a Gmail and an Outlook address | the message arrives in the inbox, not in spam, and "Show original" lists SPF, DKIM and DMARC as `PASS` |
 | Backup and restore | `tools/backup.sh`, then restore on a **second** VM | the drill finishes in under 15 minutes |
 
