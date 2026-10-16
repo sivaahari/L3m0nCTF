@@ -4,6 +4,7 @@ backups and its admin API).
     l3mon_show_coming_count  "12 coming up" under the channel strip. ON unless switched off
     l3mon_story_meter        the story meter in the Guide (reels and "on air"). ON unless switched off
     l3mon_story_air_target   how many solves of all studios fill the "on air" meter; 0 (unset) leaves the meter at 0
+    l3mon_finale_open        the crew's trigger for the finale story: OFF unless switched on (the meter at 100 percent opens it too)
 
 There is no freeze switch here on purpose. CTFd freezes its own standings and team pages whenever its `freeze` setting holds a
 time, and a second flag of ours could say "not frozen" while CTFd's scoreboard is. The freeze is therefore that one time
@@ -14,6 +15,7 @@ from CTFd.utils import get_config
 SHOW_COMING_KEY = "l3mon_show_coming_count"
 METER_KEY = "l3mon_story_meter"
 AIR_TARGET_KEY = "l3mon_story_air_target"
+FINALE_KEY = "l3mon_finale_open"
 
 _ON = ("1", "true", "yes", "on")
 
@@ -32,6 +34,11 @@ def show_coming_count() -> bool:
 
 def story_meter() -> bool:
     return _flag(METER_KEY, True)
+
+
+def finale_open() -> bool:
+    """The crew's trigger for the finale story (the on-air meter at 100 percent opens it as well)."""
+    return _flag(FINALE_KEY, False)
 
 
 def story_air_target() -> int:

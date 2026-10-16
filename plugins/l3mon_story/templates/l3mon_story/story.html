@@ -5,13 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="same-origin">
 <meta name="color-scheme" content="dark">
-<title>{{ story.title }} · Cold open</title>
+<title>{{ story.title }} · {{ "Finale" if story.slug == "finale" else "Cold open" }}</title>
 <link rel="stylesheet" href="/plugins/l3mon_story/assets/comic.css">
 </head>
 <body class="l3m-page">
 <main id="l3m-stage" data-story-url="/api/v1/l3mon/story/{{ story.slug }}" data-slug="{{ story.slug }}" data-mode="page">
   <p class="l3m-loading">Tuning in…</p>
 </main>
+{% if story.version == 2 %}
+<noscript>
+  <ol class="l3m-pages">
+  {% for panel in story.transcript %}{% for pic in panel.pics %}
+    <li><figure><img loading="lazy" decoding="async" src="/api/v1/l3mon/story/{{ story.slug }}/pic/{{ pic }}" alt="{{ panel.alt }}"></figure></li>
+  {% endfor %}{% endfor %}
+  </ol>
+</noscript>
+{% endif %}
 <section class="l3m-transcript" aria-labelledby="l3m-transcript-h">
   <h2 id="l3m-transcript-h">{{ story.title }} <span>{{ story.kicker }}</span></h2>
   <p>This is the same story as text.</p>

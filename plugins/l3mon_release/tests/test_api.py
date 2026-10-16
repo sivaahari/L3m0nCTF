@@ -466,6 +466,7 @@ def _plan_payload(**over):
         (lambda p, ids: p["programmes"][0].update(delivery="carrier_pigeon"), "programmes[0].delivery"),
         (lambda p, ids: p["programmes"][0].update(delivery="Live_Single"), "programmes[0].delivery"),
         (lambda p, ids: p["channels"][0].update(slug="Bad Slug"), "channels[0].slug"),
+        (lambda p, ids: p["channels"][0].update(slug="finale"), "channels[0].slug"),  # the finale story belongs to no channel: its name is kept
         (lambda p, ids: p["channels"][0].update(name=""), "channels[0].name"),
         (lambda p, ids: p["channels"][0].update(name="n" * 81), "channels[0].name"),
         (lambda p, ids: p["channels"][0].update(synopsis="s" * 201), "channels[0].synopsis"),

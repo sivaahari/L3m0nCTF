@@ -113,3 +113,13 @@ html.l3m-lock { overflow: hidden; }
   .l3m * { animation: none !important; transition: none !important; }
   .l3m-noise { display: none; }
 }
+
+/* painted pictures (version 2): the picture fills the screen as it is, and the set's own scan lines and shading stay out of the painted words */
+.l3m-photo { object-fit: cover; }
+.l3m-painted .l3m-scan { opacity: .3; }
+.l3m-pages { list-style: none; margin: 1rem auto; padding: 0; width: min(96vw, 1120px); display: grid; gap: 1rem; }
+.l3m-pages img { display: block; width: 100%; height: auto; border-radius: 12px; border: 4px solid var(--l3m-ink, #1a1030); }
+
+/* a finger: a sideways drag turns the page (the player handles it), an up-and-down one scrolls the page, two fingers pinch; without this the browser
+   cancels the pointer as soon as it starts to pan and the player never sees the end of a swipe (found by the review of 2026-10-16) */
+.l3m-screen { touch-action: pan-y pinch-zoom; }

@@ -1,6 +1,8 @@
-"""The cold-open comic's file format (version 1) and the checks that keep a bad file from ever reaching a browser.
+"""The cold-open comic's file format (versions 1 and 2) and the checks that keep a bad file from ever reaching a browser.
 
-A story is one JSON file per channel, a **bundle**: the script (panels, layers, bubbles, sound cues) and the art (SVG pictures, by id).
+A story is one JSON file per channel, a **bundle**: the script (panels, layers, sound cues) and its pictures. Version 1 draws its pictures in
+code (SVG pictures, by id) and writes the speech as bubbles. Version 2 is a comic of painted pictures (WebP files kept beside the bundle,
+named in `pics` by size, bytes and checksum, never by a path); the words are part of the picture, and `lines` writes them again as plain text.
 The build (`python -m l3mon story build`) and the server (when it loads a file) run the same checks, so a file that passes in one
 passes in the other and a file that is edited by hand on the server is checked again before anybody sees it.
 
@@ -24,13 +26,14 @@ import xml.etree.ElementTree as ET
 from importlib import util as _util
 from pathlib import Path
 
-VERSION = 1
+VERSIONS = (1, 2)
 SVG_NS = "http://www.w3.org/2000/svg"
 
 LIMITS = {
     "panels": 12, "layers": 12, "bubbles": 6, "cues": 4, "art_pieces": 40,
     "bubble_chars": 160, "alt_chars": 300, "title_chars": 80, "kicker_chars": 60, "who_chars": 24,
     "panel_ms": (2000, 20000), "bundle_bytes": 600_000, "art_bytes": 80_000,
+    "pics": 12, "pic_bytes": 400_000, "pic_px": (320, 4096), "lines": 8,
     "svg_elements": 2500, "svg_depth": 24, "svg_text_chars": 120, "path_chars": 20_000,
     "number_chars": 40, "list_chars": 20_000, "svg_cost": 6000, "bundle_cost": 20_000, "filter_cost": 60, "region_percent": 400, "region_units": 20_000,
 }
@@ -42,17 +45,23 @@ ANIMS = ("none", "bob", "sway", "pulse", "shake")
 PIVOTS = ("self", "panel")  # a layer scales about its own middle, or about the middle of the panel (a camera push on a backdrop)
 CUES = ("whoosh", "pop", "bonk", "tada", "sparkle", "static", "boing", "zap", "thud", "jingle", "sting", "tick")
 
-BUNDLE_KEYS = {"v", "slug", "title", "kicker", "lang", "panels", "art"}
-PANEL_KEYS = {"id", "ms", "enter", "alt", "layers", "bubbles", "sfx"}
-LAYER_KEYS = {"art", "x", "y", "w", "h", "z", "opacity", "flip", "anim", "pivot", "from", "to"}
+BUNDLE_KEYS = {1: {"v", "slug", "title", "kicker", "lang", "panels", "art"}, 2: {"v", "slug", "title", "kicker", "lang", "panels", "pics", "flip"}}
+PANEL_KEYS = {1: {"id", "ms", "enter", "alt", "layers", "bubbles", "sfx"}, 2: {"id", "ms", "enter", "alt", "layers", "lines", "sfx"}}
+_LAYER_SHARED = {"x", "y", "w", "h", "z", "opacity", "flip", "anim", "pivot", "from", "to"}
+LAYER_KEYS = {1: _LAYER_SHARED | {"art"}, 2: _LAYER_SHARED | {"pic"}}
+LAYER_FIELD = {1: "art", 2: "pic"}  # what a layer shows: a drawn picture (version 1) or a painted one (version 2)
+LINE_KEYS = {"kind", "who", "text"}
+PIC_KEYS = {"w", "h", "bytes", "sha256"}
 MOVE_KEYS = {"x", "y", "s"}
 BUBBLE_KEYS = {"kind", "who", "text", "x", "y", "w", "tail", "at", "size"}
 CUE_KEYS = {"cue", "at"}
 
-SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
-ART_ID = re.compile(r"^[a-z0-9][a-z0-9_]{0,39}$")
-PANEL_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,11}$")
-LANG = re.compile(r"^[a-z]{2}(-[A-Z]{2})?$")
+# `\Z`, not `$`: a `$` also matches in front of a final line break, so "p1\n" would be an id (found by the review of 2026-10-16)
+SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}\Z")
+ART_ID = re.compile(r"^[a-z0-9][a-z0-9_]{0,39}\Z")  # also the id of a painted picture: its file is <id>.webp
+SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
+PANEL_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,11}\Z")
+LANG = re.compile(r"^[a-z]{2}(-[A-Z]{2})?\Z")
 
 
 class Problem(tuple):
@@ -136,6 +145,10 @@ def _text(problems, path, value, limit, required=True):
     clean, problem = crew_text(value, limit, required=required)
     if problem:
         problems.append(Problem(path, problem))
+    elif isinstance(value, str) and clean != value:
+        # the bundle keeps the text exactly as written, so what the shared rule would trim (spaces, line and file separators, a next-line mark,
+        # an ideographic space) must not be there at all
+        problems.append(Problem(path, "may not start or end with a space or an invisible character"))
     return clean
 
 
@@ -154,16 +167,17 @@ def _move(problems, path, move):
             _range(problems, f"{path}.{key}", move[key], low, high)
 
 
-def _layer(problems, path, layer, art):
+def _layer(problems, path, layer, known, version=1):
     if not isinstance(layer, dict):
         problems.append(Problem(path, "must be an object"))
         return None
-    _keys(problems, path, layer, LAYER_KEYS)
-    name = layer.get("art")
+    _keys(problems, path, layer, LAYER_KEYS[version])
+    field = LAYER_FIELD[version]
+    name = layer.get(field)
     if not isinstance(name, str) or not ART_ID.match(name):
-        problems.append(Problem(f"{path}.art", "must be the id of a picture (lower-case letters, digits and underscores)"))
-    elif name not in art:
-        problems.append(Problem(f"{path}.art", f"there is no picture {name!r} in art"))
+        problems.append(Problem(f"{path}.{field}", "must be the id of a picture (lower-case letters, digits and underscores)"))
+    elif name not in known:
+        problems.append(Problem(f"{path}.{field}", f"there is no picture {name!r} in {'art' if version == 1 else 'pics'}"))
     for key, low, high in (("x", -200, 200), ("y", -200, 200), ("w", 1, 400), ("h", 1, 400)):
         if key not in layer:
             problems.append(Problem(f"{path}.{key}", "is required"))
@@ -207,11 +221,23 @@ def _bubble(problems, path, bubble, ms):
         _range(problems, f"{path}.at", bubble["at"], 0, ms if _whole(ms) else LIMITS["panel_ms"][1], whole=True)
 
 
-def _panel(problems, path, panel, art, seen_ids, used):
+def _line(problems, path, line):
+    """One painted line written as text (version 2): who said it, in what way, and the words."""
+    if not isinstance(line, dict):
+        problems.append(Problem(path, "must be an object"))
+        return
+    _keys(problems, path, line, LINE_KEYS)
+    _choice(problems, f"{path}.kind", line.get("kind"), KINDS)
+    _text(problems, f"{path}.text", line.get("text"), LIMITS["bubble_chars"])
+    if "who" in line:
+        _text(problems, f"{path}.who", line["who"], LIMITS["who_chars"])
+
+
+def _panel(problems, path, panel, art, seen_ids, used, version=1):
     if not isinstance(panel, dict):
         problems.append(Problem(path, "must be an object"))
         return
-    _keys(problems, path, panel, PANEL_KEYS)
+    _keys(problems, path, panel, PANEL_KEYS[version])
     pid = panel.get("id")
     if not isinstance(pid, str) or not PANEL_ID.match(pid):
         problems.append(Problem(f"{path}.id", "must be short lower-case letters, digits, - or _"))
@@ -230,18 +256,22 @@ def _panel(problems, path, panel, art, seen_ids, used):
         problems.append(Problem(f"{path}.layers", f"at most {LIMITS['layers']} layers"))
     else:
         for i, layer in enumerate(layers):
-            name = _layer(problems, f"{path}.layers[{i}]", layer, art)
+            name = _layer(problems, f"{path}.layers[{i}]", layer, art, version)
             if name:
                 used.add(name)
-    for key, limit, name in (("bubbles", LIMITS["bubbles"], "bubbles"), ("sfx", LIMITS["cues"], "cues")):
+    lists = (("bubbles", LIMITS["bubbles"], "bubbles"), ("sfx", LIMITS["cues"], "cues")) if version == 1 else (("lines", LIMITS["lines"], "lines"), ("sfx", LIMITS["cues"], "cues"))
+    for key, limit, name in lists:
         items = panel.get(key, [])
         if not isinstance(items, list):
             problems.append(Problem(f"{path}.{key}", "must be a list"))
         elif len(items) > limit:
             problems.append(Problem(f"{path}.{key}", f"at most {limit} {name}"))
-    if isinstance(panel.get("bubbles"), list) and len(panel["bubbles"]) <= LIMITS["bubbles"]:
+    if version == 1 and isinstance(panel.get("bubbles"), list) and len(panel["bubbles"]) <= LIMITS["bubbles"]:
         for i, bubble in enumerate(panel["bubbles"]):
             _bubble(problems, f"{path}.bubbles[{i}]", bubble, ms)
+    if version == 2 and isinstance(panel.get("lines"), list) and len(panel["lines"]) <= LIMITS["lines"]:
+        for i, line in enumerate(panel["lines"]):
+            _line(problems, f"{path}.lines[{i}]", line)
     if isinstance(panel.get("sfx"), list) and len(panel["sfx"]) <= LIMITS["cues"]:
         for i, cue in enumerate(panel["sfx"]):
             where = f"{path}.sfx[{i}]"
@@ -253,33 +283,129 @@ def _panel(problems, path, panel, art, seen_ids, used):
             _range(problems, f"{where}.at", cue.get("at", 0), 0, ms if _whole(ms) else LIMITS["panel_ms"][1], whole=True)
 
 
+def _le(data, at, size):
+    return int.from_bytes(data[at : at + size], "little")
+
+
+def webp_info(data):
+    """-> ((width, height), None) for a plain, still WebP, or (None, why not). The whole file is walked, not only its first bytes: the RIFF length must be
+    the file's, every chunk must lie inside it, and the only chunks allowed are an optional `VP8X` header (never with the animation flag), an optional
+    `ALPH` and exactly one picture, `VP8 ` (lossy) or `VP8L` (lossless). Metadata, animation frames, junk and a second picture are refused, a header whose
+    canvas disagrees with the picture is refused, and a chunk that claims more than the file holds is refused. The build tool and the server both read
+    pictures with this one function."""
+    n = len(data)
+    if n < 20 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return None, "it is not a WebP file"
+    if _le(data, 4, 4) != n - 8:
+        return None, "its length does not match its header (it was cut short, or something was added after it)"
+    chunks, pos = [], 12
+    while pos < n:
+        if pos + 8 > n:
+            return None, "a chunk header is cut short"
+        kind, size = data[pos : pos + 4], _le(data, pos + 4, 4)
+        end = pos + 8 + size + (size & 1)
+        if end > n:
+            return None, "a chunk runs past the end of the file"
+        chunks.append((kind, pos + 8, size))
+        pos = end
+    kinds = [c[0] for c in chunks]
+    if b"ANIM" in kinds or b"ANMF" in kinds:
+        return None, "it is an animation (only still pictures are used)"
+    if any(k not in (b"VP8X", b"ALPH", b"VP8 ", b"VP8L") for k in kinds):
+        return None, "it holds a kind of WebP data that is not used here (metadata or something else)"
+    pictures = [c for c in chunks if c[0] in (b"VP8 ", b"VP8L")]
+    if len(pictures) != 1 or kinds.count(b"VP8X") > 1 or (b"VP8X" in kinds and kinds[0] != b"VP8X") or kinds.count(b"ALPH") > 1:
+        return None, "it must hold exactly one picture"
+    kind, at, size = pictures[0]
+    if kind == b"VP8 ":
+        if size < 10 or data[at + 3 : at + 6] != b"\x9d\x01\x2a":
+            return None, "its picture data is damaged (no start code)"
+        width, height = _le(data, at + 6, 2) & 0x3FFF, _le(data, at + 8, 2) & 0x3FFF
+    else:
+        if size < 5 or data[at] != 0x2F:
+            return None, "its picture data is damaged (no signature)"
+        bits = _le(data, at + 1, 4)
+        width, height = (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+    if b"VP8X" in kinds:
+        _, head, hsize = chunks[0]
+        if hsize < 10:
+            return None, "its extended header is cut short"
+        if data[head] & 0x02:
+            return None, "it is an animation (only still pictures are used)"
+        if (_le(data, head + 4, 3) + 1, _le(data, head + 7, 3) + 1) != (width, height):
+            return None, "its canvas and its picture disagree about the size"
+    return (width, height), None
+
+
+def _pics(problems, pics):
+    """The painted pictures a version 2 bundle names: id -> {w, h, bytes, sha256}. The file is `<id>.webp` in the channel's folder, so nothing
+    here is ever a path. -> the dict to check the layers against ({} when it is not usable)."""
+    if not isinstance(pics, dict) or not pics:
+        problems.append(Problem("pics", "must be an object of pictures by id"))
+        return {}
+    if len(pics) > LIMITS["pics"]:
+        problems.append(Problem("pics", f"at most {LIMITS['pics']} pictures"))
+        return {}
+    low, high = LIMITS["pic_px"]
+    for name, info in pics.items():
+        where = f"pics.{name}"
+        if not isinstance(name, str) or not ART_ID.match(name):
+            problems.append(Problem(where, "the id must be lower-case letters, digits and underscores"))
+            continue
+        if not isinstance(info, dict):
+            problems.append(Problem(where, "must be an object {w, h, bytes, sha256}"))
+            continue
+        _keys(problems, where, info, PIC_KEYS)
+        for key in ("w", "h"):
+            if key not in info:
+                problems.append(Problem(f"{where}.{key}", "is required"))
+            else:
+                _range(problems, f"{where}.{key}", info[key], low, high, whole=True)
+        if "bytes" not in info:
+            problems.append(Problem(f"{where}.bytes", "is required"))
+        else:
+            _range(problems, f"{where}.bytes", info["bytes"], 1, LIMITS["pic_bytes"], whole=True)
+        digest = info.get("sha256")
+        if not isinstance(digest, str) or not SHA256.match(digest):
+            problems.append(Problem(f"{where}.sha256", "must be the 64 lower-case hexadecimal digits of the file's SHA-256"))
+    return pics
+
+
 def validate_bundle(obj):
     """The problems of a parsed bundle (see the module docstring). An empty list means it may be served."""
     problems = []
     if not isinstance(obj, dict):
         return [Problem("", "must be a JSON object")]
-    _keys(problems, "", obj, BUNDLE_KEYS)
-    if obj.get("v") != VERSION:
-        problems.append(Problem("v", f"must be {VERSION}"))
+    version = obj.get("v")
+    if version not in VERSIONS or isinstance(version, bool):
+        problems.append(Problem("v", "must be " + " or ".join(str(v) for v in VERSIONS)))
+        version = 1  # the rest is still checked, so one run lists everything that is wrong
+    _keys(problems, "", obj, BUNDLE_KEYS[version])
     if not isinstance(obj.get("slug"), str) or not SLUG.match(obj["slug"]):
         problems.append(Problem("slug", "must be lower-case letters, digits and hyphens"))
     _text(problems, "title", obj.get("title"), LIMITS["title_chars"])
     _text(problems, "kicker", obj.get("kicker"), LIMITS["kicker_chars"])
     if not isinstance(obj.get("lang"), str) or not LANG.match(obj["lang"]):
         problems.append(Problem("lang", "must look like en or en-IN"))
-    art = obj.get("art")
-    if not isinstance(art, dict) or not art:
-        problems.append(Problem("art", "must be an object of pictures by id"))
-        art = {}
-    elif len(art) > LIMITS["art_pieces"]:
-        problems.append(Problem("art", f"at most {LIMITS['art_pieces']} pictures"))
+    if version == 2 and "flip" in obj and not isinstance(obj["flip"], bool):
+        problems.append(Problem("flip", "must be true or false"))
+    if version == 1:
+        art = obj.get("art")
+        if not isinstance(art, dict) or not art:
+            problems.append(Problem("art", "must be an object of pictures by id"))
+            art = {}
+        elif len(art) > LIMITS["art_pieces"]:
+            problems.append(Problem("art", f"at most {LIMITS['art_pieces']} pictures"))
+        else:
+            for name, svg in art.items():
+                if not isinstance(name, str) or not ART_ID.match(name):
+                    problems.append(Problem(f"art.{name}", "the id must be lower-case letters, digits and underscores"))
+                    continue
+                for message in check_svg(svg):
+                    problems.append(Problem(f"art.{name}", message))
+        known, where = art, "art"
     else:
-        for name, svg in art.items():
-            if not isinstance(name, str) or not ART_ID.match(name):
-                problems.append(Problem(f"art.{name}", "the id must be lower-case letters, digits and underscores"))
-                continue
-            for message in check_svg(svg):
-                problems.append(Problem(f"art.{name}", message))
+        known, where = _pics(problems, obj.get("pics")), "pics"
     panels = obj.get("panels")
     used, seen_ids = set(), set()
     if not isinstance(panels, list) or not panels:
@@ -288,17 +414,17 @@ def validate_bundle(obj):
         problems.append(Problem("panels", f"at most {LIMITS['panels']} panels"))
     else:
         for i, panel in enumerate(panels):
-            _panel(problems, f"panels[{i}]", panel, art if isinstance(art, dict) else {}, seen_ids, used)
-    for name in sorted(set(art) - used) if isinstance(art, dict) else []:
-        problems.append(Problem(f"art.{name}", "is not used by any layer"))
+            _panel(problems, f"panels[{i}]", panel, known if isinstance(known, dict) else {}, seen_ids, used, version)
+    for name in sorted(set(known) - used) if isinstance(known, dict) else []:
+        problems.append(Problem(f"{where}.{name}", "is not used by any layer"))
     try:
         size = len(json.dumps(obj, separators=(",", ":")).encode("utf-8"))
     except (TypeError, ValueError):
         size = 0
     if size > LIMITS["bundle_bytes"]:
         problems.append(Problem("", f"the bundle is {size} bytes; the limit is {LIMITS['bundle_bytes']}"))
-    if not problems:  # the strip shown for reduced motion paints every layer of every panel at once, so the whole script has a limit too
-        costs = {name: art_cost(svg) for name, svg in art.items()}
+    if version == 1 and not problems:  # the strip shown for reduced motion paints every layer of every panel at once, so the whole script has a limit too
+        costs = {name: art_cost(svg) for name, svg in obj["art"].items()}
         total = sum(costs[layer["art"]] for panel in panels for layer in panel["layers"])
         if total > LIMITS["bundle_cost"]:
             problems.append(Problem("", f"the pictures of all the panels together cost {total} to draw; the limit is {LIMITS['bundle_cost']}"))

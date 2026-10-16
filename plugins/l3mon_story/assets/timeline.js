@@ -62,8 +62,9 @@ export function dueCues(panel, from, to) {
 
 export const totalMs = (bundle) => bundle.panels.reduce((sum, p) => sum + p.ms, 0);
 
-/** The text of a panel for a screen reader or a transcript: what the picture shows, then who says what. */
+/** The text of a panel for a screen reader or a transcript: what the picture shows, then who says what (the bubbles of a drawn comic, the
+ *  painted words of a picture story). */
 export function spoken(panel) {
-  const lines = (panel.bubbles || []).map((b) => (b.who ? `${b.who}: ${b.text}` : b.text));
+  const lines = [...(panel.bubbles || []), ...(panel.lines || [])].map((b) => (b.who ? `${b.who}: ${b.text}` : b.text));
   return [panel.alt, ...lines].join(' ');
 }

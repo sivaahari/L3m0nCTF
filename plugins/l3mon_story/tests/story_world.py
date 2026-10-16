@@ -5,6 +5,8 @@ Not a test file. Imported by name from the tests next to it. Nothing here names 
 """
 import calendar
 import datetime
+import hashlib
+import io
 import json
 import os
 
@@ -30,6 +32,9 @@ def clock(t):
 
 def make_app():
     app = create_ctfd(user_mode="teams", enable_plugins=True)
+    from CTFd.plugins.l3mon_story import finale
+
+    finale.forget()  # the kept answers of an earlier test's studio 1 are not this test's studio 1
     app.permanent_session_lifetime = datetime.timedelta(days=3650)
     return app
 
@@ -53,6 +58,55 @@ def bundle(slug="street", title="Moth Hour", panels=2, kicker=None):
         ],
         "art": {"sun": SVG},
     }
+
+
+def webp(n=1, size=(640, 360)):
+    """A small real WebP picture (a flat colour that depends on n), made with Pillow, which the image has."""
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", size, ((40 * n) % 256, 90, 160)).save(out, "WEBP", quality=60)
+    return out.getvalue()
+
+
+def pic_bundle(slug="street", title="Moth Hour", panels=2, kicker=None, flip=True):
+    """-> (bundle, files): a version 2 bundle of painted pictures and the files it names (id -> bytes)."""
+    files = {f"p{i + 1}": webp(i + 1) for i in range(panels)}
+    obj = {
+        "v": 2, "slug": slug, "title": title, "kicker": kicker or f"CH 01 · {slug.title()}", "lang": "en", "flip": flip,
+        "panels": [
+            {
+                "id": f"p{i + 1}", "ms": 9000, "enter": "static" if i == 0 else "slide", "alt": f"Picture {i + 1}: a round sun over a dark field.",
+                "layers": [{"pic": f"p{i + 1}", "x": 0, "y": 0, "w": 100, "h": 100, "z": 0, "from": {"x": 0, "y": 0, "s": 1.0}, "to": {"x": -1, "y": 0, "s": 1.05}}],
+                "lines": [
+                    {"kind": "caption", "text": f"Line {i + 1} sets the scene."},
+                    {"kind": "say", "who": "Host", "text": f"Line {i + 1} & \"quoted\" it's fine."},
+                ],
+                "sfx": [{"cue": "whoosh", "at": 0}],
+            }
+            for i in range(panels)
+        ],
+        "pics": {name: {"w": 640, "h": 360, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()} for name, data in files.items()},
+    }
+    return obj, files
+
+
+def write_pictures(folder, slug, files):
+    """The pictures of a channel, where the store looks: <folder>/pics/<slug>/<id>.webp."""
+    where = os.path.join(folder, "pics", slug)
+    os.makedirs(where, exist_ok=True)
+    for name, data in files.items():
+        with open(os.path.join(where, f"{name}.webp"), "wb") as handle:
+            handle.write(data)
+    return where
+
+
+def write_pic_story(folder, slug, **kw):
+    """A picture story and its files in the folder -> (bundle, files)."""
+    obj, files = pic_bundle(slug, **kw)
+    write_story(folder, slug, obj)
+    write_pictures(folder, slug, files)
+    return obj, files
 
 
 def write_story(folder, slug, obj=None, **kw):

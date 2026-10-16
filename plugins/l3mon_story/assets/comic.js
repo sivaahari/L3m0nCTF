@@ -4,9 +4,11 @@
 //   open(slug)        play a story in a dialog over the current page (what the board's "Cold open" button calls)
 //   mount(host, bundle, options)   play a bundle you already have inside an element (the story page, the tests, the preview)
 //
+// A story is either drawn in code (version 1: SVG layers and speech bubbles that type out, which plays by itself) or painted (version 2:
+// a WebP picture for each page, fetched from the platform one by one, with the words painted in; `flip` means the person turns the pages).
 // The same story is playable four ways and none is required: as a motion comic (the default), as a still strip of panels (when the person
 // asked their system for less motion, or chose it), as plain text (the transcript), or as the page's own text when no script runs.
-// Sound is off until the person turns it on. Keyboard: arrows, space, home, end, escape, S (sound), T (text).
+// Sound is off until the person turns it on. Keyboard: arrows, space, home, end, escape, S (sound), T (text). A swipe turns a page too.
 
 import { Sound } from './sounds.js';
 import { bubbleState, dueCues, enterState, firstChars, layerState, spoken } from './timeline.js';
@@ -43,6 +45,9 @@ export class Player {
     this.bundle = bundle;
     this.mode = options.mode || 'page';
     this.onClose = options.onClose || null;
+    this.flip = bundle.flip === true;  // the person turns the pages: nothing advances by itself
+    this.word = bundle.slug === 'finale' ? 'finale' : 'cold open';
+    this.swiped = false;
     this.index = 0;
     this.t = 0;
     this.prev = -1;
@@ -52,6 +57,7 @@ export class Player {
     this.strip = options.strip !== undefined ? options.strip : reducedMotion();
     this.sound = new Sound();
     this.urls = new Map();
+    this.ahead = new Map();  // the pictures asked for ahead of time (kept so the browser keeps them)
     this.raf = 0;
     this.last = 0;
     this.W = 640;
@@ -68,17 +74,43 @@ export class Player {
     return this.urls.get(id);
   }
 
+  /** The address of a painted picture: made from the story's own name and the picture's id (both checked by the platform), never from data. */
+  pic(id) {
+    return `/api/v1/l3mon/story/${encodeURIComponent(this.bundle.slug)}/pic/${encodeURIComponent(id)}`;
+  }
+
+  /** What a layer shows. */
+  source(layer) {
+    return layer.pic !== undefined ? this.pic(layer.pic) : this.art(layer.art);
+  }
+
+  /** Ask for the pictures of the pages next to this one now, so a turned page is already there. */
+  preload(index) {
+    for (const n of [index + 1, index - 1]) {
+      const panel = this.bundle.panels[n];
+      if (!panel) continue;
+      for (const layer of panel.layers) {
+        if (layer.pic === undefined || this.ahead.has(layer.pic)) continue;
+        const image = new Image();
+        image.decoding = 'async';
+        image.src = this.pic(layer.pic);
+        this.ahead.set(layer.pic, image);
+      }
+    }
+  }
+
   build() {
     const b = this.bundle;
-    this.root = el('div', `l3m l3m-${this.mode}`, { role: this.mode === 'overlay' ? 'dialog' : 'group', 'aria-label': `Cold open: ${b.title}`, tabindex: '-1', lang: b.lang });
+    const Word = this.word === 'finale' ? 'Finale' : 'Cold open';
+    this.root = el('div', `l3m l3m-${this.mode}${b.pics ? ' l3m-painted' : ''}`, { role: this.mode === 'overlay' ? 'dialog' : 'group', 'aria-label': `${Word}: ${b.title}`, tabindex: '-1', lang: b.lang });
     if (this.mode === 'overlay') this.root.setAttribute('aria-modal', 'true');
 
     const bar = el('div', 'l3m-bar');
     this.kicker = el('span', 'l3m-kicker', null, b.kicker);
     this.bar = bar;
-    bar.append(el('span', 'l3m-tag', null, 'COLD OPEN'), this.kicker, el('strong', 'l3m-title', null, b.title));
+    bar.append(el('span', 'l3m-tag', null, this.word.toUpperCase()), this.kicker, el('strong', 'l3m-title', null, b.title));
     if (this.mode === 'overlay' || this.onClose) {
-      this.closeBtn = el('button', 'l3m-btn l3m-close', { type: 'button', 'aria-label': 'Close the cold open', title: 'Close (Esc)' }, '✕');
+      this.closeBtn = el('button', 'l3m-btn l3m-close', { type: 'button', 'aria-label': `Close the ${this.word}`, title: 'Close (Esc)' }, '✕');
       bar.append(this.closeBtn);
     }
 
@@ -91,7 +123,8 @@ export class Player {
     this.panelEl.append(this.layersEl, this.bubblesEl);
     this.screen.append(this.panelEl, this.noise, el('div', 'l3m-scan', { 'aria-hidden': 'true' }), el('div', 'l3m-bug', { 'aria-hidden': 'true' }, b.kicker));
     this.endCard = el('div', 'l3m-end', { hidden: '' });
-    this.endCard.append(el('p', 'l3m-end-line', null, 'End of the cold open.'), el('p', null, null, 'Master control: you are on.'));
+    this.endCard.append(el('p', 'l3m-end-line', null, `End of the ${this.word}.`));
+    if (this.word !== 'finale') this.endCard.append(el('p', null, null, 'Master control: you are on.'));
     this.replayBtn = el('button', 'l3m-btn l3m-replay', { type: 'button' }, '↻ Watch again');
     this.endCard.append(this.replayBtn);
     this.screen.append(this.endCard);
@@ -100,7 +133,7 @@ export class Player {
     this.sr = el('p', 'l3m-sr', { 'aria-live': 'polite', 'aria-atomic': 'true' });
     this.stripEl = el('div', 'l3m-strip', { hidden: '' });
 
-    const controls = el('div', 'l3m-controls', { role: 'toolbar', 'aria-label': 'Cold open controls' });
+    const controls = el('div', 'l3m-controls', { role: 'toolbar', 'aria-label': `${Word} controls` });
     this.prevBtn = el('button', 'l3m-btn', { type: 'button', 'aria-label': 'Previous panel', title: 'Previous (←)' }, '◀');
     this.playBtn = el('button', 'l3m-btn l3m-play', { type: 'button', 'aria-label': 'Pause', title: 'Play or pause (Space)' }, '❚❚');
     this.nextBtn = el('button', 'l3m-btn', { type: 'button', 'aria-label': 'Next panel', title: 'Next (→)' }, '▶');
@@ -141,7 +174,13 @@ export class Player {
     this.on(this.soundBtn, 'click', () => this.setSound(!this.sound.on));
     this.on(this.textBtn, 'click', () => this.setTranscript(this.transcript.hidden));
     this.on(this.stripBtn, 'click', () => this.setStrip(!this.strip));
-    this.on(this.screen, 'click', () => (this.ended ? this.go(0, true) : this.next()));
+    this.on(this.screen, 'click', () => {
+      if (this.swiped) { this.swiped = false; return; }  // the click that ends a swipe is not a second turn of the page
+      if (this.ended) this.go(0, true); else this.next();
+    });
+    this.on(this.screen, 'pointerdown', (e) => { if (!e.isPrimary) return; this.down = { x: e.clientX, y: e.clientY }; this.swiped = false; });  // the first finger only
+    this.on(this.screen, 'pointerup', (e) => { if (e.isPrimary) this.swipe(e); });
+    this.on(this.screen, 'pointercancel', () => { this.down = null; });
     if (this.closeBtn) this.on(this.closeBtn, 'click', () => this.close());
     this.on(this.root, 'keydown', (e) => this.key(e));
     // Escape works wherever focus has gone (a button that was hidden took it with it)
@@ -155,15 +194,27 @@ export class Player {
     }
   }
 
+  /** A drag across the picture turns the page: to the left for the next one, to the right for the one before. A short slip is a click. */
+  swipe(e) {
+    const from = this.down;
+    this.down = null;
+    if (!from || this.strip || this.ended) return;
+    const dx = e.clientX - from.x;
+    const dy = e.clientY - from.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    this.swiped = true;
+    if (dx < 0) this.next(); else this.go(this.index - 1, true);
+  }
+
   key(e) {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     const tag = (e.target && e.target.tagName) || '';
     switch (e.key) {
       case 'ArrowRight': e.preventDefault(); this.next(); break;
-      case 'ArrowLeft': e.preventDefault(); this.go(this.index - 1, this.playing); break;
-      case 'Home': e.preventDefault(); this.go(0, this.playing); break;
+      case 'ArrowLeft': e.preventDefault(); this.go(this.index - 1, this.flip || this.playing); break;
+      case 'Home': e.preventDefault(); this.go(0, this.flip || this.playing); break;
       case 'End': e.preventDefault(); this.go(this.bundle.panels.length - 1, false); break;
-      case ' ': if (tag !== 'BUTTON' && tag !== 'A') { e.preventDefault(); this.playing ? this.pause() : this.play(); } break;
+      case ' ': if (tag !== 'BUTTON' && tag !== 'A') { e.preventDefault(); if (this.flip) this.next(); else if (this.playing) this.pause(); else this.play(); } break;
       case 's': case 'S': this.setSound(!this.sound.on); break;
       case 't': case 'T': this.setTranscript(this.transcript.hidden); break;
       case 'Escape': if (this.mode === 'overlay' || this.onClose) { e.preventDefault(); this.close(); } break;
@@ -190,6 +241,7 @@ export class Player {
     this.stripEl.hidden = !this.strip;
     this.controls.classList.toggle('l3m-stripmode', this.strip);
     for (const node of [this.prevBtn, this.playBtn, this.nextBtn, this.dots, this.soundBtn]) node.hidden = this.strip;
+    this.playBtn.hidden = this.strip || this.flip;  // a person who turns the pages has nothing to play
     if (this.strip) { this.pause(); this.buildStrip(); this.keepFocus(); return; }
     this.go(this.index, false, true);
     this.keepFocus();
@@ -224,7 +276,8 @@ export class Player {
     into.replaceChildren();
     const shown = enterState('cut', t);
     for (const layer of panel.layers) {
-      const img = el('img', 'l3m-layer', { alt: '', draggable: 'false', decoding: 'async', src: this.art(layer.art) });
+      const img = el('img', 'l3m-layer', { alt: '', draggable: 'false', decoding: 'async', src: this.source(layer) });
+      if (layer.pic !== undefined) img.classList.add('l3m-photo');
       img.style.cssText = `left:${layer.x}%;top:${layer.y}%;width:${layer.w}%;height:${layer.h}%;z-index:${layer.z || 0}${pivotOf(layer)}`;
       const s = layerState(layer, t, panel.ms, w, h);
       img.style.transform = `translate(${s.tx}px,${s.ty}px) rotate(${s.rot}deg) scale(${s.scale * (layer.flip ? -1 : 1)}, ${s.scale})`;
@@ -264,6 +317,7 @@ export class Player {
     this.prevBtn.disabled = this.index === 0;
     this.nextBtn.disabled = false;
     if (!quiet) this.sr.textContent = `Panel ${this.index + 1} of ${last + 1}. ${spoken(panel)}`;
+    this.preload(this.index);
     this.draw();
     if (play) this.play(); else this.pause();
   }
@@ -278,7 +332,7 @@ export class Player {
     this.pause();
     this.endCard.hidden = false;
     remember(`l3m.seen.${this.bundle.slug}`, '1');
-    this.sr.textContent = 'End of the cold open. Master control: you are on.';
+    this.sr.textContent = this.word === 'finale' ? 'End of the finale.' : 'End of the cold open. Master control: you are on.';
     if (this.mode === 'overlay') this.replayBtn.focus();
   }
 
@@ -306,7 +360,12 @@ export class Player {
     this.last = now;
     const panel = this.bundle.panels[this.index];
     this.t += dt;
-    if (this.t >= panel.ms) { this.t = panel.ms; this.draw(); this.next(); return; }
+    if (this.t >= panel.ms) {
+      this.t = panel.ms;
+      this.draw();
+      if (this.flip) this.pause(); else this.next();  // a person who turns the pages is never carried on to the next one
+      return;
+    }
     this.draw();
     this.raf = requestAnimationFrame((n) => this.loop(n));
   }
@@ -437,8 +496,14 @@ const MESSAGES = {
   broken: ['Technical difficulty', 'Something broke on our side. Try again in a moment.'],
 };
 
+// the finale is not a cold open, and says so
+const FINALE_MESSAGES = {
+  signin: ['Sign up to watch', 'The finale is for registered crews. It takes a minute, and you come straight back.'],
+  closed: ['Not on air yet', 'The finale starts when the broadcast is complete.'],
+};
+
 function notice(host, reason, slug, onClose) {
-  const [title, text] = MESSAGES[reason] || MESSAGES.broken;
+  const [title, text] = (slug === 'finale' && FINALE_MESSAGES[reason]) || MESSAGES[reason] || MESSAGES.broken;
   const box = el('div', 'l3m l3m-overlay l3m-notice', { role: 'dialog', 'aria-modal': 'true', 'aria-label': title, tabindex: '-1' });
   box.append(el('h2', null, null, title), el('p', null, null, text));
   if (reason === 'signin') {

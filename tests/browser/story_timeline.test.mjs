@@ -102,5 +102,8 @@ test('the text of a panel and the length of a story', () => {
   const panel = { alt: 'A street at dusk.', bubbles: [{ who: 'Host', text: 'Good evening.' }, { text: 'The bars hum.' }] };
   assert.equal(spoken(panel), 'A street at dusk. Host: Good evening. The bars hum.');
   assert.equal(spoken({ alt: 'Only a picture.' }), 'Only a picture.');
+  const painted = { alt: 'A street at dusk.', lines: [{ kind: 'caption', text: 'Sunset.' }, { kind: 'say', who: 'Anchor', text: 'Now!' }] };
+  assert.equal(spoken(painted), 'A street at dusk. Sunset. Anchor: Now!', 'the painted words of a picture story are read after the picture is described');
+  assert.equal(spoken({ ...painted, bubbles: [{ who: 'Host', text: 'Hi.' }] }), 'A street at dusk. Host: Hi. Sunset. Anchor: Now!');
   assert.equal(totalMs({ panels: [{ ms: 4000 }, { ms: 5000 }] }), 9000);
 });

@@ -27,6 +27,7 @@ MAX_PROGRAMMES = 400
 MAX_AHEAD = 30 * 24 * 3600  # a scheduled drop may be at most this far away: a typo for a year never schedules anything
 MAX_REASON = 200
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")  # a channel's
+RESERVED_SLUG = "finale"  # the finale story (l3mon_story) is named so and belongs to no channel; a channel of that name would be shown its button
 PROGRAMME_SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a programme's: the author kit writes slugs with underscores (lantern_walk)
 MODES = {"release": "released", "withhold": "withheld", "schedule": "scheduled"}
 KINDS = ("standard", "sponsored")
@@ -202,6 +203,8 @@ def validate_plan(body):
         if isinstance(slug, str):
             if not SLUG.match(slug):
                 problems.add(f"{where}.slug", "use lower-case letters, digits and hyphens, starting with a letter or digit")
+            if slug == RESERVED_SLUG:
+                problems.add(f"{where}.slug", "the name 'finale' belongs to the finale story, which is no channel's")
             if slug in slugs:
                 problems.add(f"{where}.slug", "the same channel twice in one request")
             slugs.add(slug)

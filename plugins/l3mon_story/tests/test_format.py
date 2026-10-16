@@ -97,7 +97,9 @@ def mutate(fn):
 
 SCRIPT_REFUSALS = [
     ("an unknown key at the top", lambda b: b.update(story="x"), "story"),
-    ("the wrong version", lambda b: b.update(v=2), "v"),
+    ("a version nobody defined", lambda b: b.update(v=3), "v"),
+    ("a version that is a boolean", lambda b: b.update(v=True), "v"),
+    ("a version that is the picture one without its parts", lambda b: b.update(v=2), "pics"),
     ("a slug with capitals", lambda b: b.update(slug="Test Card"), "slug"),
     ("an empty title", lambda b: b.update(title=""), "title"),
     ("a title with markup", lambda b: b.update(title="<b>x</b>"), "title"),

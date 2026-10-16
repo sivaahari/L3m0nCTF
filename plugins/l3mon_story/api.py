@@ -2,17 +2,19 @@
 
     GET /api/v1/l3mon/story          the stories this account may open now: slug, title, kicker, number of panels
     GET /api/v1/l3mon/story/<slug>   one channel's story (the checked bundle); strong ETag, 304 on a match
+    GET /api/v1/l3mon/story/<slug>/pic/<id>   one painted picture of a picture story (a WebP), behind the very same gate
     GET /story/<slug>                the page that plays it (a visitor is sent to the registration page)
 
 Who: a signed-in account that is not suspended and, when the settings ask, has a verified email. It does not need a studio yet.
 When: the channel has something on air for this account (the board's own rule) and the broadcast has started. The crew can open any
 story at any time to preview it. A channel that is not on air, a channel with no story and a name that is not a channel at all
-all give the same 404. A visitor gets 401 for every name, existing or not, so a visitor learns nothing.
+all give the same 404. A visitor gets 401 for every name, existing or not, so a visitor learns nothing. The one story that is not a
+channel's, `finale`, opens for every registered player when the on-air meter is full or the crew says so (finale.py).
 """
 import logging
 import re
 
-from flask import Blueprint, abort, redirect, render_template
+from flask import Blueprint, Response, abort, redirect, render_template
 
 from CTFd.models import db
 from CTFd.plugins import register_plugin_assets_directory
@@ -20,7 +22,7 @@ from CTFd.plugins.l3mon_board import envelope, viewer
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.models import Channel, Programme
 from CTFd.plugins.l3mon_core.visibility import visible_challenge_ids
-from CTFd.plugins.l3mon_story import store
+from CTFd.plugins.l3mon_story import finale, store
 from CTFd.utils.user import authed
 
 bp = Blueprint("l3mon_story", __name__, url_prefix="/api/v1/l3mon")
@@ -48,7 +50,22 @@ def available(who) -> dict:
     if who.admin:
         return stories
     on_air = on_air_channels(who.solved)
-    return {slug: story for slug, story in stories.items() if slug in on_air}
+    mine = {slug: story for slug, story in stories.items() if slug in on_air and slug != finale.SLUG}  # the finale has its own rule, never a channel's
+    if finale.SLUG in stories and finale.is_open(who):
+        mine[finale.SLUG] = stories[finale.SLUG]
+    return mine
+
+
+def story_for(who, slug):
+    """The Story this account may open now under this name, or None (the same None for every reason, so nothing can be learned)."""
+    story = store.get(slug)  # a name that is not a slug never reaches the dictionary
+    if story is None:
+        return None
+    if who.admin:
+        return story
+    if slug == finale.SLUG:
+        return story if finale.is_open(who) else None
+    return story if slug in on_air_channels(who.solved) else None  # (the finale was answered above)
 
 
 def _refused():
@@ -70,12 +87,38 @@ def get_story(slug):
     no = _refused()
     if no is not None:
         return no
-    story = available(viewer.current()).get(slug)
+    story = story_for(viewer.current(), slug)
     if story is None:
         return envelope.fail(*NOT_FOUND)
     if envelope.wants(story.etag):
         return envelope.not_modified(story.etag)
     return envelope.ok_bytes(story.body, story.etag)
+
+
+@bp.route("/story/<slug>/pic/<name>", methods=["GET"])
+def get_picture(slug, name):
+    """One painted picture. The gate is the story's own: whatever makes the story unavailable (not on air, not started, unknown name, a
+    picture the story does not name, a file that is not what the bundle says) gives the same 404."""
+    no = _refused()
+    if no is not None:
+        return no
+    if story_for(viewer.current(), slug) is None:
+        return envelope.fail(*NOT_FOUND)
+    found = store.picture(slug, name)
+    if found is None:
+        return envelope.fail(*NOT_FOUND)
+    raw, etag = found
+    if envelope.wants(etag):
+        response = Response(b"", status=304)
+    else:
+        response = Response(raw, status=200, mimetype="image/webp")
+        response.headers["Content-Disposition"] = f'inline; filename="{name}.webp"'
+    response.headers["ETag"] = etag
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["Vary"] = "Cookie"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+    return response
 
 
 @bp.after_request
@@ -105,7 +148,7 @@ def story_page(slug):
         return redirect(f"/register?next=/story/{slug}", code=303)  # the slug is checked above: nothing a visitor typed is put in the address
     if _refused() is not None:
         abort(403)
-    story = available(viewer.current()).get(slug)
+    story = story_for(viewer.current(), slug)
     if story is None:
         abort(404)
     response = render_template("l3mon_story/story.html", story=story)
