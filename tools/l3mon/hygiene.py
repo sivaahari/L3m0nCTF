@@ -172,9 +172,33 @@ def scan(root: Path, deny_words: list[str] | None = None) -> list[Finding]:
     return sorted(set(findings), key=lambda f: (f.path, f.line, f.rule))
 
 
-def scan_history(root: Path, deny_words: list[str] | None = None) -> list[Finding]:
-    """Every line ever added in any commit of any branch: a secret deleted from the tree is still in the history."""
+ACCEPTED_HISTORY = Path(__file__).resolve().parents[1] / "hygiene-accepted-history.txt"
+_ACCEPTED_LINE = re.compile(r"^(?P<rule>[a-z-]+) (?P<path>[^\s@*?]+)@(?P<commit>[0-9a-f]{12})\s+#\s*(?P<why>\S.*)$")
+
+
+def read_accepted(path: Path) -> set[tuple[str, str]]:
+    """The findings in the history that the owner accepted: {(rule, "path@commit12")}. One line each: `rule path@commit12  # why`. A line without a reason, with
+    a short commit or with a wildcard is an error, not a quiet pass: the list is only ever a short, reviewed list of false positives that cannot be rewritten
+    out of history that is already published."""
+    accepted: set[tuple[str, str]] = set()
+    if not Path(path).is_file():
+        return accepted
+    for number, raw in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = _ACCEPTED_LINE.match(line)
+        if not match:
+            raise ValueError(f"{path}:{number}: expected `rule path@commit12  # reason` (a reason, twelve hex digits of the commit, no wildcard): {line[:80]!r}")
+        accepted.add((match["rule"], f"{match['path']}@{match['commit']}"))
+    return accepted
+
+
+def scan_history(root: Path, deny_words: list[str] | None = None, accepted_file: Path | None = None) -> list[Finding]:
+    """Every line ever added in any commit of any branch: a secret deleted from the tree is still in the history. Findings listed in the accepted file
+    (hygiene-accepted-history.txt, next to the tools folder) are left out."""
     root = Path(root)
+    accepted = read_accepted(accepted_file if accepted_file is not None else ACCEPTED_HISTORY)
     deny = _deny_pattern(deny_words)
     done = subprocess.run(
         ["git", "-C", str(root), "log", "--all", "-p", "-U0", "--no-color", "--no-renames", "--format=commit:%H"],
@@ -191,4 +215,4 @@ def scan_history(root: Path, deny_words: list[str] | None = None) -> list[Findin
         elif raw_line.startswith("+") and not raw_line.startswith("+++"):
             for f in _line_findings(f"{path}@{commit}", 0, raw_line[1:], deny):
                 findings.append(Finding(f.rule, f.path, 0, f.message + " (in the history)"))
-    return sorted(set(findings), key=lambda f: (f.path, f.rule))
+    return sorted({f for f in findings if (f.rule, f.path) not in accepted}, key=lambda f: (f.path, f.rule))

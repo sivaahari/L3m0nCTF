@@ -1,0 +1,1 @@
+private-key tools/tests/test_deploy_check.py@3f73b57caf51  # a stand-in certificate text in a test (MIIBfake), not a key; the test builds it from pieces since the next commit. Published history is not rewritten.

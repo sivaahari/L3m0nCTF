@@ -143,3 +143,56 @@ def test_the_retired_opening_is_still_found_in_every_form(tmp_path):
 def test_the_retired_format_hint_is_not_a_leak_but_the_current_one_is_the_documented_form(tmp_path):
     make(tmp_path, {"a.md": "Old: " + RETIRED + "...}\n", "b.md": "Now: " + OPEN + "...}\n"})
     assert hygiene.scan(tmp_path) == []
+
+
+# ---- a known false positive that is already in the history -----------------------------------------------------------------------------------------
+# A stand-in that looks like a key sits in one commit of the history (a test's fake certificate text, since removed). Rewriting pushed history is not an
+# option, so the scanner reads a short list of findings the owner accepted: one line each, with the rule, the file and the commit, and a reason.
+
+def history_with_one_bad_commit(tmp_path):
+    bad = "-----BEGIN " + "PRIVATE KEY-----\n"
+    make(tmp_path, {"t.py": bad})
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "add", "t.py")
+    git(tmp_path, "commit", "-q", "-m", "stand-in")
+    sha = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    make(tmp_path, {"t.py": "gone\n", "u.py": bad})
+    git(tmp_path, "add", "t.py", "u.py")
+    git(tmp_path, "commit", "-q", "-m", "second")
+    return sha
+
+
+@needs_git
+def test_an_accepted_finding_is_not_reported_but_the_same_text_anywhere_else_still_is(tmp_path):
+    sha = history_with_one_bad_commit(tmp_path)
+    accepted = tmp_path / "accepted.txt"
+    accepted.write_text(f"private-key t.py@{sha[:12]}  # a stand-in certificate text in a test, not a key\n", encoding="utf-8")
+    found = hygiene.scan_history(tmp_path, accepted_file=accepted)
+    assert [f.path.split("@")[0] for f in found] == ["u.py"], found
+
+
+@needs_git
+def test_without_the_list_both_are_reported(tmp_path):
+    history_with_one_bad_commit(tmp_path)
+    assert sorted(f.path.split("@")[0] for f in hygiene.scan_history(tmp_path, accepted_file=tmp_path / "nothing.txt")) == ["t.py", "u.py"]
+
+
+@needs_git
+@pytest.mark.parametrize("line", [
+    "private-key t.py@abcdef123456", "private-key t.py@abcdef123456 #", "private-key t.py@abc # too short a commit", "t.py@abcdef123456 # no rule",
+    "private-key t.py # no commit", "private-key  # nothing", "private-key *@abcdef123456 # a wildcard",
+])
+def test_a_line_without_a_reason_or_a_full_enough_commit_or_with_a_wildcard_is_refused_loudly(tmp_path, line):
+    history_with_one_bad_commit(tmp_path)
+    accepted = tmp_path / "accepted.txt"
+    accepted.write_text(line + "\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        hygiene.scan_history(tmp_path, accepted_file=accepted)
+
+
+@needs_git
+def test_comments_and_blank_lines_are_fine(tmp_path):
+    history_with_one_bad_commit(tmp_path)
+    accepted = tmp_path / "accepted.txt"
+    accepted.write_text("# nothing accepted\n\n", encoding="utf-8")
+    assert len(hygiene.scan_history(tmp_path, accepted_file=accepted)) == 2
