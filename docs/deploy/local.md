@@ -37,6 +37,7 @@ Then open <http://localhost:8080/>. It sends you to the sign-in page.
 | Restart one service | `tools/compose.sh restart ctfd` |
 | **Wipe everything** (data included) and start clean | `tools/compose.sh down -v`, then `tools/compose.sh up -d --wait` |
 | Use another port | `DEV_PORT=9090 tools/compose.sh up -d --wait` |
+| Add a piece that brings its own services (the instancer, the operations stack, ...) | `L3MON_OVERLAYS=instancer,ops tools/compose.sh up -d --wait`: each name adds `deploy/compose/compose.<name>.yml` after the environment's own file, in the order given (a bad name or a missing file stops with a message) |
 | Run a command inside the platform with its real settings | `tools/compose.sh exec ctfd l3mon-run /opt/venv/bin/python -c "print('hi')"` |
 | Back up (database and uploads) | `tools/backup.sh` (writes `backups/<timestamp>/`, readable by you only; git ignores it) |
 | Restore a backup (it **replaces** the database and the uploads; nginx and CTFd are stopped meanwhile and started again) | `tools/restore.sh backups/<timestamp> --force` (`--force` is always required) |
