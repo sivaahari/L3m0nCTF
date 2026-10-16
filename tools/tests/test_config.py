@@ -60,6 +60,12 @@ def mutate(path: str, value) -> dict:
         ("admin.name", "a", "admin.name"),
         ("admin.name", "has space", "admin.name"),
         ("admin.email", "not-an-email", "admin.email"),
+        # `$` also matches before a final line break, which would put an empty line into the environment file; \Z does not
+        ("event.theme", "l3mon" + chr(10), "event.theme"),
+        ("event.domain", "example.org" + chr(10), "event.domain"),
+        ("event.start", "2026-11-28T04:30:00Z" + chr(10), "UTC"),
+        ("admin.name", "organiser" + chr(10), "admin.name"),
+        ("admin.email", "organiser@example.org" + chr(10), "admin.email"),
     ],
 )
 def test_validate_rejects(path, value, needle):

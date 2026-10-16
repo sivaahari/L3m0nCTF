@@ -350,3 +350,26 @@ def test_the_crews_bell_numbers_are_ctfds_own_so_that_its_since_id_works(play):
     board_after = play.admin.get(BOARD).get_json()["data"]
     assert board_after["notif_id"] == second.id and board_after["notif_ver"] != board["notif_ver"]
     assert [n["title"] for n in play.admin.get(f"{LIST}?since_id={first.id}").get_json()["data"]] == ["two"]
+
+
+@pytest.mark.parametrize("path", ["/login", "/api/v1/challenges", "/api/v1/teams/me", "/themes/core/static/css/nothing.css", "/notificationsX", "/api/v1/notificationsX", "/events/x"])
+def test_the_guard_looks_at_the_path_before_it_asks_who_is_asking(play, path):
+    """`is_admin()` reads a cached value (a round trip to Redis in production); a hook that runs on every GET asks it only for the paths it guards."""
+    from unittest import mock
+
+    from CTFd.plugins.l3mon_board import notices
+
+    with mock.patch.object(notices, "is_admin", wraps=notices.is_admin) as asked:
+        play.alice.get(path)
+    assert asked.call_count == 0, path
+
+
+@pytest.mark.parametrize("path", [LIST, LIST + "/", LIST + "/1", "/notifications", "/events"])
+def test_the_guarded_paths_still_ask(play, path):
+    from unittest import mock
+
+    from CTFd.plugins.l3mon_board import notices
+
+    with mock.patch.object(notices, "is_admin", wraps=notices.is_admin) as asked:
+        play.alice.get(path)
+    assert asked.call_count >= 1, path

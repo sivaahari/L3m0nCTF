@@ -3,6 +3,7 @@
 #
 #   tools/run-migration-test.sh [IMAGE] [-- PYTEST_ARGS...]   IMAGE defaults to l3mon/ctfd:dev (also when only `-- ...` is given); PYTEST_ARGS replace the default three test files
 #   L3MON_MOUNT_PLUGINS=1 tools/run-migration-test.sh     test the working-tree plugins instead of the ones baked into the image
+#   L3MON_DB_ISOLATION=READ-COMMITTED tools/run-migration-test.sh -- tests   run CTFd's own suite (tests) on that MariaDB at that isolation level (default: the server's, REPEATABLE-READ)
 #
 # What it proves (SQLite, the default test database, cannot): the l3mon_core migrations build the schema the models describe,
 # the database refuses what the models refuse, the migrations are safe to run twice and roll back, the tick counter is
@@ -17,7 +18,7 @@ else
 fi
 if [[ "${1:-}" == "--" ]]; then shift; fi
 targets=("$@")
-if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py /l3mon_tests/l3mon_scoring/test_voids_mariadb.py /l3mon_tests/l3mon_scoring/test_bonus_mariadb.py /l3mon_tests/l3mon_scoring/test_solves_mariadb.py /l3mon_tests/l3mon_scoring/test_freeze_mariadb.py); fi
+if [[ ${#targets[@]} -eq 0 ]]; then targets=(/l3mon_tests/l3mon_core/test_migration_mariadb.py /l3mon_tests/l3mon_core/test_tick.py /l3mon_tests/l3mon_release/test_scheduler_mariadb.py /l3mon_tests/l3mon_scoring/test_voids_mariadb.py /l3mon_tests/l3mon_scoring/test_bonus_mariadb.py /l3mon_tests/l3mon_scoring/test_solves_mariadb.py /l3mon_tests/l3mon_scoring/test_freeze_mariadb.py /l3mon_tests/l3mon_core/test_claim_redis.py); fi
 name="l3mon-realdb-$$"
 export MSYS_NO_PATHCONV=1
 
@@ -28,7 +29,7 @@ cleanup() {
 trap cleanup EXIT
 
 docker network create "$name" >/dev/null
-docker run -d --name "$name-db" --network "$name" -e MARIADB_ROOT_PASSWORD=test -e MARIADB_DATABASE=ctfd mariadb:10.11 >/dev/null
+docker run -d --name "$name-db" --network "$name" -e MARIADB_ROOT_PASSWORD=test -e MARIADB_DATABASE=ctfd mariadb:10.11 ${L3MON_DB_ISOLATION:+--transaction-isolation=$L3MON_DB_ISOLATION} >/dev/null
 docker run -d --name "$name-redis" --network "$name" redis:7-alpine >/dev/null
 
 echo "waiting for MariaDB and Redis..."
@@ -38,6 +39,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 docker exec "$name-db" mariadb -uroot -ptest -e 'select version()' >/dev/null
+echo "isolation level of this MariaDB: $(docker exec "$name-db" mariadb -uroot -ptest -N -e 'select @@tx_isolation')"
 for _ in $(seq 1 30); do
   if [[ "$(docker exec "$name-redis" redis-cli ping 2>/dev/null)" == "PONG" ]]; then break; fi
   sleep 1

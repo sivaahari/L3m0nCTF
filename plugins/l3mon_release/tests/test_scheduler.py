@@ -6,6 +6,7 @@ Run through tools/run-ctfd-tests.sh:
 import calendar
 import datetime
 import logging
+import time
 from unittest import mock
 
 from freezegun import freeze_time
@@ -333,4 +334,103 @@ def test_a_failing_reconcile_never_breaks_the_page_and_is_tried_again_in_a_few_s
         assert any("the database blinked" in line for line in seen)
         retry = cache.get(scheduler.KEY)
         assert T_LATER + 5 < retry["next"] <= T_LATER + 20, "it tries again in a few seconds, not on every request"
+    destroy_ctfd(app)
+
+
+# ---- a crowd at the moment (SP3 part 3.7: found by the load probe) ------------------------------------------------------------------------------------
+# The record lasts 30 seconds. When it ends (or a drop is due) every request that arrives meanwhile finds no record, and each of them used to run a whole
+# reconcile one after the other behind the plan's row lock: on the load probe 100 players waited up to 4.4 seconds for it, every 30 seconds. One request
+# does the work; the others carry on at once (the pages decide what is on air from the plan and the clock, so they do not need the result).
+
+def test_a_request_that_arrives_while_another_is_applying_what_is_due_carries_on_and_does_no_second_reconcile():
+    app = setup_app()
+    with app.app_context():
+        started()
+        ch = channel("street", 1)
+        programme(ch, "later", "scheduled", at(5, 0))
+        scheduler.refresh(T_START + 10)
+        real = scheduler.reconcile
+        calls, nested = [], []
+
+        def slow(t, system=False, locked=False):
+            calls.append(t)
+            if len(calls) == 1:  # a second request reaches the scheduler while the first one is still inside its reconcile
+                nested.append(scheduler.maybe_apply(t))
+            return real(t, system=system, locked=locked)
+
+        with mock.patch("CTFd.plugins.l3mon_release.scheduler.reconcile", side_effect=slow):
+            assert scheduler.maybe_apply(T_LATER) is True
+        assert nested == [False], "the second request did not wait for the first and did not run its own"
+        assert len(calls) == 1
+        assert states()["later"] == "visible"
+    destroy_ctfd(app)
+
+
+def test_the_flag_that_keeps_the_others_away_is_let_go_afterwards_and_after_a_failure_too():
+    app = setup_app()
+    with app.app_context():
+        started()
+        ch = channel("street", 1)
+        programme(ch, "later", "scheduled", at(5, 0))
+        programme(ch, "last", "scheduled", at(6, 0))
+        scheduler.refresh(T_START + 10)
+        with mock.patch("CTFd.plugins.l3mon_release.scheduler.reconcile", side_effect=RuntimeError("the database blinked")):
+            assert scheduler.maybe_apply(T_LATER) is False
+        assert cache.get(scheduler.RUN_KEY) is None, "a failure lets go of it"
+        cache.delete(scheduler.KEY)
+        assert scheduler.maybe_apply(T_LATER) is True
+        assert cache.get(scheduler.RUN_KEY) is None, "and so does a success"
+        assert scheduler.maybe_apply(epoch(at(6, 0))) is True and states()["last"] == "visible", "the next moment is applied as well"
+    destroy_ctfd(app)
+
+
+def test_a_flag_left_behind_by_a_worker_that_died_ends_by_itself_within_a_few_seconds():
+    assert 0 < scheduler.RUN_SECONDS <= scheduler.RETRY_SECONDS, "a crashed worker must not hold the others off for long"
+    app = setup_app()
+    with app.app_context():
+        with mock.patch.object(scheduler.cache, "add", wraps=scheduler.cache.add) as spy:
+            started()
+            ch = channel("street", 1)
+            programme(ch, "later", "scheduled", at(5, 0))
+            scheduler.refresh(T_START + 10)
+            scheduler.maybe_apply(T_LATER)
+        runs = [c for c in spy.call_args_list if c.args and c.args[0] == scheduler.RUN_KEY]
+        assert len(runs) == 1 and runs[0].kwargs["timeout"] == scheduler.RUN_SECONDS
+    destroy_ctfd(app)
+
+
+def test_a_running_flag_that_lost_its_lifetime_does_not_stop_the_scheduler_for_good():
+    """The audit of 3.7 reproduced it: cachelib's Redis `add` is SETNX then EXPIRE, and a flag left without a lifetime held every later drop off for ever
+    (and with Redis's volatile-lru policy it is not even evicted). The flag holds the time it was taken; one older than its lifetime is free."""
+    app = setup_app()
+    with app.app_context():
+        started()
+        ch = channel("street", 1)
+        programme(ch, "later", "scheduled", at(5, 0))
+        scheduler.refresh(T_START + 10)
+        cache.set(scheduler.RUN_KEY, time.time() - 3600, timeout=0)
+        assert scheduler.maybe_apply(T_LATER) is True and states()["later"] == "visible"
+        assert cache.get(scheduler.RUN_KEY) is None
+    destroy_ctfd(app)
+
+
+def test_a_cache_that_fails_right_after_the_commit_does_not_lose_the_announcement_the_tick_or_the_record():
+    """Found by the audit of 3.7: the first clearing of the cached lists ran outside any try, so a cache error there skipped the tick, the pull-back
+    handlers, the announcement and the record, and the next reconcile found nothing left to claim: the announcement was lost for good."""
+    from CTFd.plugins.l3mon_core.tick import signature
+
+    app = setup_app()
+    with app.app_context():
+        started()
+        ch = channel("street", 1)
+        programme(ch, "later", "scheduled", at(5, 0))
+        scheduler.refresh(T_START + 10)
+        before = signature()
+        with mock.patch("CTFd.plugins.l3mon_release.reconcile.clear_challenges", side_effect=RuntimeError("the cache blinked")):
+            result = reconcile(T_LATER, system=True)
+        assert result.shown, "the change itself was made"
+        assert states()["later"] == "visible"
+        assert Notifications.query.count() == 1, "and announced"
+        assert signature() != before, "and the tick moved"
+        assert cache.get(scheduler.KEY) is not None, "and the scheduler's record was refreshed"
     destroy_ctfd(app)

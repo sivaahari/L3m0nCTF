@@ -417,3 +417,22 @@ def test_a_bad_picture_inside_a_bundle_is_reported_under_its_id():
 def test_a_picture_may_not_be_used_to_smuggle_a_script_through_a_hostile_namespace():
     svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><g xmlns="http://evil.example/ns"><rect/></g></svg>'
     assert fmt.check_svg(svg)
+
+
+@pytest.mark.parametrize("pattern,good", [
+    ("_NUMBER", "12.5px"), ("_NUMBER_LIST", "1 2 3"), ("_PATH", "M0 0L1 1"), ("_TRANSFORM", "translate(1,2)"), ("_WORD", "round"), ("_FONT", "Arial, sans-serif"),
+    ("_ID", "sun_1"), ("_COLOUR", "#fff"), ("_URL", "url(#grad)"), ("_TEXT", "Hello there"),
+])
+def test_no_drawn_art_pattern_accepts_a_value_with_a_line_break_added_at_its_end(pattern, good):
+    """`$` also matches before a final line break; every pattern here ends with \Z (the audit of 3.7 found ten that did not). _NUMBER_LIST and _PATH
+    allow white space inside by design, so for those the end is checked with a character they do not allow."""
+    import re
+
+    from CTFd.plugins.l3mon_story import format as story_format
+
+    compiled = getattr(story_format, pattern)
+    assert compiled.match(good), good
+    assert not compiled.match(good + chr(10) + "x"), "a second line is never part of a value"
+    if pattern not in ("_NUMBER_LIST", "_PATH"):
+        assert not compiled.match(good + chr(10)), "and neither is a final line break"
+    assert compiled.pattern.endswith(r"\Z"), compiled.pattern

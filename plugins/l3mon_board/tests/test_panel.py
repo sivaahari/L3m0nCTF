@@ -13,7 +13,7 @@ from CTFd.models import Challenges, Fails, Teams, db
 from CTFd.plugins.l3mon_core.models import Programme
 from CTFd.utils import set_config
 from board_world import T_LIVE, T_START, clock, join_client, make_app, on_air, started, team_client, world
-from tests.helpers import destroy_ctfd, gen_challenge, login_as_user, register_user
+from tests.helpers import destroy_ctfd, gen_challenge, gen_hint, login_as_user, register_user
 
 LIST = "/api/v1/challenges"
 
@@ -271,6 +271,59 @@ def test_a_programme_whose_prerequisite_the_studio_has_not_met_answers_exactly_l
     # and the crew is never held back by a prerequisite
     other = play.admin.get(f"{LIST}/{play.ids.dumpling}")
     assert other.status_code == 200 and other.get_json()["data"]["l3mon"]["author"] == "SecretAuthor"
+
+
+@pytest.mark.parametrize("anonymize", [None, True, "preview"])
+@pytest.mark.parametrize("spelling", ["{}.0", "{}.00", "{}e0", "{}E0", "+{}", "0{}", "{}%20", "%20{}", "{}%0A", "{}_0", "{}abc", "0x{}", "{}.5"])
+def test_a_locked_programme_asked_for_by_a_lenient_spelling_of_its_id_is_still_a_missing_one(play, anonymize, spelling):
+    """CTFd compares the id as text in SQL, so 6.0 and 6e0 reach challenge 6 (and on MariaDB even 6abc); the door must not let them round it (found by the
+    audit of 3.7: the locked programme's block, with its slug, number, channel and author, came back)."""
+    dumpling = Challenges.query.get(play.ids.dumpling)
+    dumpling.requirements = {"prerequisites": [play.ids.lantern], **({} if anonymize is None else {"anonymize": anonymize})}
+    dumpling.attribution = "SecretAuthor"
+    db.session.commit()
+    asked = spelling.format(play.ids.dumpling)
+    locked = play.bob.get(f"{LIST}/{asked}")
+    gone = play.bob.get(f"{LIST}/{spelling.format(99999)}")
+    assert gone.status_code == 404
+    assert shape(locked, play.ids.dumpling) == shape(gone, 99999), "a locked programme is a missing one, however its id is spelled"
+    for word in (b"Dumpling", b"SecretAuthor", b"dumpling_gate", b"Snack Square", b"l3mon"):
+        assert word not in locked.get_data()
+
+
+def test_only_the_plain_digits_of_an_id_reach_the_panel_for_a_player_and_the_crew_is_not_held_to_it(play):
+    plain = play.bob.get(f"{LIST}/{play.ids.lantern}")
+    assert plain.status_code == 200 and plain.get_json()["data"]["l3mon"]["slug"] == "lantern_walk"
+    assert play.bob.get(f"{LIST}/{play.ids.lantern}.0").status_code == 404, "even an open programme is asked for by its plain id"
+    assert play.admin.get(f"{LIST}/{play.ids.lantern}.0").status_code in (200, 404), "the crew's own tools are not our door's business"
+
+
+@pytest.mark.parametrize("anonymize", [None, True, "preview"])
+def test_the_solves_and_the_hints_of_a_locked_programme_are_as_missing_as_the_programme(play, anonymize):
+    """The audit of 3.7 found two more stock routes that still answered for a programme locked by a prerequisite: the list of the studios that solved it
+    and a hint's title and cost. A locked programme is a missing one on every route a player can ask."""
+    from CTFd.models import Hints
+
+    dumpling = Challenges.query.get(play.ids.dumpling)
+    dumpling.requirements = {"prerequisites": [play.ids.lantern], **({} if anonymize is None else {"anonymize": anonymize})}
+    hint = gen_hint(db, play.ids.dumpling, content="secret hint text", cost=5)
+    open_hint = gen_hint(db, play.ids.moth, content="open hint text", cost=5)
+    db.session.commit()
+    hint_id, open_hint_id = hint.id, open_hint.id
+    for locked_path, missing_path in ((f"{LIST}/{play.ids.dumpling}/solves", f"{LIST}/99999/solves"), (f"/api/v1/hints/{hint_id}", "/api/v1/hints/99999")):
+        locked, gone = play.bob.get(locked_path), play.bob.get(missing_path)
+        assert gone.status_code == 404
+        assert shape(locked, hint_id if "hints" in locked_path else play.ids.dumpling) == shape(gone, 99999), locked_path
+        assert b"secret hint text" not in locked.get_data()
+    # an open programme's are untouched, and so are a lenient spelling's (a plain id only, as for the panel)
+    assert play.bob.get(f"{LIST}/{play.ids.moth}/solves").status_code == 200
+    assert play.bob.get(f"/api/v1/hints/{open_hint_id}").status_code == 200
+    assert play.bob.get(f"/api/v1/hints/{hint_id}.0").status_code == 404 and play.bob.get(f"{LIST}/{play.ids.dumpling}.0/solves").status_code == 404
+    # once the prerequisite is solved they answer, and the crew is never held back
+    assert attempt(play.bob, play.ids.lantern, "lantern-answer") == "correct"
+    assert play.bob.get(f"{LIST}/{play.ids.dumpling}/solves").status_code == 200 and play.bob.get(f"/api/v1/hints/{hint_id}").status_code == 200
+    db.session.rollback()
+    assert play.admin.get(f"{LIST}/{play.ids.dumpling}/solves").status_code == 200
 
 
 def test_before_the_start_a_locked_programme_is_not_told_apart_from_an_open_one(play):

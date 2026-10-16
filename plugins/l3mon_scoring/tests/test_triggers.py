@@ -5,6 +5,7 @@ Run through tools/run-ctfd-tests.sh:
     tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_scoring
 """
 import logging
+import time
 from types import SimpleNamespace
 from unittest import mock
 
@@ -176,6 +177,15 @@ def test_only_the_worker_that_wins_the_cache_add_runs_the_check(world):
     cache.set(triggers.CHECK_KEY, 1, timeout=60)  # another worker took this minute
     a_page(world)
     assert stored_value(world.cid) == 3 and heals() == 0
+
+
+def test_a_flag_that_lost_its_lifetime_does_not_stop_the_minute_check_for_good(world):
+    """cachelib's Redis `add` is SETNX then EXPIRE; if the second command is lost the key stays for ever. The flag holds the time it was taken (found by
+    the audit of 3.7), so one an hour old is free."""
+    wrong(world)
+    cache.set(triggers.CHECK_KEY, time.time() - 3600, timeout=0)
+    a_page(world)
+    assert stored_value(world.cid) == 488 and heals() == 1
 
 
 def test_the_minute_check_skips_static_files_and_does_not_use_up_the_minute(world):

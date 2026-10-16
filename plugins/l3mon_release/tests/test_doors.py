@@ -386,3 +386,22 @@ def test_with_a_guard_switched_off_its_check_fails(world, guard, check):
             check(world)  # open
     finally:
         guards.ON[guard] = True
+
+
+@pytest.mark.parametrize("name", ["Hint ²", "Hint ٣", "hint 5", "Hint 5 6", "Hint -5", "Hint +5", "Hint 5.0", "Hint", "", None])
+def test_an_award_that_is_not_named_hint_and_plain_digits_is_ignored_and_never_breaks_the_list(name):
+    """str.isdigit() accepts superscripts and other scripts' digits, which int() then refuses: an administrator's typo in an award's name made every award
+    list a 500 (found by the audit of 3.7). CTFd writes its own as 'Hint 12' in ASCII."""
+    award = SimpleNamespace(id=1, category="hints", name=name)
+    assert guards._hint_ids_of([award]) == {}
+
+
+def test_a_hint_award_in_the_form_ctfd_writes_it_is_still_read():
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        challenge = gen_challenge(db, name="a", state="visible")
+        hint = gen_hint(db, challenge.id, content="look", cost=5)
+        db.session.commit()
+        award = SimpleNamespace(id=9, category="hints", name=f"Hint {hint.id}")
+        assert guards._hint_ids_of([award]) == {9: challenge.id}
+    destroy_ctfd(app)

@@ -46,12 +46,21 @@ HINT_REFUSALS = {
 }
 
 
+_WHOLE = re.compile(r"[0-9]{1,9}\Z")
+
+
 def _asked_challenge_id():
+    """The challenge a flag was sent for, read the way CTFd's own SQL comparison reads it: a JSON whole number, or text of plain digits. Anything else
+    (`1_5` is 1 to MariaDB and 15 to int(); `+15`, ` 15`, other scripts' digits) gets no reply of ours, so it cannot describe another challenge."""
     body = request.get_json(silent=True) if request.is_json else request.form
-    try:
-        return int((body or {}).get("challenge_id"))
-    except (TypeError, ValueError):
+    value = body.get("challenge_id") if hasattr(body, "get") else None
+    if isinstance(value, bool):
         return None
+    if isinstance(value, int):
+        return value if 0 <= value <= 999999999 else None
+    if isinstance(value, str) and _WHOLE.match(value):
+        return int(value)
+    return None
 
 
 def _studio_only():

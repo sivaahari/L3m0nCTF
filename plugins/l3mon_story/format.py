@@ -456,16 +456,16 @@ ALLOWED_ATTRS = _GEOMETRY | _NUMBER_LISTS | _PAINT | _REFERENCES | _PLAIN_NUMBER
 ROOT_ATTRS = {"viewBox", "width", "height", "preserveAspectRatio", "xmlns"}
 
 _NUM = r"-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"  # a digit run can be read in one way only, so a failing match is linear, not quadratic
-_NUMBER = re.compile(rf"^{_NUM}(?:%|px)?$")
-_NUMBER_LIST = re.compile(rf"^\s*{_NUM}(?:[\s,]+{_NUM})*\s*$")
-_PATH = re.compile(r"^[MmZzLlHhVvCcSsQqTtAa0-9eE+\-.,\s]*$")
-_TRANSFORM = re.compile(r"^[A-Za-z0-9 ,.()+\-]*$")
-_WORD = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}$")
-_FONT = re.compile(r"^[A-Za-z0-9 ,_'-]{0,80}$")  # plain font names, a single quote around a name with a space is fine
-_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}$")
-_COLOUR = re.compile(r"^(?:none|currentColor|transparent|#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|(?:rgb|rgba|hsl|hsla)\([0-9 ,.%]+\))$")
-_URL = re.compile(r"^url\(#([A-Za-z][A-Za-z0-9_-]{0,39})\)$")
-_TEXT = re.compile(r"^[^\x00-\x1f\x7f-\x9f<>&  ‪-‮⁦-⁩﻿]*$")
+_NUMBER = re.compile(rf"^{_NUM}(?:%|px)?\Z")
+_NUMBER_LIST = re.compile(rf"^\s*{_NUM}(?:[\s,]+{_NUM})*\s*\Z")
+_PATH = re.compile(r"^[MmZzLlHhVvCcSsQqTtAa0-9eE+\-.,\s]*\Z")
+_TRANSFORM = re.compile(r"^[A-Za-z0-9 ,.()+\-]*\Z")
+_WORD = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}\Z")
+_FONT = re.compile(r"^[A-Za-z0-9 ,_'-]{0,80}\Z")  # plain font names, a single quote around a name with a space is fine
+_ID = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,39}\Z")
+_COLOUR = re.compile(r"^(?:none|currentColor|transparent|#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|(?:rgb|rgba|hsl|hsla)\([0-9 ,.%]+\))\Z")
+_URL = re.compile(r"^url\(#([A-Za-z][A-Za-z0-9_-]{0,39})\)\Z")
+_TEXT = re.compile(r"^[^\x00-\x1f\x7f-\x9f<>&  ‪-‮⁦-⁩﻿]*\Z")
 _BAD_MARKUP = re.compile(r"<!DOCTYPE|<!ENTITY|<\?|<!\[CDATA\[|<!--", re.IGNORECASE)
 
 

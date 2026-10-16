@@ -27,6 +27,7 @@ shares   The social share lets any signed-in player sign a link for any user and
 All three do nothing while release control is not in use (no channel exists), so stock CTFd behaves as it does without us.
 """
 import json
+import re
 
 from flask import abort, g, has_request_context, request
 
@@ -60,12 +61,15 @@ def _viewer_visible_ids() -> set:
     return ids
 
 
+_DIGITS = re.compile(r"[0-9]{1,9}\Z")
+
+
 def _hint_ids_of(awards) -> dict:
     wanted = {}
     for award in awards:
         if award.category == "hints":
             parts = (award.name or "").split()
-            if len(parts) == 2 and parts[0] == "Hint" and parts[1].isdigit():
+            if len(parts) == 2 and parts[0] == "Hint" and _DIGITS.match(parts[1]):  # (str.isdigit() accepts superscripts, which int() then refuses)
                 wanted[award.id] = int(parts[1])
     if not wanted:
         return {}
@@ -111,10 +115,11 @@ def _file_door():
 
 
 def _share_door():
-    if not ON["shares"] or not release_active():
+    if not ON["shares"]:
         return None
     if request.path.startswith("/share/") or request.path.rstrip("/") == "/api/v1/shares":
-        abort(404)
+        if release_active():  # asked last: this hook runs for every request, and only these two paths need the answer
+            abort(404)
     return None
 
 

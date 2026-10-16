@@ -25,6 +25,7 @@ from flask import request
 from CTFd.cache import cache
 from CTFd.models import db
 from CTFd.plugins.l3mon_core.airing import release_active, to_epoch
+from CTFd.plugins.l3mon_core.claim import claim
 from CTFd.plugins.l3mon_core.clock import now, window
 from CTFd.plugins.l3mon_core.models import Channel, Programme
 from CTFd.plugins.l3mon_release.reconcile import RECLEAR_KEY, reclear, reconcile, register_after_change
@@ -32,7 +33,9 @@ from CTFd.plugins.l3mon_release.reconcile import RECLEAR_KEY, reclear, reconcile
 _log = logging.getLogger("l3mon")
 
 KEY = "l3mon:release:next"
+RUN_KEY = "l3mon:release:running"  # set by the one request that is applying what is due; the others carry on (see maybe_apply)
 RETRY_SECONDS = 10
+RUN_SECONDS = 10  # a worker that died while applying holds the others off no longer than this
 RECORD_SECONDS = 30  # short on purpose: a record worked out from a view that was a moment out of date mends itself within this
 _SKIP_PREFIXES = ("/themes/", "/plugins/", "/static/")
 _SKIP_PATHS = ("/healthcheck", "/l3mon/healthz")
@@ -72,6 +75,11 @@ def maybe_apply(t=None) -> bool:
         end = _end()
         if isinstance(stored, dict) and stored.get("end") == end and (not stored.get("next") or t < stored["next"]):
             return False
+        if not claim(RUN_KEY, RUN_SECONDS):
+            return False  # another request is applying it right now. The record lasts 30 seconds, so when it ended every request that arrived meanwhile ran a
+            # whole reconcile one after the other behind the plan's lock (the load probe: 100 players waiting up to 4.4 seconds, every 30 seconds). A request
+            # that carries on may show a programme that has just come due one reconcile late (what is on air needs the plan's time AND CTFd's state, and
+            # reconcile writes the state); the next request, milliseconds on, shows it. Nothing is lost: the one that holds the flag does the whole job.
         try:
             reconcile(t, system=True)  # refreshes the record itself; the clock did this, not the visitor
         except Exception as error:  # noqa: BLE001  (a failing database must not take the pages down with it)
@@ -79,6 +87,8 @@ def maybe_apply(t=None) -> bool:
             _log.warning("l3mon: the scheduler could not apply what is due: %r", error, exc_info=True)
             cache.set(KEY, {"next": t + RETRY_SECONDS, "end": end}, timeout=RECORD_SECONDS)
             return False
+        finally:
+            cache.delete(RUN_KEY)
         return True
     except Exception as error:  # noqa: BLE001  (the cache itself may be down)
         _log.warning("l3mon: the scheduler could not look: %r", error, exc_info=True)

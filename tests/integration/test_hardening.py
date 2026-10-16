@@ -81,6 +81,16 @@ def test_a_write_nobody_listed_is_refused_outside_the_list_so_new_routes_fail_cl
         assert refused_by_nginx(status, body, 403), (method, path, status)
 
 
+def test_a_write_nobody_listed_is_refused_even_when_its_path_holds_a_line_break(outside):
+    """$uri holds %0A as a real line break, which `.` did not cross: a write to /api/v1/anything%0A/1 was not counted as a write at all (audit of 3.7)."""
+    for method, path in (
+        ("POST", "/api/v1/brand-new-thing%0A"), ("DELETE", "/api/v1/anything%0A/1"), ("PATCH", "/api/v1/anything/1%0A"), ("PUT", "/api/v1/%0Aconfigs"),
+        ("POST", "/api/v1/brand-new-thing%0D%0A"), ("DELETE", "/api/v1/awards/1%0A"),
+    ):
+        status, _, body = t.request(path, method=method, headers={"Content-Type": "application/json"}, body=b"{}")
+        assert refused_by_nginx(status, body, 403), (method, path, status)
+
+
 def test_the_writes_a_player_makes_still_reach_ctfd_from_anywhere(outside):
     players = routes("api-player-writes.conf")
     assert len(players) >= 8

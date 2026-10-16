@@ -27,10 +27,14 @@ STREAM = "/events"
 
 def guard():
     """Before CTFd's view; None to carry on with CTFd's own answer."""
-    if not ON["guard"] or request.method not in ("GET", "HEAD") or is_admin():
+    if not ON["guard"] or request.method not in ("GET", "HEAD"):
         return None
     path = request.path
     bare = path.rstrip("/")
+    if bare not in (PAGE, STREAM, LIST) and not path.startswith(LIST + "/"):
+        return None  # not a notification route: no need to ask who is asking (is_admin reads the cache), and this hook runs on every GET
+    if is_admin():
+        return None
     if bare in (PAGE, STREAM):
         abort(404)
     if bare == LIST:

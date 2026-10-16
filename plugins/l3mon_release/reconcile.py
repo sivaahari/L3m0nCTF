@@ -141,7 +141,10 @@ def reconcile(t=None, system=False, locked=False) -> Result:
         audit.record("release.pull", "challenges", f"off air: {_slugs(hidden)}", system=system)
     db.session.commit()  # this also commits whatever the caller already had pending, so a plan change and its effect land together
     if shown or hidden:
-        _clear_lists(t)
+        try:
+            _clear_lists(t)
+        except Exception:  # noqa: BLE001  (the cache failing after the commit must not skip the steps below: the next reconcile would find nothing left to claim)
+            _log.warning("l3mon: the cached lists could not be cleared after a release", exc_info=True)
         try:
             tick.bump()
         except Exception:  # the counter is a convenience; it must never undo a release
@@ -227,7 +230,7 @@ def _enforce_one(session, chal):
             audit.record("release.withhold", f"programme:{entry.slug}", "hidden in the challenge editor, so withheld in the plan")
 
 
-_PATCH = re.compile(r"^/api/v1/challenges/(\d+)/?$")
+_PATCH = re.compile(r"^/api/v1/challenges/(\d+)/?\Z")
 
 
 def _refuse_reveal_request():

@@ -40,6 +40,7 @@ def _solve_counts(account_ids) -> dict:
 def read(team) -> SimpleNamespace:
     """What the viewer's studio (a Teams row, or None for the crew) is shown: `phase`, `total` (how many are ranked), `rows` (the first
     100: pos, team_id, name, solves, score), `me` and `sig` (a signature of the rows as this viewer sees them)."""
+    ver = signature()  # first, before any data (see the note in board.build)
     phase = current_phase()
     standings = [] if phase.state == "before" else ranked(get_standings(admin=False))
     shown = standings[:TOP]
@@ -57,13 +58,13 @@ def read(team) -> SimpleNamespace:
     mine = team.id if team is not None else None
     raw = json.dumps([[[r.pos, r.team_id, r.name, r.solves, r.score] for r in rows], mine], separators=(",", ":"))
     sig = base64.urlsafe_b64encode(hashlib.sha256(raw.encode()).digest()).decode().rstrip("=")[:16]
-    return SimpleNamespace(phase=phase, total=len(standings), rows=rows, me=me, sig=sig, mine=mine)
+    return SimpleNamespace(phase=phase, total=len(standings), rows=rows, me=me, sig=sig, mine=mine, ver=ver)
 
 
 def answer(view) -> tuple:
     """-> (data, etag) for a `read()`. The tag is over the data with the tick left out (the tick moves for every studio's news)."""
     data = {
-        "ver": signature(), "phase": {"state": view.phase.state, "frozen": view.phase.frozen}, "banner": banner.for_phase(view.phase),
+        "ver": view.ver, "phase": {"state": view.phase.state, "frozen": view.phase.frozen}, "banner": banner.for_phase(view.phase),
         "total": view.total, "shown": len(view.rows), "rows_sig": view.sig, "me": view.me,
     }
     return data, envelope.strong_etag("s", {**data, "ver": 0})

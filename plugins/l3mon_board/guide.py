@@ -101,10 +101,11 @@ def meter(viewer):
 
 def build(viewer):
     """-> (data, etag) for a viewer (see `viewer.current`). The ETag is over the data with the tick left out."""
+    ver = signature()  # first: the page must never carry a tick newer than its data (see the note in board.build)
     phase = current_phase()
     view = plan.read(viewer, phase)
     data = {
-        "ver": signature(), "phase": {"state": phase.state, "frozen": phase.frozen}, "banner": banner.for_phase(phase),
+        "ver": ver, "phase": {"state": phase.state, "frozen": phase.frozen}, "banner": banner.for_phase(phase),
         "epg_sig": epg.signature(epg.model(view, viewer)),
         "team": _team_block(viewer, phase, view) if viewer.team is not None else None,
         "story": _story(viewer, view),

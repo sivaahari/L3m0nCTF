@@ -26,9 +26,9 @@ MAX_CHANNELS = 20
 MAX_PROGRAMMES = 400
 MAX_AHEAD = 30 * 24 * 3600  # a scheduled drop may be at most this far away: a typo for a year never schedules anything
 MAX_REASON = 200
-SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")  # a channel's
+SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*\Z")  # a channel's (`\Z`, not `$`: `$` also matches before a final line break)
 RESERVED_SLUG = "finale"  # the finale story (l3mon_story) is named so and belongs to no channel; a channel of that name would be shown its button
-PROGRAMME_SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a programme's: the author kit writes slugs with underscores (lantern_walk)
+PROGRAMME_SLUG = re.compile(r"^[a-z0-9][a-z0-9_-]*\Z")  # a programme's: the author kit writes slugs with underscores (lantern_walk)
 MODES = {"release": "released", "withhold": "withheld", "schedule": "scheduled"}
 KINDS = ("standard", "sponsored")
 

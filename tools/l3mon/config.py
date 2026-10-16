@@ -11,12 +11,13 @@ REMOVE = object()  # for tests: "delete this key"
 
 MODES = ("teams", "users")
 VISIBILITY = ("public", "private", "admins")
-HOST = re.compile(r"^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$")
-THEME = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
-UTC_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+# every pattern ends with \Z: `$` also matches before a final line break, which would put an empty line into the environment file
+HOST = re.compile(r"^(?=.{4,253}\Z)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\Z")
+THEME = re.compile(r"^[a-z][a-z0-9_-]{1,31}\Z")
+UTC_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\Z")
 SECTIONS = ("event", "teams", "visibility", "accounts", "admin")
-EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
-ADMIN_NAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
+EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}\Z")
+ADMIN_NAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}\Z")
 
 
 def load(path: Path) -> dict:

@@ -308,3 +308,17 @@ def test_the_whole_studio_is_charged_and_told_the_same_whoever_buys(play):
     send(play.alice, play.ids.lantern, "lantern-answer")
     reply = play.abe.post("/api/v1/unlocks", json={"target": 1, "type": "hints"})
     assert data(reply)["l3mon"] == {"score": 90, "cost": 10}
+
+
+@pytest.mark.parametrize("value,expected", [
+    (5, 5), ("5", 5), ("05", 5), ("123456789", 123456789),
+    # the id CTFd judges is the one its SQL comparison reads out of the text; where Python's int() reads another number the reply would describe another
+    # challenge (found by the audit of 3.7: on MariaDB '1_5' is 1 to CTFd and 15 to int())
+    ("1_5", None), (" 15", None), ("15 ", None), ("+15", None), ("-15", None), ("1e1", None), ("1.0", None), ("15" + chr(10), None),
+    ("٣", None), ("²", None), ("", None), (True, None), (False, None), (1.0, None), (1.5, None), (None, None), ([5], None), ({"a": 5}, None), ("1234567890", None),
+])
+def test_the_challenge_a_reply_describes_is_read_only_from_a_plain_whole_number(play, value, expected):
+    from CTFd.plugins.l3mon_board import replies
+
+    with play.app.test_request_context("/", method="POST", json={"challenge_id": value, "submission": "x"}):
+        assert replies._asked_challenge_id() == expected

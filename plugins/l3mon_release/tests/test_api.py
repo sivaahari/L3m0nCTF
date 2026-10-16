@@ -371,9 +371,22 @@ def test_a_programme_slug_may_use_underscores_because_the_author_kit_writes_them
         })
         assert r.status_code == 200, r.get_data(as_text=True)
         assert Programme.query.one().slug == "lantern_walk"
-        for bad in ("_lantern", "Lantern_Walk", "lantern walk", "lantern/walk", "lantern.walk"):
+        for bad in ("_lantern", "Lantern_Walk", "lantern walk", "lantern/walk", "lantern.walk", "lantern_walk" + chr(10)):  # (`$` matches before a final line break; `\Z` does not)
             r = admin.put(PROGRAMMES, json={"programmes": [{"challenge_id": a.id, "channel": "street", "cell": 0, "number": 1, "slug": bad}]})
             assert r.status_code == 400 and "programmes[0].slug" in r.get_json()["errors"], bad
+    destroy_ctfd(app)
+
+
+def test_a_channel_slug_may_not_end_in_a_line_break_nor_use_anything_but_lower_case_letters_digits_and_hyphens():
+    app = setup_app()
+    with app.app_context():
+        started()
+        admin = admin_client(app)
+        for bad in ("street" + chr(10), "Street", "-street", "street_one", "street one", "street/one", ""):
+            r = admin.put(PROGRAMMES, json={"channels": [{"slug": bad, "name": "Street", "position": 1}]})
+            assert r.status_code == 400 and "channels[0].slug" in r.get_json()["errors"], repr(bad)
+        r = admin.put(PROGRAMMES, json={"channels": [{"slug": "street-one", "name": "Street", "position": 1}]})
+        assert r.status_code == 200, r.get_data(as_text=True)
     destroy_ctfd(app)
 
 

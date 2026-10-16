@@ -49,7 +49,12 @@ def _team_block(viewer, phase):
 
 
 def build(viewer):
-    """-> (data, etag) for a viewer (see `viewer.current`)."""
+    """-> (data, etag) for a viewer (see `viewer.current`).
+
+    The tick is read FIRST. MariaDB's default isolation gives a request the view of the database it had at its first statement; if a solve commits and
+    moves the tick after that, a page that read the tick last would carry the new tick with the old data, and a page that follows the tick would not
+    fetch again until the next change. Read first, the worst case is one fetch more (found by the audit of 3.7)."""
+    ver = signature()
     phase = current_phase()
     before = phase.state == "before"
     channels = Channel.query.order_by(Channel.position, Channel.id).all()
@@ -103,7 +108,7 @@ def build(viewer):
 
     notif_id, notif_ver = news.state_for(viewer)
     data = {
-        "ver": signature(), "phase": {"state": phase.state, "frozen": phase.frozen}, "team": _team_block(viewer, phase),
+        "ver": ver, "phase": {"state": phase.state, "frozen": phase.frozen}, "team": _team_block(viewer, phase),
         "channels": channel_rows, "programmes": programmes, "notif_id": notif_id, "notif_ver": notif_ver, "show_coming": show_coming_count(),
     }
     return data, etag_of(data, ends)

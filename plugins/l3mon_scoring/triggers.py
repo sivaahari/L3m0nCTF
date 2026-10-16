@@ -10,7 +10,7 @@ needed):
   "every value"; a flush that adds a solve notes that solve's challenge; a bulk delete of studios, users, solves or submissions (CTFd
   deletes a user, or removes a member, with bulk deletes and no flush) notes "every value". The value is recalculated when the
   REQUEST ENDS, in a fresh transaction after the cause has committed.
-- `check`: once a minute, one worker (the one that wins an atomic cache add) compares every stored value with its formula and fixes
+- `check`: once a minute, one worker (the one that takes the flag, `l3mon_core/claim.py`) compares every stored value with its formula and fixes
   and reports any difference (`values.heal`). This covers what no hook sees: a script, an edit in the database, a crew action on a
   worker that failed to recalculate.
 - the crew's own actions (Revoke, Restore, "Recalculate") call `values.recalculate` themselves.
@@ -34,8 +34,9 @@ from flask import g, has_request_context, request
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from CTFd.cache import cache, clear_challenges, clear_standings
+from CTFd.cache import clear_challenges, clear_standings
 from CTFd.models import Configs, Solves, Submissions, Teams, Users, db
+from CTFd.plugins.l3mon_core.claim import claim
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_scoring import values
 
@@ -154,7 +155,7 @@ def _minute_check():
     if not ON["check"] or path in _SKIP_PATHS or path.startswith(_SKIP_PREFIXES) or request.method == "OPTIONS":
         return None
     try:
-        if cache.get(CHECK_KEY) or not cache.add(CHECK_KEY, 1, timeout=CHECK_SECONDS):
+        if not claim(CHECK_KEY, CHECK_SECONDS):
             return None  # looked at within the minute, or another worker has this one
         values.heal()
     except Exception:  # noqa: BLE001  (a page must never fail because of the check)

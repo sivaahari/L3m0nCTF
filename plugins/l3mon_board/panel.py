@@ -15,11 +15,12 @@ Before the start CTFd answers every challenge route with a 403 and a bare senten
 `phase_closed` (with `phase: before`), the same for a real id and a missing one.
 """
 import json
+import re
 from datetime import datetime, timedelta
 
 from flask import abort, request
 
-from CTFd.models import Challenges, Fails, Solves, db
+from CTFd.models import Challenges, Fails, Hints, Solves, db
 from CTFd.plugins.l3mon_board import counts, envelope, viewer
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.models import LIVE_DELIVERIES, Channel, Programme
@@ -29,7 +30,9 @@ from CTFd.utils import get_config
 from CTFd.utils.user import authed, is_admin
 
 ON = {"block": True, "before": True, "locked": True}
+_PLAIN_ID = re.compile(r"[0-9]{1,9}\Z")  # a challenge id as the platform writes it; `match` anchors the start, \Z the end
 DETAIL = "api.challenges_challenge"
+LOCKED_ROUTES = {DETAIL: "challenge_id", "api.challenges_challenge_solves": "challenge_id", "api.hints_hint": "hint_id"}  # route -> the name of the id in it
 BEFORE_START = {
     DETAIL: "Programmes go on air when the broadcast starts.",
     "api.challenges_challenge_list": "Programmes go on air when the broadcast starts.",
@@ -83,20 +86,31 @@ def _closed_before_the_start(response):
 
 
 def locked_door():
-    """Before CTFd's view: a programme whose prerequisite the studio has not met is a missing one.
+    """Before CTFd's view: a programme whose prerequisite the studio has not met is a missing one, on every route a player can ask about it.
 
     Stock CTFd answers such a request with a 403, or (with `anonymize`) with a 200 whose name is "???", or (with `anonymize`
     set to "preview") with the real name, category and value; the board already treats the programme as absent, so the panel
-    must too. Aborting here gives the exact answer a missing id gets. Not before the start (CTFd answers every id alike then,
-    and a different answer for a locked one would tell the two apart); the crew and visitors are left alone."""
-    if not ON["locked"] or request.method != "GET" or request.endpoint != DETAIL:
+    must too. The same for the studios that solved it and for one of its hints (found by the audit of 3.7). Aborting here gives
+    the exact answer a missing id gets. Not before the start (CTFd answers every id alike then, and a different answer for a
+    locked one would tell the two apart); the crew and visitors are left alone.
+
+    The id must be plain digits: CTFd compares it as TEXT in SQL, so 6.0 and 6e0 reach challenge 6 (on MariaDB 6abc too), where int() would
+    have stepped aside here."""
+    if not ON["locked"] or request.method != "GET" or request.endpoint not in LOCKED_ROUTES:
         return None
     if not authed() or is_admin() or current_phase().state == "before":
         return None
-    try:
-        challenge = Challenges.query.get(int(request.view_args.get("challenge_id")))
-    except (TypeError, ValueError):
-        return None
+    key = LOCKED_ROUTES[request.endpoint]
+    raw = str(request.view_args.get(key))
+    if not _PLAIN_ID.match(raw):
+        abort(404)
+    if key == "hint_id":
+        hint = Hints.query.get(int(raw))
+        if hint is None:
+            return None  # a missing hint is CTFd's to answer
+        challenge = Challenges.query.get(hint.challenge_id)
+    else:
+        challenge = Challenges.query.get(int(raw))
     if challenge is None or not (challenge.requirements or {}).get("prerequisites"):
         return None  # a missing id is CTFd's to answer, and a challenge without prerequisites needs nothing from us
     if not is_visible(challenge, solved_ids=viewer.current().solved):

@@ -5,7 +5,6 @@ administrators) pass without a studio and see what players see, with nothing sol
 nobody has a studio and every account is treated like the crew.
 """
 from functools import wraps
-from types import SimpleNamespace
 
 from CTFd.models import Solves, Teams
 from CTFd.plugins.l3mon_board.envelope import fail
@@ -52,12 +51,25 @@ def current_team():
     return Teams.query.get(user.team_id)
 
 
-def current() -> SimpleNamespace:
-    """The asker. `team` is the studio row (None for the crew and in user mode); `solved` the challenge ids the studio has solved."""
+class Viewer:
+    """The asker. `team` is the studio row (None for the crew and in user mode). `solved`, the challenge ids the studio has solved, is read from the
+    database the first time it is asked for: the tick and the bell, which every player polls every 15 seconds, never ask."""
+
+    __slots__ = ("user", "team", "admin", "_solved")
+
+    def __init__(self, user, team, admin):
+        self.user, self.team, self.admin, self._solved = user, team, admin, None
+
+    @property
+    def solved(self) -> set:
+        if self._solved is None:
+            self._solved = {cid for (cid,) in Solves.query.with_entities(Solves.challenge_id).filter_by(account_id=self.team.id).all()} if self.team is not None else set()
+        return self._solved
+
+
+def current() -> Viewer:
+    """The asker (see Viewer)."""
     user = get_current_user()
     admin = bool(is_admin())
     team = Teams.query.get(user.team_id) if (is_teams_mode() and user is not None and user.team_id is not None and not admin) else None
-    solved = set()
-    if team is not None:
-        solved = {cid for (cid,) in Solves.query.with_entities(Solves.challenge_id).filter_by(account_id=team.id).all()}
-    return SimpleNamespace(user=user, team=team, admin=admin, solved=solved)
+    return Viewer(user, team, admin)
