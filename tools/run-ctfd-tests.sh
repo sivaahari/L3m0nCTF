@@ -40,6 +40,8 @@ if [[ "${L3MON_MOUNT_PLUGINS:-}" == "1" ]]; then
   for plugin in "$repo_root"/plugins/l3mon_*; do
     [[ -d "$plugin" ]] && mounts+=(-v "$plugin:/opt/CTFd/CTFd/plugins/$(basename "$plugin"):ro")
   done
+  # and the theme, so a page can be tried without rebuilding the image
+  [[ -d "$repo_root/ui/theme/l3mon" ]] && mounts+=(-v "$repo_root/ui/theme/l3mon:/opt/CTFd/CTFd/themes/l3mon:ro")
 fi
 
 export MSYS_NO_PATHCONV=1
