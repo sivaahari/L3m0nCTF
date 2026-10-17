@@ -584,7 +584,19 @@ Add them one at a time. Each is switched on by adding its name to `L3MON_OVERLAY
 
 ### 8.2 Mail and monitoring: the overlay `ops`
 
-- **Mail** is what lets players finish registering (every account is verified by email). Choose a service (`docs/deploy/platform-deployment.md`, A3: Brevo or Amazon SES), add its records in Cloudflare DNS (grey cloud), and fill the `[mail]` section of `config/event.toml` (host, port, username, from address, security) and `.secrets/MAIL_PASSWORD`. The `ops` overlay adds a queueing relay so registration never waits for the provider.
+- **Mail** is what lets players finish registering (every account is verified by email). Choose a service (`docs/deploy/platform-deployment.md`, A3: Brevo or Amazon SES) and add its DNS records in Cloudflare (grey cloud). **With the `ops` overlay, CTFd sends to a queueing relay on the internal network and the relay sends to the provider**, so registration never waits for the provider and a provider outage only delays mail. You therefore configure the **relay**, not CTFd: put these lines in `/etc/l3mon/production.env` (no secret among them) and the provider's password in `.secrets/MAIL_PASSWORD`:
+
+  ```
+  UPSTREAM_SMTP_HOST=smtp.the-provider.example
+  UPSTREAM_SMTP_PORT=587
+  UPSTREAM_SMTP_USER=the-login-name
+  UPSTREAM_SMTP_TLS=true
+  MAILFROM_ADDR=no-reply@l3m0nctf.xyz
+  RATE_LIMIT_PER_MINUTE=30
+  RATE_LIMIT_PER_DAY=300
+  ```
+
+  **Set `RATE_LIMIT_PER_DAY` to what the provider allows** (the relay's own default is 500, which would slow registration down on the first day: a 250-team event can need about 1,000 verification mails; a free plan allows 300 a day, so for the first day buy the provider's paid month). Messages over the limit wait in the queue and go out later; `.../metrics` on the relay shows the queue length. The `[mail]` section of `event.toml` is only for running **without** the `ops` overlay.
 - **Monitoring**: Prometheus, Grafana, Loki and alerts. Grafana is reachable only through a tunnel from your laptop: `gcloud compute ssh l3mon-app --zone=$ZONE --tunnel-through-iap -- -L 3000:localhost:3000`, then open <http://localhost:3000> (admin password in `.secrets/GRAFANA_ADMIN_PASSWORD`). Alerts go to Discord when `.secrets/DISCORD_WEBHOOK_URL` holds a webhook address; empty means they stay in the alert manager.
 - Details, runbooks and the backup scripts: `docs/deploy/operations.md` and `docs/runbooks/`.
 
