@@ -35,11 +35,25 @@ Last updated: 2026-10-18 02:40 IST by the lead engineer (an AI assistant). **Upd
 | 2026-10-18 02:00 to 02:30 | assistant | Merged, built, read the security-critical code, fixed defects test first | see the audit report |
 | 2026-10-18 02:31 | assistant | Whole integration suite on the three-overlay stack | 143 passed, 1 skipped (5 failures in the first run were caused by running the suite with overlays set or by a restart in progress; each passed when run in its proper conditions) |
 | 2026-10-18 02:36 | assistant | Rehearsed Part 5 of the runbook in a fresh clone with throwaway certificates | `deploy check`: 0 blocked, 2 to do (CTFtime, mail), 8 in place. Found and fixed one tool bug on the way (`deploy check` looked in the wrong folder) |
+| 2026-10-18 03:25 to 04:05 | assistant | Final full integration run, triage of two runs with failures | Found and fixed: the load test's allow-lists disagreed (the real smoke run was refused); a test recreated `ctfd` without the `ops` overlay (monitoring got errors 500); monitoring tests checked once; production-compose tests depended on the shell. Final run: **145 passed, 1 skipped, 0 failed**. Runbook Part 8 now says to load `production.env` in every new SSH session |
 | | | | |
 
 ## 4. Final numbers of the verification (filled in when the run ends)
 
-VERIFICATION_PLACEHOLDER
+All run on images rebuilt from the final code, on a stack started with `identity,instancer,ops` (18 October 2026, 04:05 IST):
+
+| Layer | Result |
+|---|---|
+| Image hardening checks (`tools/verify-image.sh`) | 32 of 32 ok |
+| Hygiene scan of the files and the whole history | 0 findings |
+| Command-line tools tests | 299 passed, 12 skipped |
+| Instancer service unit tests | 88 passed |
+| Plugin suite inside the image (all ten plugins) | 1,774 passed, 56 skipped; the four new plugins on the final image: 89 passed, 14 skipped |
+| CTFd's own tests with our plugins loaded | 676 passed |
+| Real MariaDB and Redis tests | 69 passed (existing) + 14 passed (new plugins) |
+| **Whole integration suite on the three-overlay stack** | **145 passed, 1 skipped, 0 failed** (9 min 14 s) |
+
+The restore drill, the operations drills, the load test at twice the target, the real backup bucket, the real mail provider and real Cloudflare and Google are **not** done (they need the server or destroy data). See `docs/deploy/audit-2026-10-18.md`, section 3.
 
 ## 5. Decisions already taken (do not reopen without the owner)
 
