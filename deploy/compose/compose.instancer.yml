@@ -1,0 +1,149 @@
+# Overlay for per-team challenge instances and dynamic flags (SP4).
+# Used via L3MON_OVERLAYS=instancer tools/compose.sh up -d
+# All hardening directives are specified explicitly per container.
+
+name: l3mon
+
+services:
+  ctfd:
+    environment:
+      INSTANCER_URL: "http://instancer:8300"
+      FLAG_HMAC_SECRET_FILE: /run/secrets/FLAG_HMAC_SECRET
+      INSTANCER_TOKEN_FILE: /run/secrets/INSTANCER_TOKEN
+    secrets:
+      - FLAG_HMAC_SECRET
+      - INSTANCER_TOKEN
+    networks:
+      - edge
+      - internal
+      - instancer
+
+  instancer-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    restart: unless-stopped
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    tmpfs:
+      - /tmp
+      - /run
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      POST: 1
+      DELETE: 1
+      INFO: 1
+      VERSION: 1
+      AUTH: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EVENTS: 1
+      EXEC: 0
+      GRPC: 0
+      IMAGES: 0
+      NODES: 0
+      PLUGINS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      VOLUMES: 0
+      SECRETS: 0
+    networks:
+      - instancer
+
+  instancer:
+    build:
+      context: ../..
+      dockerfile: services/instancer/Dockerfile
+    image: l3mon/instancer:dev
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    mem_limit: 256m
+    pids_limit: 128
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    volumes:
+      - ../../config/instancer/challenges.example.toml:/etc/instancer/challenges.toml:ro
+    secrets:
+      - INSTANCER_TOKEN
+      - ROUTER_TOKEN
+    environment:
+      DOCKER_HOST: "tcp://instancer-socket-proxy:2375"
+      INSTANCER_TOKEN_FILE: /run/secrets/INSTANCER_TOKEN
+      ROUTER_TOKEN_FILE: /run/secrets/ROUTER_TOKEN
+      INSTANCER_DEV: "1"
+      MANIFEST_PATH: /etc/instancer/challenges.toml
+      ROUTER_CONTAINER_NAME: l3mon-router-1
+    networks:
+      - instancer
+    depends_on:
+      - instancer-socket-proxy
+
+  router:
+    build:
+      context: ../..
+      dockerfile: services/instancer/router/Dockerfile
+    image: l3mon/instance-router:dev
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10002:10002"
+    mem_limit: 256m
+    pids_limit: 128
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    ports:
+      - "127.0.0.1:8090:8090"
+    secrets:
+      - ROUTER_TOKEN
+    environment:
+      INSTANCER_URL: "http://instancer:8300"
+      ROUTER_TOKEN_FILE: /run/secrets/ROUTER_TOKEN
+      INSTANCE_DOMAIN: "localhost:8090"
+      POLL_INTERVAL: "2.0"
+    networks:
+      - instancer
+    depends_on:
+      - instancer
+
+networks:
+  instancer:
+    name: l3mon_instancer
+    driver: bridge
+
+secrets:
+  FLAG_HMAC_SECRET:
+    file: ../../.secrets/FLAG_HMAC_SECRET
+  INSTANCER_TOKEN:
+    file: ../../.secrets/INSTANCER_TOKEN
+  ROUTER_TOKEN:
+    file: ../../.secrets/ROUTER_TOKEN
