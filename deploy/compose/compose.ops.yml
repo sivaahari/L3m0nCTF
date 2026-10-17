@@ -5,3 +5,77 @@ services:
   nginx:
     volumes:
       - ${MAINTENANCE_DIR:-../ops/maintenance}:/etc/l3mon:ro
+
+  ctfd:
+    environment:
+      MAIL_SERVER: mail-relay
+      MAIL_PORT: "25"
+      MAIL_USEAUTH: ""
+      MAIL_TLS: ""
+      MAIL_SSL: ""
+      MAILFROM_ADDR: "${MAILFROM_ADDR:-no-reply@l3m0nctf.xyz}"
+
+  mail-relay:
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "65534:65534"
+    image: python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+    command: ["python", "-u", "/app/relay.py"]
+    volumes:
+      - ../ops/mail/relay.py:/app/relay.py:ro
+      - mail_spool:/var/spool/l3mon-mail
+    tmpfs:
+      - /tmp
+    environment:
+      SMTP_HOST: "0.0.0.0"
+      SMTP_PORT: "25"
+      METRICS_PORT: "9025"
+      SPOOL_DIR: "/var/spool/l3mon-mail"
+      UPSTREAM_SMTP_HOST: "${UPSTREAM_SMTP_HOST:-}"
+      UPSTREAM_SMTP_PORT: "${UPSTREAM_SMTP_PORT:-587}"
+      UPSTREAM_SMTP_USER: "${UPSTREAM_SMTP_USER:-}"
+      UPSTREAM_SMTP_TLS: "${UPSTREAM_SMTP_TLS:-true}"
+      UPSTREAM_SMTP_SSL: "${UPSTREAM_SMTP_SSL:-false}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-30}"
+      RATE_LIMIT_PER_DAY: "${RATE_LIMIT_PER_DAY:-500}"
+      MAIL_PASSWORD_FILE: "/run/secrets/MAIL_PASSWORD"
+    secrets: [MAIL_PASSWORD]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9025/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  mail-catcher:
+    profiles: [test-mail]
+    restart: "no"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    image: python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
+    command: ["python", "-u", "/app/catcher.py"]
+    volumes:
+      - ../ops/mail/catcher.py:/app/catcher.py:ro
+    tmpfs:
+      - /tmp
+    networks: [internal]
+    mem_limit: 128m
+    pids_limit: 64
+
+volumes:
+  mail_spool: {}
+
+secrets:
+  MAIL_PASSWORD: { file: ../../.secrets/MAIL_PASSWORD }

@@ -1,0 +1,10 @@
+# Age public key recipients for off-host backup encryption.
+# One recipient per line. Lines starting with # are comments.
+# Generate your keypair on an offline / operator machine:
+#   age-keygen -o key.txt
+# Extract the public recipient:
+#   age-keygen -y key.txt
+# Copy the recipient here (never commit private keys to this repository).
+#
+# Example fake recipient (for testing/documentation only):
+age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
