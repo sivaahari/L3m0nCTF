@@ -1,0 +1,115 @@
+rule_files:
+  - alerts/l3mon_alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Test 1: High5xxRate fires when 5xx errors exceed 1%
+  - interval: 1m
+    input_series:
+      - series: 'nginx_http_requests_total{status="500"}'
+        values: '0+60x5'
+      - series: 'nginx_http_requests_total{status="200"}'
+        values: '0+600x5'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: High5xxRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: nginx
+            exp_annotations:
+              summary: "High HTTP 5xx error rate (> 1%)"
+              description: "Over 1% of HTTP requests to the platform are failing with 5xx status codes."
+              runbook: "02-app-down.md"
+
+  # Test 2: ReadyzFailing fires when probe_success is 0
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-readyz"}'
+        values: '1 0 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ReadyzFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: ctfd
+              job: blackbox-readyz
+            exp_annotations:
+              summary: "Platform readiness probe (/readyz) failing"
+              description: "The /readyz health endpoint is returning non-200 or failing to respond within 1 second."
+              runbook: "02-app-down.md"
+
+  # Test 3: DatabaseConnectionsHigh fires when threads_connected / max_connections > 80%
+  - interval: 1m
+    input_series:
+      - series: 'mysql_global_status_threads_connected'
+        values: '85 85 85 85'
+      - series: 'mysql_global_variables_max_connections'
+        values: '100 100 100 100'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: DatabaseConnectionsHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: mariadb
+            exp_annotations:
+              summary: "Database connection pool near capacity (> 80%)"
+              description: "Active MariaDB connections have reached over 80% of max_connections."
+              runbook: "03-database-recovery.md"
+
+  # Test 4: RedisMemoryHigh fires when memory used > 85% of max
+  - interval: 1m
+    input_series:
+      - series: 'redis_memory_used_bytes'
+        values: '90000000 90000000 90000000 90000000'
+      - series: 'redis_memory_max_bytes'
+        values: '100000000 100000000 100000000 100000000'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: RedisMemoryHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: cache
+            exp_annotations:
+              summary: "Redis memory utilization high (> 85%)"
+              description: "Redis memory consumption has exceeded 85% of the configured memory ceiling."
+              runbook: "04-redis-down.md"
+
+  # Test 5: MailQueueGrowing fires when mail_spool_queue_count > 50
+  - interval: 1m
+    input_series:
+      - series: 'mail_spool_queue_count'
+        values: '60 60 60 60 60 60 60'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MailQueueGrowing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: mail
+            exp_annotations:
+              summary: "Mail relay queue backlog accumulating (> 50 messages)"
+              description: "More than 50 outbound verification emails are spooled in the mail relay queue."
+              runbook: "01-event-start.md"
+
+  # Test 6: CTFtimeFeedStale fires when probe_success is 0
+  - interval: 1m
+    input_series:
+      - series: 'probe_success{job="blackbox-ctftime"}'
+        values: '0 0 0 0'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: CTFtimeFeedStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: ctftime
+              job: blackbox-ctftime
+            exp_annotations:
+              summary: "CTFtime standings feed failing or stale"
+              description: "The CTFtime feed endpoint is returning non-200 or is unreachable."
+              runbook: "12-ctftime-standings.md"

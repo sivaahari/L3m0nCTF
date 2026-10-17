@@ -1,0 +1,145 @@
+groups:
+  - name: l3mon_operational_alerts
+    rules:
+      - alert: High5xxRate
+        expr: (sum(rate(nginx_http_requests_total{status=~"5.."}[2m])) / sum(rate(nginx_http_requests_total[2m])) * 100) > 1
+        for: 1m
+        labels:
+          severity: critical
+          service: nginx
+        annotations:
+          summary: "High HTTP 5xx error rate (> 1%)"
+          description: "Over 1% of HTTP requests to the platform are failing with 5xx status codes."
+          runbook: "02-app-down.md"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, sum(rate(nginx_http_request_duration_seconds_bucket[5m])) by (le)) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          service: nginx
+        annotations:
+          summary: "High p95 HTTP request latency (> 500ms)"
+          description: "Platform 95th percentile response latency has exceeded 500ms for 2 minutes."
+          runbook: "05-ddos-attack.md"
+
+      - alert: DatabaseConnectionsHigh
+        expr: (mysql_global_status_threads_connected / mysql_global_variables_max_connections * 100) > 80
+        for: 2m
+        labels:
+          severity: warning
+          service: mariadb
+        annotations:
+          summary: "Database connection pool near capacity (> 80%)"
+          description: "Active MariaDB connections have reached over 80% of max_connections."
+          runbook: "03-database-recovery.md"
+
+      - alert: RedisMemoryHigh
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes * 100) > 85 and on() (redis_memory_max_bytes > 0)
+        for: 2m
+        labels:
+          severity: warning
+          service: cache
+        annotations:
+          summary: "Redis memory utilization high (> 85%)"
+          description: "Redis memory consumption has exceeded 85% of the configured memory ceiling."
+          runbook: "04-redis-down.md"
+
+      - alert: DiskSpaceWarning
+        expr: ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100) < 20) and on() (node_filesystem_size_bytes{mountpoint="/"} > 0)
+        for: 5m
+        labels:
+          severity: warning
+          service: host
+        annotations:
+          summary: "Host filesystem disk space low (< 20% available)"
+          description: "Host disk space has fallen below 20% free space."
+          runbook: "01-event-start.md"
+
+      - alert: DiskSpaceCritical
+        expr: ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100) < 10) and on() (node_filesystem_size_bytes{mountpoint="/"} > 0)
+        for: 2m
+        labels:
+          severity: critical
+          service: host
+        annotations:
+          summary: "Host filesystem disk space critical (< 10% available)"
+          description: "Host disk space has fallen below 10% free space. Immediate action required."
+          runbook: "01-event-start.md"
+
+      - alert: ContainerRestarting
+        expr: rate(container_start_time_seconds[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: container
+        annotations:
+          summary: "Service container crash or restart detected"
+          description: "A Docker service container restarted in the last 5 minutes."
+          runbook: "02-app-down.md"
+
+      - alert: ReadyzFailing
+        expr: probe_success{job="blackbox-readyz"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          service: ctfd
+        annotations:
+          summary: "Platform readiness probe (/readyz) failing"
+          description: "The /readyz health endpoint is returning non-200 or failing to respond within 1 second."
+          runbook: "02-app-down.md"
+
+      - alert: CTFtimeFeedStale
+        expr: probe_success{job="blackbox-ctftime"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: ctftime
+        annotations:
+          summary: "CTFtime standings feed failing or stale"
+          description: "The CTFtime feed endpoint is returning non-200 or is unreachable."
+          runbook: "12-ctftime-standings.md"
+
+      - alert: BackupStale
+        expr: (time() - l3mon_backup_last_success_timestamp_seconds > 7200) and on() (l3mon_backup_last_success_timestamp_seconds > 0)
+        for: 5m
+        labels:
+          severity: warning
+          service: backup
+        annotations:
+          summary: "No successful database backup in the last 2 hours"
+          description: "The off-host backup heartbeat indicates the newest backup is older than 2 hours."
+          runbook: "03-database-recovery.md"
+
+      - alert: MailQueueGrowing
+        expr: mail_spool_queue_count > 50
+        for: 5m
+        labels:
+          severity: warning
+          service: mail
+        annotations:
+          summary: "Mail relay queue backlog accumulating (> 50 messages)"
+          description: "More than 50 outbound verification emails are spooled in the mail relay queue."
+          runbook: "01-event-start.md"
+
+      - alert: CertificateExpiring
+        expr: (probe_ssl_earliest_cert_expiry - time() < 14 * 86400) and on() (probe_ssl_earliest_cert_expiry > 0)
+        for: 1h
+        labels:
+          severity: warning
+          service: tls
+        annotations:
+          summary: "TLS certificate expiring soon (< 14 days)"
+          description: "Edge TLS certificate will expire within 14 days."
+          runbook: "01-event-start.md"
+
+      - alert: InstancerErrorRateHigh
+        expr: rate(instancer_errors_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: instancer
+        annotations:
+          summary: "Challenge instance provisioning error rate elevated"
+          description: "The challenge instancer is recording elevated error rates."
+          runbook: "08-kill-instances.md"

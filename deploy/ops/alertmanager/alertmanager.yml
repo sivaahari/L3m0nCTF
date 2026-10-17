@@ -1,0 +1,23 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: discord-notifications
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - receiver: discord-notifications
+      matchers:
+        - severity =~ "warning|critical"
+
+receivers:
+  - name: discord-notifications
+    discord_configs:
+      - webhook_url_file: /run/secrets/DISCORD_WEBHOOK_URL
+        send_resolved: true
+        title: '{{ template "discord.default.title" . }}'
+        message: '{{ template "discord.default.message" . }}'
+
+  - name: blackhole
