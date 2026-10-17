@@ -96,3 +96,23 @@ def test_readyz_strictly_times_out_and_returns_503_when_redis_hangs():
                 assert elapsed < 1.8
     finally:
         destroy_ctfd(app)
+
+
+def test_readyz_does_not_depend_on_host_names_it_invents(monkeypatch):
+    """Found by the integration audit: the checks connected to a host called `db` and another called `cache` whatever the platform's own settings said, so
+    the endpoint answered 503 on any machine where those names do not exist (every test run, and any deployment with other names). The platform's own
+    database and cache are asked; a host name is only tried first when the platform's own settings (DATABASE_HOST, REDIS_HOST) name one."""
+    for name in ("DB_HOST", "DB_PORT", "DATABASE_HOST", "DATABASE_PORT", "REDIS_HOST", "REDIS_PORT"):
+        monkeypatch.delenv(name, raising=False)
+    app = create_ctfd(enable_plugins=True)
+    try:
+        with app.app_context(), app.test_client() as client:
+            assert client.get("/readyz").status_code == 200
+            # a configured host that does not answer is "not ready", quickly
+            monkeypatch.setenv("DATABASE_HOST", "192.0.2.1")  # TEST-NET-1: nothing answers there
+            monkeypatch.setenv("DATABASE_PORT", "3306")
+            start = time.time()
+            r = client.get("/readyz")
+            assert r.status_code == 503 and time.time() - start < 1.8
+    finally:
+        destroy_ctfd(app)

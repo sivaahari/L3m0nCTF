@@ -48,6 +48,7 @@ def test_register_blocks_disposable_domain():
             evidence = Evidence.query.filter_by(kind="disposable_email_blocked").first()
             assert evidence is not None
             assert "mailinator.com" in evidence.detail
+            assert "user@" not in evidence.detail and "user" not in evidence.detail.replace("disposable_email", ""), "only the domain is kept, never the address (integration audit)"
 
             # Assert user was not created
             assert Users.query.filter_by(name="disposable_user").first() is None

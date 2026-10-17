@@ -27,88 +27,76 @@ _last_metrics_body: str = ""
 
 import socket
 
+# The checks run in a small pool of threads so that the one-second budget holds whether or not the worker is patched by gevent (under gunicorn's
+# gevent worker the threads are greenlets). A check that hangs keeps its thread until its own socket gives up; the pool is bounded, and a probe that
+# cannot get a thread in time simply answers "not ready".
+_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="l3mon-readyz")
 
-def _check_db_quick() -> bool:
-    """Execute SELECT 1 with db.engine.connect() directly with fast timeout."""
-    host = os.environ.get("DB_HOST", "db")
-    port = int(os.environ.get("DB_PORT", "3306"))
+
+def _reachable(host: str, port: int) -> bool:
     try:
         with socket.create_connection((host, port), timeout=0.5):
-            pass
+            return True
     except Exception:
         return False
-    except BaseException as e:
-        if type(e).__name__ == "Timeout":
-            return False
-        raise
+
+
+def _port(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _check_db_quick() -> bool:
+    """SELECT 1 through the platform's own database engine. When the platform's own settings name a database host (DATABASE_HOST, as CTFd reads it)
+    a connection to that host is tried first, so a database that is simply down is answered at once instead of after the driver's own timeout."""
+    host = os.environ.get("DATABASE_HOST", "").strip()
+    if host and not _reachable(host, _port("DATABASE_PORT", 3306)):
+        return False
 
     from CTFd.models import db
 
     try:
         with db.engine.connect() as conn:
-            val = conn.execute(text("SELECT 1")).scalar()
-            return val == 1
+            return conn.execute(text("SELECT 1")).scalar() == 1
     except Exception:
         return False
-    except BaseException as e:
-        if type(e).__name__ == "Timeout":
-            return False
-        raise
 
 
 def _check_redis_quick() -> bool:
-    """Send PING to Redis client or verify cache responsiveness with fast timeout."""
-    host = os.environ.get("REDIS_HOST", "cache")
-    port = int(os.environ.get("REDIS_PORT", "6379"))
-    try:
-        with socket.create_connection((host, port), timeout=0.5):
-            pass
-    except Exception:
+    """PING the platform's own cache client (CTFd's `REDIS_HOST` names the host: tried first, as above); on a cache that is not Redis (the tests'),
+    write and read one key."""
+    host = os.environ.get("REDIS_HOST", "").strip()
+    if host and not _reachable(host, _port("REDIS_PORT", 6379)):
         return False
-    except BaseException as e:
-        if type(e).__name__ == "Timeout":
-            return False
-        raise
 
     from CTFd.cache import cache
 
     try:
         backend = getattr(cache, "cache", None)
-        client = (
-            getattr(backend, "_read_client", None)
-            or getattr(backend, "_write_client", None)
-            or getattr(backend, "_client", None)
-        )
+        client = getattr(backend, "_read_client", None) or getattr(backend, "_write_client", None) or getattr(backend, "_client", None)
         if client is not None and hasattr(client, "ping"):
             return bool(client.ping())
-        # If cache itself has a ping method (e.g. test shim):
-        if hasattr(cache, "ping") and callable(cache.ping):
-            return bool(cache.ping())
-        # Fallback for mock/SimpleCache in tests:
         key = "_l3mon_readyz"
         cache.set(key, 1, timeout=5)
         return cache.get(key) == 1
     except Exception:
         return False
-    except BaseException as e:
-        if type(e).__name__ == "Timeout":
-            return False
-        raise
 
 
 def _run_with_timeout(fn, timeout_seconds: float = 1.0) -> bool:
-    """Run a callable with a strict timeout in seconds."""
-    try:
-        import gevent
-        with gevent.Timeout(timeout_seconds, False):
+    """Run a check in a pool thread, inside the app's context, and give up after the budget."""
+    app = current_app._get_current_object()
+
+    def in_context():
+        with app.app_context():
             return bool(fn())
+
+    try:
+        return _POOL.submit(in_context).result(timeout=timeout_seconds)
+    except Exception:  # includes the timeout
         return False
-    except Exception:
-        return False
-    except BaseException as e:
-        if type(e).__name__ == "Timeout":
-            return False
-        raise
 
 
 @ops.route("/readyz")
@@ -141,7 +129,7 @@ def _render_metrics() -> str:
         phase = "unknown"
 
     phase_lines = []
-    for p in ("before", "during", "ended"):
+    for p in ("before", "live", "paused", "ended"):  # the names of l3mon_core.clock.Phase.state
         val = 1 if phase == p else 0
         phase_lines.append(f'l3mon_event_phase{{phase="{p}"}} {val}')
 

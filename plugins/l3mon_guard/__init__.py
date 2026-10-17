@@ -56,7 +56,8 @@ def _wrap_register(orig_view):
             # 2. Disposable email check
             raw_email = request.form.get("email", "").strip()
             if is_disposable_domain(raw_email):
-                record("disposable_email_blocked", detail=f"email={raw_email}")
+                domain = raw_email.rsplit("@", 1)[-1].strip().lower()[:80]
+                record("disposable_email_blocked", detail=f"domain={domain}")  # the domain only: never the address of a person
                 name = request.form.get("name", "")
                 msg = "This email address cannot be used here. Please use a permanent email address."
                 return render_template("register.html", errors=[msg], name=name, email=raw_email)

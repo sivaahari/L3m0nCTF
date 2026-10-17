@@ -87,3 +87,22 @@ def test_metrics_reflects_l3mon_build_environment_variable(monkeypatch):
             assert 'l3mon_build_info{version="2026-10-17-commit123"} 1' in text
     finally:
         destroy_ctfd(app)
+
+
+def test_the_phase_gauge_uses_the_names_of_the_platform_clock_so_exactly_one_series_is_one():
+    """Found by the integration audit: the gauge was labelled before/during/ended while the clock says before/live/paused/ended, so during the
+    event NO series was 1 and every alert built on the phase would have been blind."""
+    import CTFd.plugins.l3mon_ops as ops_mod
+    from CTFd.plugins.l3mon_core.clock import Phase
+
+    app = create_ctfd(enable_plugins=True)
+    try:
+        with app.app_context():
+            for state in ("before", "live", "paused", "ended"):
+                with mock.patch("CTFd.plugins.l3mon_core.clock.current_phase", return_value=Phase(state, False)):
+                    text = ops_mod._render_metrics()
+                values = {m.group(1): int(m.group(2)) for m in re.finditer(r'l3mon_event_phase\{phase="([a-z]+)"\} (\d)', text)}
+                assert set(values) == {"before", "live", "paused", "ended"}, values
+                assert values[state] == 1 and sum(values.values()) == 1, (state, values)
+    finally:
+        destroy_ctfd(app)

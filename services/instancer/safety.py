@@ -44,9 +44,11 @@ def assert_safe(spec: dict, dev_mode: bool = False) -> None:
     user = spec.get("User")
     if user is None or not isinstance(user, str) or not user.strip():
         raise ContainerSafetyError("Container user must be specified and non-empty")
-    user_str = user.strip().lower()
-    if user_str in ("root", "0", "0:0") or user_str.startswith("0:") or user_str.endswith(":0"):
-        raise ContainerSafetyError(f"Container user '{user}' cannot be root (UID 0)")
+    # Only plain ASCII numbers, none of them zero: Docker reads "00" as UID 0, and a name may map to UID 0 inside the image, which cannot be known from here
+    # (the instancer always sets a numeric user itself). The first version only refused the spellings "root", "0", "0:0", "0:x" and "x:0".
+    user_parts = user.split(":")
+    if len(user_parts) > 2 or not all(re.fullmatch(r"[0-9]{1,10}", part) and int(part) > 0 for part in user_parts):
+        raise ContainerSafetyError(f"Container user '{user}' must be a plain non-zero numeric UID or UID:GID (root and names are refused)")
 
     # 3. HostConfig validation
     host_config = spec.get("HostConfig")
@@ -94,6 +96,25 @@ def assert_safe(spec: dict, dev_mode: bool = False) -> None:
     devices = host_config.get("Devices") or []
     if devices:
         raise ContainerSafetyError(f"Host devices mapping is forbidden: {devices}")
+
+    # HostConfig.Mounts is the newer spelling of Binds (and also takes volumes): only a tmpfs may be mounted
+    for mount in host_config.get("Mounts") or []:
+        if not isinstance(mount, dict) or str(mount.get("Type", "")).strip().lower() != "tmpfs":
+            raise ContainerSafetyError(f"Only tmpfs mounts are allowed, not {mount!r}")
+
+    # PublishAllPorts publishes every EXPOSEd port of the image on the host, whatever PortBindings says
+    if host_config.get("PublishAllPorts"):
+        raise ContainerSafetyError("PublishAllPorts is forbidden: only the router publishes ports")
+
+    # Fields that widen what the container may touch and that nothing here needs
+    for field in ("DeviceRequests", "DeviceCgroupRules", "CgroupParent", "GroupAdd", "Sysctls"):
+        if host_config.get(field):
+            raise ContainerSafetyError(f"HostConfig.{field} is forbidden")
+    for field in ("UsernsMode", "CgroupnsMode"):
+        if str(host_config.get(field, "")).strip().lower() == "host":
+            raise ContainerSafetyError(f"HostConfig.{field}=host is forbidden")
+    if str(host_config.get("Runtime", "") or "").strip().lower() not in ("", "runc"):
+        raise ContainerSafetyError("HostConfig.Runtime must be the default runtime")
 
     # Inspect all spec strings for docker socket reference
     spec_repr = str(spec).lower()

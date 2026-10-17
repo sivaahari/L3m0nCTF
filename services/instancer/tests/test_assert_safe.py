@@ -222,3 +222,60 @@ def test_hostile_restart_policy_refused():
     spec["HostConfig"]["RestartPolicy"] = {"Name": "always"}
     with pytest.raises(ContainerSafetyError, match=r"(?i)restart policy"):
         assert_safe(spec, dev_mode=False)
+
+
+# ---- added by the integration audit (2026-10-18): doors the first version of assert_safe left open ---------------------------------------
+
+def test_hostile_modern_bind_mount_refused():
+    """HostConfig.Mounts is the newer spelling of Binds: a bind of the host's root must be refused like a Bind is."""
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["HostConfig"]["Mounts"] = [{"Type": "bind", "Source": "/", "Target": "/host"}]
+    with pytest.raises(ContainerSafetyError, match="(?i)mount"):
+        assert_safe(spec, dev_mode=False)
+
+
+def test_hostile_named_volume_mount_refused():
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["HostConfig"]["Mounts"] = [{"Type": "volume", "Source": "dbdata", "Target": "/data"}]
+    with pytest.raises(ContainerSafetyError, match="(?i)mount"):
+        assert_safe(spec, dev_mode=False)
+
+
+def test_a_tmpfs_mount_is_fine():
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["HostConfig"]["Mounts"] = [{"Type": "tmpfs", "Target": "/scratch"}]
+    assert_safe(spec, dev_mode=False)
+
+
+def test_hostile_publish_all_ports_refused():
+    """PublishAllPorts publishes every EXPOSEd port of the image on the host, which PortBindings being empty does not prevent."""
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["HostConfig"]["PublishAllPorts"] = True
+    with pytest.raises(ContainerSafetyError, match="(?i)publish"):
+        assert_safe(spec, dev_mode=False)
+
+
+@pytest.mark.parametrize("field,value", [("DeviceRequests", [{"Driver": "nvidia"}]), ("DeviceCgroupRules", ["c *:* rwm"]), ("CgroupParent", "/system.slice"),
+                                          ("GroupAdd", ["0"]), ("Sysctls", {"net.ipv4.ip_forward": "1"}), ("UsernsMode", "host"), ("CgroupnsMode", "host"),
+                                          ("Runtime", "kata")])
+def test_hostile_extra_host_config_fields_refused(field, value):
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["HostConfig"][field] = value
+    with pytest.raises(ContainerSafetyError):
+        assert_safe(spec, dev_mode=False)
+
+
+@pytest.mark.parametrize("user", ["00", "000:000", "0:1000", "1000:0", "00:00", " 0 ", "root", "ROOT:root", "app", "10001:app", "10001:10001:5", "-1", "1e3", "+0", "٠"])
+def test_hostile_user_that_is_or_may_be_root_refused(user):
+    """Docker reads "00" as UID 0, and a name may map to 0 inside the image: only plain non-zero numbers are accepted."""
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["User"] = user
+    with pytest.raises(ContainerSafetyError, match="(?i)user"):
+        assert_safe(spec, dev_mode=False)
+
+
+@pytest.mark.parametrize("user", ["10001", "10001:10001", "1000:1000"])
+def test_plain_non_zero_numeric_users_are_fine(user):
+    spec = copy.deepcopy(VALID_SPEC)
+    spec["User"] = user
+    assert_safe(spec, dev_mode=False)

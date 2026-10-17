@@ -263,3 +263,24 @@ def test_reconcile_on_start_from_labels():
     assert routes[0]["id"] == "testinst1234567890abcdef123456"
     assert routes[0]["target_ip"] == "10.0.1.2"
     assert routes[0]["target_port"] == 8080
+
+
+def test_a_container_spec_that_assert_safe_refuses_leaves_no_network_and_no_port_behind(monkeypatch):
+    """Found by the integration audit: the network was created before assert_safe ran, so a refused spec left it (and the TCP port) behind, and a
+    player could use up Docker's networks by asking again and again."""
+    import services.instancer.manager as manager_module
+    from services.instancer.safety import ContainerSafetyError
+
+    def refuse(spec, dev_mode=False):
+        raise ContainerSafetyError("refused on purpose")
+
+    monkeypatch.setattr(manager_module, "assert_safe", refuse)
+    manifest = load_manifest_from_string(MANIFEST_TOML, dev_mode=False)
+    docker = MockDockerClient()
+    mgr = InstanceManager(manifest=manifest, docker_client=docker, instance_domain="inst.example.com", time_fn=lambda: 1700000000)
+    for _ in range(3):
+        with pytest.raises(ContainerSafetyError):
+            mgr.start_instance(team_id=7, challenge_id=42, slug="demo-web", flag=FLAG_EXAMPLE)
+    assert docker.networks == {}, "no network may be left behind"
+    assert all(not attached for attached in docker.attached_networks.values())
+    assert docker.containers == {}

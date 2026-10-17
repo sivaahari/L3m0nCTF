@@ -308,8 +308,22 @@ class InstanceManager:
                 },
             }
 
-            # Security verification
-            assert_safe(container_spec, dev_mode=self.dev_mode)
+            # Security verification. The network (and a TCP port) already exist, so a refusal must give them back: without this a spec that
+            # assert_safe refuses left a network behind on every attempt (found by the integration audit).
+            try:
+                assert_safe(container_spec, dev_mode=self.dev_mode)
+            except Exception:
+                try:
+                    self.docker.disconnect_network(net_name, self.router_container_name)
+                except Exception:
+                    pass
+                try:
+                    self.docker.remove_network(net_name)
+                except Exception:
+                    pass
+                if allocated_tcp_port is not None:
+                    self._allocated_tcp_ports.discard(allocated_tcp_port)
+                raise
 
             # Create and start container
             name = inst_id
