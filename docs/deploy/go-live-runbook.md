@@ -578,8 +578,8 @@ Add them one at a time. Each is switched on by adding its name to `L3MON_OVERLAY
 ### 8.1 Anti-abuse and "Continue with Google": the overlay `identity`
 
 - The abuse rules (disposable email addresses, look-alike team names, a limit on flag guesses per team, an evidence page for the crew at `/admin/l3mon/guard`) work as soon as the overlay is on. They need **no keys**.
-- **CAPTCHA**: create a Turnstile widget in Cloudflare (Turnstile, Add widget, domain `play.l3m0nctf.xyz`), put the **site key** in `/etc/l3mon/production.env` as `TURNSTILE_SITEKEY=...` and the **secret key** in `.secrets/TURNSTILE_SECRET`. Empty means off.
-- **Google sign-in**: create the OAuth client (`docs/deploy/identity.md`, Google part: redirect address `https://play.l3m0nctf.xyz/auth/google/callback`, publishing status **In production**), put the client id in `production.env` as `GOOGLE_CLIENT_ID=...` and the secret in `.secrets/GOOGLE_CLIENT_SECRET`.
+- **CAPTCHA**: create a Turnstile widget in Cloudflare (Turnstile, Add widget, domain `play.l3m0nctf.xyz`), put the **site key** in `/etc/l3mon/production.env` as `TURNSTILE_SITEKEY=...` and the **secret key** in `.secrets/TURNSTILE_SECRET`. Empty means off. **Do not fill these in until the page theme shows the CAPTCHA widget** (the guard makes the CAPTCHA mandatory on registration as soon as both keys exist, and CTFd's own pages have no widget, so **nobody could register**). The theme work is the owner's; the exact page changes are in `docs/deploy/identity.md`.
+- **Google sign-in**: create the OAuth client (`docs/deploy/identity.md`, Google part: redirect address `https://play.l3m0nctf.xyz/auth/google/callback`, publishing status **In production**), put the client id in `production.env` as `GOOGLE_CLIENT_ID=...` and the secret in `.secrets/GOOGLE_CLIENT_SECRET`. The route works as soon as both exist, but players only see a button once the theme draws it.
 - The campus networks: `L3MON_GUARD_CAMPUS_NETS=a.b.c.d/n,...` in `production.env`, so address-based evidence ignores the campus.
 
 ### 8.2 Mail and monitoring: the overlay `ops`
