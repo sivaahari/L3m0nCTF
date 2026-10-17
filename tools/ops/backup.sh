@@ -57,15 +57,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# If recipients file does not exist, check fallback for dev/example
+# The recipients file must exist. There is NO fallback to the example file: a backup holds every player's email and API token, and the example key is the
+# one printed in age's own documentation, whose private half is printed beside it, so anybody could open a backup made with it (integration audit, 2026-10-18).
 if [[ ! -f "$recipients" ]]; then
-  if [[ "$explicit_recipients" == "false" && -f "$root/config/backup/recipients.example.txt" ]]; then
-    recipients="$root/config/backup/recipients.example.txt"
-    echo "Warning: using example recipients from $recipients" >&2
-  else
-    echo "Error: recipients file not found: $recipients" >&2
-    exit 1
-  fi
+  echo "Error: recipients file not found: $recipients" >&2
+  echo "       Make config/backup/recipients.txt with YOUR public age key (see config/backup/recipients.example.txt for the format). Never use the example key." >&2
+  exit 1
+fi
+if grep -q 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p' "$recipients" && [[ "${L3MON_ALLOW_EXAMPLE_BACKUP_KEY:-}" != "1" ]]; then
+  echo "Error: $recipients holds the example key from age's documentation, whose private key is public: refusing to encrypt a backup to it." >&2
+  echo "       (Only the tests set L3MON_ALLOW_EXAMPLE_BACKUP_KEY=1.)" >&2
+  exit 1
 fi
 
 # Ensure age is available
