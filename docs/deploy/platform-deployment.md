@@ -1,5 +1,7 @@
 # Putting the platform on `play.l3m0nctf.xyz`: the set-up guide
 
+> **Update 2026-10-18.** The step-by-step version for going live is now [go-live-runbook.md](go-live-runbook.md): it uses the production stack that was built after this guide, and it fixes one order of steps below: **Authenticated Origin Pulls must be switched ON in Cloudflare before the first visitor arrives**, because nginx requires our client certificate from the start (C3 step 4 below says "after Part D"; that is no longer right). Where the two disagree, the runbook is right. This file stays as the longer explanation.
+
 Written 2026-10-09 for the owner. Plain words. No secrets and no event material are in this file, and none should ever be added.
 
 The landing page (`https://l3m0nctf.xyz`) is already live and has its own guide ([landing-hosting.md](landing-hosting.md)). This guide is for the **platform**: the sign-in, the Channels page, the Guide, the Scoreboard and the crew's pages, which will run at `https://play.l3m0nctf.xyz`.

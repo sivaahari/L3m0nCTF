@@ -267,3 +267,16 @@ def test_the_command_prints_the_lines_and_exits_one_only_when_something_is_block
     (world["tls_dir"] / "origin.pem").unlink()
     assert main(args) == 1
     assert "BLOCKED  TLS files" in capsys.readouterr().out
+
+
+def test_deploy_check_defaults_to_the_repository_root_whatever_the_current_folder_is(tmp_path, monkeypatch):
+    """Found by the integration audit while following the hosting guide: the guides say `cd tools && python -m l3mon deploy check`, and --root defaulted to the
+    current folder, so from tools/ the check looked for tools/config/event.toml and called everything missing. The default is now the repository itself."""
+    from l3mon.cli import build_parser
+
+    expected = str(Path(__file__).resolve().parents[2])
+    for folder in (tmp_path, Path(expected) / "tools", Path(expected)):
+        monkeypatch.chdir(folder)
+        assert Path(build_parser().parse_args(["deploy", "check"]).root).resolve() == Path(expected).resolve()
+    # an explicit root still wins
+    assert build_parser().parse_args(["deploy", "check", "--root", "elsewhere"]).root == "elsewhere"

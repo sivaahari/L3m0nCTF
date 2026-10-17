@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("deploy", help="what is missing before the production stack can start")
     dsub = d.add_subparsers(dest="deploy_cmd", required=True)
     dc = dsub.add_parser("check", help="read the event settings, the secrets, the TLS files and the organisers' addresses; exit 1 when anything is BLOCKED")
-    dc.add_argument("--root", default=".", help="the repository folder (default: the current folder)")
+    dc.add_argument("--root", default=str(Path(__file__).resolve().parents[2]), help="the repository folder (default: the repository this tool is in, so it works from any folder)")
     dc.add_argument("--event", help="the event settings file (default: config/event.toml)")
     dc.add_argument("--secrets", help="the secrets folder (default: .secrets)")
     dc.add_argument("--tls", help="the folder with origin.pem, origin.key and cloudflare-origin-pull-ca.pem (default: $TLS_DIR or /etc/l3mon/tls)")
