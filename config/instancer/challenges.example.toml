@@ -1,0 +1,26 @@
+# Example challenge manifest for L3m0nCTF per-team instancer.
+# Real challenge images must be pinned by sha256 digest (unless INSTANCER_DEV=1).
+
+[[challenge]]
+slug = "demo-web"
+image = "registry.example/demo-web@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+protocol = "http"
+port = 8080
+cpus = 0.5
+mem_mb = 256
+pids = 128
+ttl_minutes = 45
+read_only = true
+max_per_team = 1
+
+[[challenge]]
+slug = "demo-pwn"
+image = "registry.example/demo-pwn@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+protocol = "tcp"
+port = 1337
+cpus = 0.5
+mem_mb = 256
+pids = 128
+ttl_minutes = 45
+read_only = true
+max_per_team = 1
