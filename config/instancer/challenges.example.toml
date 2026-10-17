@@ -3,7 +3,7 @@
 
 [[challenge]]
 slug = "demo-web"
-image = "registry.example/demo-web@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+image = "l3mon-fixture/demo-web:dev"
 protocol = "http"
 port = 8080
 cpus = 0.5

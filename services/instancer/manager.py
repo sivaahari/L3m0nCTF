@@ -69,6 +69,7 @@ class InstanceRecord:
         renewals: int = 0,
         last_renewed_at: Optional[int] = None,
         target_ip: Optional[str] = None,
+        container_id: Optional[str] = None,
     ):
         self.id = instance_id
         self.team_id = team_id
@@ -81,8 +82,9 @@ class InstanceRecord:
         self.allocated_tcp_port = allocated_tcp_port
         self.state = state
         self.renewals = renewals
-        self.last_renewed_at = last_renewed_at or created_at
+        self.last_renewed_at = last_renewed_at
         self.target_ip = target_ip
+        self.container_id = container_id
 
     def to_dict(self, instance_domain: str, tcp_host: str) -> dict:
         url = f"http://{self.id}.{instance_domain}/" if self.protocol == "http" else None
@@ -180,6 +182,7 @@ class InstanceManager:
                     state=state,
                     renewals=renewals,
                     target_ip=c.get("ip"),
+                    container_id=c.get("id"),
                 )
                 self._instances[inst_id] = record
                 self._team_index.setdefault(team_id, set()).add(inst_id)
@@ -309,11 +312,16 @@ class InstanceManager:
             assert_safe(container_spec, dev_mode=self.dev_mode)
 
             # Create and start container
+            name = inst_id
             try:
-                self.docker.create_container(container_spec)
-                self.docker.start_container(inst_id)
+                real_cid = self.docker.create_container(container_spec, name=name)
+                self.docker.start_container(real_cid)
             except Exception as e:
                 # Cleanup on failure
+                try:
+                    self.docker.remove_container(name)
+                except Exception:
+                    pass
                 try:
                     self.docker.disconnect_network(net_name, self.router_container_name)
                     self.docker.remove_network(net_name)
@@ -345,6 +353,7 @@ class InstanceManager:
                 state=InstanceState.RUNNING,
                 renewals=0,
                 target_ip=target_ip,
+                container_id=real_cid,
             )
             self._instances[inst_id] = record
             self._team_index.setdefault(team_id, set()).add(inst_id)
@@ -376,8 +385,8 @@ class InstanceManager:
 
             now = self._now()
             # 1. Refuse if renewed less than 60s ago
-            if now - record.last_renewed_at < MIN_RENEW_INTERVAL_SECONDS:
-                raise ValueError("Instance cannot be renewed less than 60 seconds after previous renewal or start")
+            if record.last_renewed_at is not None and (now - record.last_renewed_at < MIN_RENEW_INTERVAL_SECONDS):
+                raise ValueError("Instance cannot be renewed less than 60 seconds after previous renewal")
 
             # 2. Refuse if past absolute lifetime cap (3 hours from creation)
             if now - record.created_at >= ABSOLUTE_LIFETIME_SECONDS:
@@ -409,11 +418,12 @@ class InstanceManager:
 
             # Cleanup docker container and network
             net_name = f"l3mon_inst_{instance_id}"
+            target_container = getattr(record, "container_id", None) or instance_id
             try:
-                self.docker.stop_container(instance_id)
-                self.docker.remove_container(instance_id)
+                self.docker.stop_container(target_container)
+                self.docker.remove_container(target_container)
             except Exception as e:
-                _log.warning("Error stopping container %s: %s", instance_id, e)
+                _log.warning("Error stopping container %s: %s", target_container, e)
 
             try:
                 self.docker.disconnect_network(net_name, self.router_container_name)

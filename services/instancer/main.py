@@ -58,12 +58,14 @@ def main():
     docker = DockerClient()
     instance_domain = os.getenv("INSTANCE_DOMAIN", "localhost:8090")
     tcp_host = os.getenv("INSTANCER_TCP_HOST", "localhost")
+    router_container_name = os.getenv("ROUTER_CONTAINER_NAME", "l3mon-router-1")
 
     manager = InstanceManager(
         manifest=manifest,
         docker_client=docker,
         instance_domain=instance_domain,
         tcp_host=tcp_host,
+        router_container_name=router_container_name,
         dev_mode=dev_mode,
     )
 

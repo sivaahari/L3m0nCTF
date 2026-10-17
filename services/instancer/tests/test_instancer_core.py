@@ -62,7 +62,7 @@ class MockDockerClient:
         if net_id in self.attached_networks and container_id in self.attached_networks[net_id]:
             self.attached_networks[net_id].remove(container_id)
 
-    def create_container(self, spec):
+    def create_container(self, spec, name=None):
         inst_id = spec["Labels"]["l3mon.instance"]
         self.containers[inst_id] = {
             "spec": spec,
@@ -178,15 +178,20 @@ def test_renewal_constraints():
     inst, _ = mgr.start_instance(team_id=7, challenge_id=42, slug="demo-web", flag=FLAG_EXAMPLE)
     orig_expiry = inst["expires_at"]
 
-    # Refuse renewal if called less than 60s since start
+    # First renewal succeeds immediately
+    renewed = mgr.renew_instance(inst["id"])
+    assert renewed["expires_at"] == current_time + 45 * 60
+    assert renewed["renewals"] == 1
+
+    # Refuse second renewal if called less than 60s since previous renewal
     with pytest.raises(ValueError, match=r"(?i)60 seconds"):
         mgr.renew_instance(inst["id"])
 
     # Advance time by 65 seconds
     current_time += 65
-    renewed = mgr.renew_instance(inst["id"])
-    assert renewed["expires_at"] == current_time + 45 * 60
-    assert renewed["renewals"] == 1
+    renewed2 = mgr.renew_instance(inst["id"])
+    assert renewed2["expires_at"] == current_time + 45 * 60
+    assert renewed2["renewals"] == 2
 
     # Refuse renewal past absolute 3-hour cap
     current_time += 3 * 3600
