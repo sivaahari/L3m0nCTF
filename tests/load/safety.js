@@ -12,6 +12,7 @@ const ALLOW_LIST = [
   'host.docker.internal:8080',
   'ctfd:8000',
   'nginx:80',
+  'nginx:8080',
   'play.l3m0nctf.xyz'
 ];
 

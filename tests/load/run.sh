@@ -30,7 +30,7 @@ for arg in "$@"; do
 done
 
 # 1. Target Allow-List Safety Check
-ALLOW_LIST=("localhost" "127.0.0.1" "localhost:8080" "127.0.0.1:8080" "ctfd:8000" "nginx:80" "nginx:8080" "play.l3m0nctf.xyz")
+ALLOW_LIST=("localhost" "127.0.0.1" "localhost:8080" "127.0.0.1:8080" "host.docker.internal" "host.docker.internal:8080" "ctfd:8000" "nginx:80" "nginx:8080" "play.l3m0nctf.xyz")
 TARGET_HOST="$(echo "$TARGET_URL" | sed -e 's|^[^/]*//||' -e 's|/.*$||' | tr '[:upper:]' '[:lower:]')"
 
 ALLOWED=false

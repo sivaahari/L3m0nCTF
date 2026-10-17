@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,27 @@ def test_allowlist_json_exists_and_contains_expected_hosts():
     assert "ctfd:8000" in data
     assert "play.l3m0nctf.xyz" in data
     assert "play.l3monctf.xyz" not in data, "a misspelt domain is another party's domain"
+
+
+def _hosts_in(text: str, pattern: str) -> set[str]:
+    block = re.search(pattern, text, re.S)
+    assert block, "allow-list not found"
+    return set(re.findall(r"""["']([^"']+)["']""", block.group(1)))
+
+
+def test_the_three_allow_lists_that_guard_the_k6_container_agree():
+    """run.sh (host side), safety.js (inside the k6 container) and allowlist.json must list the same hosts.
+
+    Integration audit: run.sh listed nginx:8080, the address it hands to the container, but safety.js did not; the old
+    prefix match let it through by accident (nginx:80), and the exact match of the audit fix refused every real run.
+    """
+    from_json = set(json.loads(ALLOWLIST_FILE.read_text(encoding="utf-8")))
+    from_sh = _hosts_in((LOAD_DIR / "run.sh").read_text(encoding="utf-8"), r"ALLOW_LIST=\((.*?)\)")
+    from_js = _hosts_in((LOAD_DIR / "safety.js").read_text(encoding="utf-8"), r"ALLOW_LIST = \[(.*?)\]")
+    assert from_sh == from_js == from_json, (from_sh ^ from_js, from_sh ^ from_json)
+    run_sh = (LOAD_DIR / "run.sh").read_text(encoding="utf-8")
+    for docker_target in re.findall(r'DOCKER_TARGET="http://([^"/]+)"', run_sh):
+        assert docker_target in from_js, f"{docker_target} is what run.sh gives the container, safety.js must accept it"
 
 
 def test_k6_runner_refuses_unauthorized_target():
