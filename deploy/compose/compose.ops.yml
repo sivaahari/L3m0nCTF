@@ -1,0 +1,7 @@
+# Operations & resilience overlay: compose.ops.yml
+# Used with: L3MON_OVERLAYS=ops tools/compose.sh up -d --wait
+
+services:
+  nginx:
+    volumes:
+      - ${MAINTENANCE_DIR:-../ops/maintenance}:/etc/l3mon:ro
