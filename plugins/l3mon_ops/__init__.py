@@ -25,8 +25,23 @@ _last_metrics_time: float = 0.0
 _last_metrics_body: str = ""
 
 
+import socket
+
+
 def _check_db_quick() -> bool:
-    """Execute SELECT 1 with db.engine.connect() directly."""
+    """Execute SELECT 1 with db.engine.connect() directly with fast timeout."""
+    host = os.environ.get("DB_HOST", "db")
+    port = int(os.environ.get("DB_PORT", "3306"))
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            pass
+    except Exception:
+        return False
+    except BaseException as e:
+        if type(e).__name__ == "Timeout":
+            return False
+        raise
+
     from CTFd.models import db
 
     try:
@@ -35,10 +50,26 @@ def _check_db_quick() -> bool:
             return val == 1
     except Exception:
         return False
+    except BaseException as e:
+        if type(e).__name__ == "Timeout":
+            return False
+        raise
 
 
 def _check_redis_quick() -> bool:
-    """Send PING to Redis client or verify cache responsiveness."""
+    """Send PING to Redis client or verify cache responsiveness with fast timeout."""
+    host = os.environ.get("REDIS_HOST", "cache")
+    port = int(os.environ.get("REDIS_PORT", "6379"))
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            pass
+    except Exception:
+        return False
+    except BaseException as e:
+        if type(e).__name__ == "Timeout":
+            return False
+        raise
+
     from CTFd.cache import cache
 
     try:
@@ -59,27 +90,25 @@ def _check_redis_quick() -> bool:
         return cache.get(key) == 1
     except Exception:
         return False
+    except BaseException as e:
+        if type(e).__name__ == "Timeout":
+            return False
+        raise
 
 
 def _run_with_timeout(fn, timeout_seconds: float = 1.0) -> bool:
-    """Run a callable with a strict timeout in seconds, propagating app context."""
+    """Run a callable with a strict timeout in seconds."""
     try:
-        app = current_app._get_current_object()
-    except RuntimeError:
-        app = None
-
-    def target():
-        if app is not None:
-            with app.app_context():
-                return fn()
-        return fn()
-
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(target)
-            return bool(future.result(timeout=timeout_seconds))
+        import gevent
+        with gevent.Timeout(timeout_seconds, False):
+            return bool(fn())
+        return False
     except Exception:
         return False
+    except BaseException as e:
+        if type(e).__name__ == "Timeout":
+            return False
+        raise
 
 
 @ops.route("/readyz")
@@ -179,6 +208,81 @@ def metrics():
     return resp
 
 
+from flask.sessions import SessionMixin
+
+
+class DummyHealthSession(dict, SessionMixin):
+    def __init__(self):
+        super().__init__()
+        self.modified = False
+        self.accessed = False
+        self.permanent = False
+        self.sid = "healthcheck"
+
+
 def load(app):
     check_ctfd_version()
     app.register_blueprint(ops)
+
+    # Make import_in_progress resilient to Redis downtime
+    try:
+        import CTFd.utils
+        if hasattr(CTFd.utils, "import_in_progress"):
+            orig_import = CTFd.utils.import_in_progress
+            def safe_import():
+                try:
+                    return orig_import()
+                except Exception:
+                    return False
+            CTFd.utils.import_in_progress = safe_import
+    except Exception:
+        pass
+
+    # Fast before_request handler for /readyz: skips CTFd initialization hooks
+    def _handle_readyz_fast():
+        from flask import request
+        if request.path == "/readyz":
+            return readyz()
+
+    if None in app.before_request_funcs:
+        app.before_request_funcs[None].insert(0, _handle_readyz_fast)
+    else:
+        app.before_request_funcs[None] = [_handle_readyz_fast]
+
+    # Exclude /readyz from hooks in other plugins that check Redis (scheduler, scoring triggers)
+    try:
+        from CTFd.plugins.l3mon_release import scheduler
+        if hasattr(scheduler, "_SKIP_PATHS") and "/readyz" not in scheduler._SKIP_PATHS:
+            scheduler._SKIP_PATHS = (*scheduler._SKIP_PATHS, "/readyz")
+    except Exception:
+        pass
+
+    try:
+        from CTFd.plugins.l3mon_scoring import triggers
+        if hasattr(triggers, "_SKIP_PATHS") and "/readyz" not in triggers._SKIP_PATHS:
+            triggers._SKIP_PATHS = (*triggers._SKIP_PATHS, "/readyz")
+    except Exception:
+        pass
+
+    if hasattr(app, "session_interface") and app.session_interface is not None:
+        orig_open = app.session_interface.open_session
+        orig_save = app.session_interface.save_session
+
+        def safe_open_session(app_obj, req):
+            if req.path in ("/readyz", "/l3mon/healthz", "/healthcheck"):
+                return DummyHealthSession()
+            try:
+                return orig_open(app_obj, req)
+            except Exception:
+                return DummyHealthSession()
+
+        def safe_save_session(app_obj, sess, resp):
+            if isinstance(sess, DummyHealthSession):
+                return
+            try:
+                return orig_save(app_obj, sess, resp)
+            except Exception:
+                pass
+
+        app.session_interface.open_session = safe_open_session
+        app.session_interface.save_session = safe_save_session
