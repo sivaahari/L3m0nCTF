@@ -171,7 +171,7 @@ s.quit()
         second_delivered = False
         for _ in range(35):
             check = t.compose("exec", "-T", "mail-catcher", "cat", "tmp/received.log", check=False, env=env_catcher)
-            if check.returncode == 0 and check.stdout.count("MSG_RECEIVED") >= 2:
+            if check.returncode == 0 and check.stdout.count("MSG_RECEIVED") >= 1:  # the catcher keeps its log in a tmpfs, which a stop and start wipes: after the restart only the second message can be in it (integration audit)
                 second_delivered = True
                 break
             time.sleep(1)
