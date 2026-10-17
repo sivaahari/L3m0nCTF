@@ -41,7 +41,6 @@ COPY --chown=root:root --chmod=644 docker/ctfd/l3mon-env.sh /usr/local/lib/l3mon
 COPY --chown=root:root --chmod=755 docker/ctfd/l3mon-entrypoint.sh /usr/local/bin/l3mon-entrypoint
 COPY --chown=root:root --chmod=755 docker/ctfd/l3mon-run.sh /usr/local/bin/l3mon-run
 COPY --chown=root:root --chmod=644 docker/ctfd/healthcheck.py /usr/local/lib/l3mon-healthcheck.py
-RUN printf "[global]\ntimeout = 120\nretries = 10\n" > /etc/pip.conf
 ENTRYPOINT ["/usr/local/bin/l3mon-entrypoint"]
 ENV PYTHONDONTWRITEBYTECODE=1
 
