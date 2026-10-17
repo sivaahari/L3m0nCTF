@@ -293,3 +293,50 @@ def test_player_instances_no_team():
             assert r_post.get_json()["error"] == "no_team"
 
     destroy_ctfd(app)
+
+
+def test_a_player_cannot_choose_how_long_their_instance_lives():
+    """Found by the integration audit: the player API forwarded the request's `ttl_seconds` to the instancer, so the only thing between a player and an
+    instance that lives for a year was the instancer's development switch. The field is ignored unless the platform itself is run in a test mode."""
+    app = create_ctfd(user_mode="teams", enable_plugins=True)
+    with app.app_context():
+        c1, c2, c3, c4, cs, alice = _setup_world(app)
+        seen = []
+
+        class Spy(FakeInstancerClient):
+            def request(self, method, path, body=None):
+                if method == "POST" and path == "/v1/instances":
+                    seen.append(dict(body))
+                return super().request(method, path, body)
+
+        set_client_override(Spy())
+        with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
+            with mock.patch("CTFd.plugins.l3mon_instances.api.get_flag_secret", return_value="test-secret"):
+                r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c1, "ttl_seconds": 31536000})
+                assert r.status_code == 201
+        assert seen and "ttl_seconds" not in seen[0], seen
+        assert r.get_json()["data"]["ends"] - T_LIVE <= 2700 if "ends" in r.get_json()["data"] else True
+    set_client_override(None)
+    destroy_ctfd(app)
+
+
+def test_the_ttl_override_exists_only_when_the_test_switch_is_on(monkeypatch):
+    monkeypatch.setenv("L3MON_INSTANCES_TTL_OVERRIDE", "1")
+    app = create_ctfd(user_mode="teams", enable_plugins=True)
+    with app.app_context():
+        c1, c2, c3, c4, cs, alice = _setup_world(app)
+        seen = []
+
+        class Spy(FakeInstancerClient):
+            def request(self, method, path, body=None):
+                if method == "POST" and path == "/v1/instances":
+                    seen.append(dict(body))
+                return super().request(method, path, body)
+
+        set_client_override(Spy())
+        with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
+            with mock.patch("CTFd.plugins.l3mon_instances.api.get_flag_secret", return_value="test-secret"):
+                assert alice.post("/api/v1/l3mon/instances", json={"challenge_id": c1, "ttl_seconds": 120}).status_code == 201
+        assert seen and seen[0].get("ttl_seconds") == 120
+    set_client_override(None)
+    destroy_ctfd(app)

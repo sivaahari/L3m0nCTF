@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 import re
 
 from flask import Blueprint, request
@@ -130,7 +131,9 @@ def start_instance():
     # 5. Call instancer client
     client = InstancerClient()
     try:
-        ttl_seconds = data.get("ttl_seconds")
+        # How long an instance lives comes from the challenge's manifest, never from the player. A test switch (the platform started with
+        # L3MON_INSTANCES_TTL_OVERRIDE=1, which no overlay sets) lets the integration tests ask for a short life.
+        ttl_seconds = data.get("ttl_seconds") if os.environ.get("L3MON_INSTANCES_TTL_OVERRIDE") == "1" else None
         inst_data = client.start_instance(
             team_id=team.id,
             challenge_id=challenge_id,
