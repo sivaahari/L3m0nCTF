@@ -1,0 +1,33 @@
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200]
+      method: GET
+      no_follow_redirects: false
+      fail_if_ssl: false
+
+  http_readyz:
+    prober: http
+    timeout: 3s
+    http:
+      valid_status_codes: [200]
+      method: GET
+      fail_if_body_not_matches_regexp:
+        - '"status":\s*"ready"'
+      headers:
+        Host: localhost
+
+  http_ctftime:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200]
+      method: GET
+      headers:
+        Host: localhost
+
+  tcp_connect:
+    prober: tcp
+    timeout: 5s

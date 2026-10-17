@@ -1,0 +1,114 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Event Pulse",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "reqps" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 },
+      "id": 2,
+      "title": "Total Request Rate (RPS)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(nginx_http_requests_total[1m]))", "legendFormat": "Requests / sec" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "s" } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 },
+      "id": 3,
+      "title": "Latency Percentiles (p50 / p95 / p99)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(nginx_http_request_duration_seconds_bucket[2m])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(nginx_http_request_duration_seconds_bucket[2m])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(nginx_http_request_duration_seconds_bucket[2m])) by (le))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "unit": "percent" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
+      "id": 4,
+      "title": "Error Rates (5xx / 4xx %)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "(sum(rate(nginx_http_requests_total{status=~\"5..\"}[1m])) / sum(rate(nginx_http_requests_total[1m]))) * 100", "legendFormat": "5xx Error %" },
+        { "expr": "(sum(rate(nginx_http_requests_total{status=~\"4..\"}[1m])) / sum(rate(nginx_http_requests_total[1m]))) * 100", "legendFormat": "4xx Error %" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "title": "Competition Metrics",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 9 },
+      "id": 6,
+      "title": "Solves (Last Min)",
+      "type": "stat",
+      "targets": [
+        { "expr": "l3mon_solves_last_minute", "legendFormat": "Solves" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 9 },
+      "id": 7,
+      "title": "Wrong Submissions (Last Min)",
+      "type": "stat",
+      "targets": [
+        { "expr": "l3mon_wrong_attempts_last_minute", "legendFormat": "Wrong Attempts" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 9 },
+      "id": 8,
+      "title": "Registrations (Last Min)",
+      "type": "stat",
+      "targets": [
+        { "expr": "l3mon_registrations_last_minute", "legendFormat": "Registrations" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 9 },
+      "id": 9,
+      "title": "Scoreboard Tick Counter",
+      "type": "stat",
+      "targets": [
+        { "expr": "l3mon_tick", "legendFormat": "Current Tick" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["l3mon", "overview", "ops"],
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "title": "L3m0nCTF 2026 - Event Overview",
+  "uid": "l3mon-overview",
+  "version": 1
+}

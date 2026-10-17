@@ -11,6 +11,7 @@ private/
 
 # Data dumps and backups (never commit these)
 backups/
+deploy/ops/backup/
 *.dump
 *.sql.gz
 *.sqlite3
@@ -41,3 +42,4 @@ deploy/compose/generated/
 # The penetration-test bundle (images, throwaway secrets, demo data): built on demand, never committed
 pentest-bundle/
 tests/integration/fixtures/story-run/
+tests/load/summary.json

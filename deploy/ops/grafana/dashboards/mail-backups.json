@@ -1,0 +1,101 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Mail Relay Performance",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 1 },
+      "id": 2,
+      "title": "Spool Queue Backlog Depth",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "mail_spool_queue_count", "legendFormat": "Queued Messages" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 1 },
+      "id": 3,
+      "title": "Delivery Rate vs Submission Rate",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(mail_delivered_total[1m])", "legendFormat": "Delivered/s" },
+        { "expr": "rate(mail_submissions_total[1m])", "legendFormat": "Submitted/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 1 },
+      "id": 4,
+      "title": "Rejection Rate (Size / Rate Limits)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(mail_rejected_total[1m])", "legendFormat": "Rejections/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 5,
+      "title": "Disaster Recovery & Backup Heartbeat",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "id": 6,
+      "title": "Time Since Last Backup (Heartbeat Age)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "time() - l3mon_backup_last_success_timestamp_seconds", "legendFormat": "Seconds Since Backup" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
+      "id": 7,
+      "title": "Backup Archive Size",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "l3mon_backup_last_size_bytes", "legendFormat": "Archive Size" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
+      "id": 8,
+      "title": "Backup Execution Duration",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "l3mon_backup_last_duration_seconds", "legendFormat": "Duration (s)" }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["l3mon", "mail", "backup", "ops"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "L3m0nCTF 2026 - Mail and Backups",
+  "uid": "l3mon-mail-backups",
+  "version": 1
+}

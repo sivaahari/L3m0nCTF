@@ -4,6 +4,13 @@ character-set-server = utf8mb4
 collation-server = utf8mb4_unicode_ci
 skip-name-resolve
 
+# Binary logging for point-in-time recovery (PITR)
+server_id = 1
+log-bin = /var/lib/mysql/mariadb-bin
+binlog_format = ROW
+expire_logs_days = 2
+max_binlog_size = 100M
+
 # CTFd workers each keep a pool of connections; this must stay above workers x pool size (4 x 25 = 100 for now).
 max_connections = 400
 wait_timeout = 28800
