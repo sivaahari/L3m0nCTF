@@ -1,0 +1,56 @@
+# Disposable email domains blocklist
+# Source: Curated well-known disposable email domains (based on disposable-email-domains / CC0-1.0)
+# Licence: Creative Commons Zero v1.0 Universal (CC0-1.0)
+# Note: Any subdomain of a domain listed here is also blocked.
+10minutemail.com
+10minutemail.net
+10minutemail.org
+20minutemail.com
+anonbox.net
+anonymbox.com
+disposable.com
+dispostable.com
+dropmail.me
+fakemailgenerator.com
+getairmail.com
+grr.la
+guerrillamail.biz
+guerrillamail.com
+guerrillamail.de
+guerrillamail.net
+guerrillamail.org
+guerrillamailblock.com
+harakirimail.com
+incognitomail.org
+inboxkitten.com
+mailcatch.com
+maildrop.cc
+mailinator.com
+mailinator.net
+mailinator.org
+mailinator2.net
+mailnesia.com
+mohmal.com
+mytemp.email
+nada.ltd
+sharklasers.com
+smailpro.com
+spam4.me
+spambog.com
+spambox.us
+spamfree24.org
+spamgourmet.com
+temp-mail.org
+tempail.com
+tempinbox.com
+tempmail.com
+tempmail.net
+tempmailaddress.com
+throwawaymail.com
+trashmail.com
+trashmail.net
+yopmail.com
+yopmail.fr
+yopmail.net
+yopmail.org
+zippymail.info

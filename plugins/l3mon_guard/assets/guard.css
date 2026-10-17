@@ -1,0 +1,17 @@
+#guard-app .guard-bar { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1.25rem; }
+#guard-app .guard-card { border: 1px solid rgba(128, 128, 128, .35); border-radius: .35rem; margin-bottom: 1rem; padding: 1rem; background: #fff; }
+#guard-app table { width: 100%; margin-top: .5rem; }
+#guard-app table th, #guard-app table td { padding: .5rem .75rem; vertical-align: top; }
+#guard-app .badge-kind { font-size: .85rem; padding: .25rem .5rem; }
+#guard-app .status-new { font-weight: bold; color: #b00020; }
+#guard-app .status-reviewed { color: #0288d1; }
+#guard-app .status-dismissed { color: #616161; }
+#guard-app .status-actioned { color: #2e7d32; font-weight: bold; }
+#guard-app .guard-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-top: .5rem; }
+#guard-app .note-input { width: 100%; max-width: 20rem; }
+@media (max-width: 640px) {
+  #guard-app table thead { display: none; }
+  #guard-app table tr { display: block; margin-bottom: 1rem; border-bottom: 1px solid #ccc; padding-bottom: .5rem; }
+  #guard-app table td { display: block; padding: .25rem 0; }
+  #guard-app table td::before { content: attr(data-label) ": "; font-weight: 600; display: inline-block; min-width: 6rem; }
+}
