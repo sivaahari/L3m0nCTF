@@ -275,7 +275,7 @@ Do these in the Cloudflare dashboard for the zone **l3m0nctf.xyz**. **The order 
 
 ### 3.2 Our own client-certificate authority (proves a request came through *our* Cloudflare zone)
 
-Without this, any Cloudflare customer could aim traffic at your VM through Cloudflare. Run this in **Cloud Shell** (not on the VM), in an empty folder. It asks for a passphrase once: choose a strong one and put it in the vault.
+Without this, any Cloudflare customer could aim traffic at your VM through Cloudflare. Run this in **Cloud Shell** (not on the VM), in an empty folder. The first command asks you to **choose** a passphrase (twice) and two of the later commands ask you to **type it again**: choose a strong one and put it in the vault.
 
 ```bash
 mkdir -p ~/aop && cd ~/aop
