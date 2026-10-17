@@ -165,3 +165,50 @@ def test_healthz_and_metrics(instancer_api):
         assert resp.status == 200
         text = resp.read().decode()
         assert "l3mon_instances_active" in text
+
+
+# ---- added by the integration audit (2026-10-18) ---------------------------------------------------------------------------------------------
+
+def _raw(url, authorization):
+    """A GET with an exact Authorization header (urllib refuses non-Latin-1 header text, so the header is sent as raw bytes over a socket)."""
+    import socket
+    from urllib.parse import urlsplit
+    parts = urlsplit(url)
+    with socket.create_connection((parts.hostname, parts.port), timeout=3) as sock:
+        sock.sendall(b"GET " + parts.path.encode() + b" HTTP/1.1\r\nHost: x\r\nAuthorization: " + authorization + b"\r\nConnection: close\r\n\r\n")
+        data = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+    return int(data.split(b" ", 2)[1])
+
+
+def test_a_non_ascii_token_is_refused_with_401_and_does_not_break_the_handler(instancer_api):
+    """compare_digest on two str raises TypeError for non-ASCII text: the handler thread died and the caller got no answer."""
+    base = instancer_api["base_url"]
+    assert _raw(base + "/v1/capacity", "Bearer tøken-ünï".encode("utf-8")) == 401
+    assert _raw(base + "/v1/capacity", b"Bearer " + INSTANCER_TOKEN.encode()) == 200  # the server is still fine
+
+
+def test_an_empty_router_token_never_matches_an_empty_bearer(tmp_path):
+    """If ROUTER_TOKEN were empty, `Authorization: Bearer ` (an empty token) would equal it and open /v1/routes. An empty token matches nothing."""
+    from services.instancer.tests.test_instancer_core import MockDockerClient as Mock
+    import socket
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    manifest = load_manifest_from_string(MANIFEST_TOML, dev_mode=True)
+    mgr = InstanceManager(manifest=manifest, docker_client=Mock(), instance_domain="inst.test", dev_mode=True)
+    server = create_instancer_server(host="127.0.0.1", port=port, manager=mgr, instancer_token=INSTANCER_TOKEN, router_token="")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    try:
+        assert _raw(f"http://127.0.0.1:{port}/v1/routes", b"Bearer ") == 401
+        assert _raw(f"http://127.0.0.1:{port}/v1/routes", b"Bearer  ") == 401
+        assert _raw(f"http://127.0.0.1:{port}/v1/routes", b"Bearer " + INSTANCER_TOKEN.encode()) == 200
+    finally:
+        server.shutdown()

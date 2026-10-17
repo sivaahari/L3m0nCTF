@@ -14,7 +14,7 @@ Date: 17 October 2026
 - **Safety Verifier (`assert_safe`)**: Strict validation rejecting 15+ hostile specs (missing pinned digest, root UID, privileged mode, missing cap_drop, host mounts, socket mounts, host network).
 - **Instance Manager (`services/instancer/manager.py`)**: Manages container and network lifecycle via Docker API over socket proxy. Automatically creates per-instance isolated Docker networks (`internal: true`), dynamically connects the router, records metadata directly as Docker labels (`l3mon.instance`, `l3mon.team_id`, etc.), enforces team quotas (max 3 instances per team, 1 per challenge), 60s cooldowns, TTL reaper (default 45 min), and an absolute 3-hour lifetime cap. Reconciles state purely from labels on boot.
 - **Instancer Server & Metrics (`services/instancer/server.py`)**: REST API on private port 8300 authenticated via `INSTANCER_TOKEN` (`POST /v1/instances`, `GET /v1/instances`, `POST /v1/instances/{id}/renew`, `DELETE /v1/instances/{id}`, `POST /v1/admin/kill`, `GET /v1/capacity`). Dedicated read-only route `GET /v1/routes` authenticated via `ROUTER_TOKEN`. Dedicated unauthenticated Prometheus metrics and health listener on private port 8301 (`GET /healthz`, `GET /metrics`).
-- **Fixture Image (`services/instancer/tests/fixtures/demo-web/`)**: Minimal web server serving dynamic `$FLAG` on `/flag` with zero dependencies. Built as `l3mon-fixture/demo-web:dev`.
+- **Fixture Image (`services/instancer/tests/fixtures/web/`)**: Minimal web server serving dynamic `$FLAG` on `/flag` with zero dependencies. Built as `l3mon-fixture/demo-web:dev`.
 
 ### Data Plane (`services/instancer/router/`)
 - Pure Python async reverse proxy with zero external dependencies.
@@ -56,7 +56,7 @@ Date: 17 October 2026
 (cd tools && python -m l3mon secrets generate --dir ../.secrets && python -m l3mon config render ../config/event.example.toml --out ../deploy/compose/generated)
 
 # Build fixture challenge image
-docker build -f services/instancer/tests/fixtures/demo-web/Dockerfile -t l3mon-fixture/demo-web:dev services/instancer/tests/fixtures/demo-web
+docker build -f services/instancer/tests/fixtures/web/Dockerfile -t l3mon-fixture/demo-web:dev services/instancer/tests/fixtures/web
 
 # Build instancer, router, and CTFd images
 docker build -f services/instancer/Dockerfile -t l3mon/instancer:dev .

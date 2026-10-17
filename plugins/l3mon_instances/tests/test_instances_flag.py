@@ -97,3 +97,23 @@ def test_dynamic_flag_compare():
                     assert L3monDynamicFlag.compare(key_row, correct_flag) is False
 
     destroy_ctfd(app)
+
+
+@pytest.mark.parametrize("provided", ["é" * 40, _PREFIX + "ünï" + _SUFFIX, "\u202e" + _PREFIX + "0" * 32 + _SUFFIX, "日本語のフラグ", "\ud800"])
+def test_a_submission_with_non_ascii_text_is_simply_wrong_and_never_an_error(provided):
+    """Found by the integration audit: hmac.compare_digest on two str raises TypeError when either holds a non-ASCII character, so one accented letter
+    in a submitted flag made CTFd's flag check raise and the player got a server error instead of 'incorrect'."""
+    team = SimpleNamespace(id=7)
+    row = SimpleNamespace(challenge_id=42)
+    with mock.patch("CTFd.plugins.l3mon_instances.flag.get_flag_secret", return_value="test-secret-value"), \
+            mock.patch("CTFd.plugins.l3mon_instances.flag.get_current_team", return_value=team):
+        assert L3monDynamicFlag.compare(row, provided) is False
+
+
+def test_the_right_flag_is_still_right_after_the_comparison_moved_to_bytes():
+    team = SimpleNamespace(id=7)
+    row = SimpleNamespace(challenge_id=42)
+    with mock.patch("CTFd.plugins.l3mon_instances.flag.get_flag_secret", return_value="test-secret-value"), \
+            mock.patch("CTFd.plugins.l3mon_instances.flag.get_current_team", return_value=team):
+        assert L3monDynamicFlag.compare(row, derive_team_flag("test-secret-value", 7, 42)) is True
+        assert L3monDynamicFlag.compare(row, derive_team_flag("test-secret-value", 8, 42)) is False

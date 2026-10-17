@@ -66,10 +66,14 @@ class InstancerAPIHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "unauthorized", "message": "Missing or malformed Authorization header"})
             return False
 
-        token = auth_header[7:].strip()
-        # Constant-time comparison
-        valid_instancer = hmac.compare_digest(token, self.instancer_token)
-        valid_router = allow_router and hmac.compare_digest(token, self.router_token)
+        # Constant-time comparison, on bytes: compare_digest raises TypeError for a str with a non-ASCII character, which killed the handler thread.
+        # (http.server decodes header text as Latin-1, so re-encoding as Latin-1 gives back the bytes that were sent.)
+        token = auth_header[7:].strip().encode("latin-1", "replace")
+        instancer_token = (self.instancer_token or "").encode("utf-8")
+        router_token = (self.router_token or "").encode("utf-8")
+        # An empty configured token matches nothing: otherwise an empty bearer ("Bearer ") would equal an unset ROUTER_TOKEN.
+        valid_instancer = bool(instancer_token) and hmac.compare_digest(token, instancer_token)
+        valid_router = allow_router and bool(router_token) and hmac.compare_digest(token, router_token)
 
         if not (valid_instancer or valid_router):
             self._send_json(401, {"error": "unauthorized", "message": "Invalid token"})

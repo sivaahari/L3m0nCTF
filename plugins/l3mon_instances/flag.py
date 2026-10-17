@@ -68,7 +68,9 @@ class L3monDynamicFlag(BaseFlag):
         expected = derive_team_flag(secret, team.id, challenge_id)
 
         # Constant-time comparison for the correct team flag
-        if hmac.compare_digest(expected, provided):
+        # bytes, not str: compare_digest raises TypeError for a str with a non-ASCII character, and a player can send any text
+        provided_bytes = provided.encode("utf-8", "surrogatepass")
+        if hmac.compare_digest(expected.encode("utf-8"), provided_bytes):
             return True
 
         # Check for flag reuse evidence if format matches exact flag shape
@@ -80,7 +82,7 @@ class L3monDynamicFlag(BaseFlag):
                 for entry in logs:
                     if entry.team_id != team.id:
                         cand = derive_team_flag(secret, entry.team_id, challenge_id)
-                        if hmac.compare_digest(cand, provided):
+                        if hmac.compare_digest(cand.encode("utf-8"), provided_bytes):
                             # Record flag reuse evidence
                             try:
                                 from CTFd.plugins.l3mon_guard import evidence
