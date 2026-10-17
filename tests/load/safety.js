@@ -12,7 +12,7 @@ const ALLOW_LIST = [
   'host.docker.internal:8080',
   'ctfd:8000',
   'nginx:80',
-  'play.l3monctf.xyz'
+  'play.l3m0nctf.xyz'
 ];
 
 export function validateTarget(targetUrl) {
@@ -27,7 +27,8 @@ export function validateTarget(targetUrl) {
     .toLowerCase();
 
   const isAllowed = ALLOW_LIST.some(allowed => {
-    return host === allowed.toLowerCase() || host.startsWith(allowed.toLowerCase());
+    // the whole host name, with or without its port: a name that merely starts like an allowed one (localhost.evil.example) is not allowed
+    return host === allowed.toLowerCase() || host.split(':')[0] === allowed.toLowerCase();
   });
 
   if (!isAllowed) {

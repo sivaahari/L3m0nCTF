@@ -20,7 +20,7 @@ ALLOW_LIST = [
     "127.0.0.1:8080",
     "ctfd:8000",
     "nginx:80",
-    "play.l3monctf.xyz",
+    "play.l3m0nctf.xyz",
 ]
 
 

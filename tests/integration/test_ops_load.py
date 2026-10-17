@@ -25,7 +25,8 @@ def test_allowlist_json_exists_and_contains_expected_hosts():
     assert "localhost" in data
     assert "127.0.0.1" in data
     assert "ctfd:8000" in data
-    assert "play.l3monctf.xyz" in data
+    assert "play.l3m0nctf.xyz" in data
+    assert "play.l3monctf.xyz" not in data, "a misspelt domain is another party's domain"
 
 
 def test_k6_runner_refuses_unauthorized_target():
@@ -35,6 +36,12 @@ def test_k6_runner_refuses_unauthorized_target():
         "http://8.8.8.8",
         "https://google.com",
         "http://unauthorized.internal:9000",
+        # a name that only STARTS like an allowed one is somebody else's (integration audit: the check was a prefix match)
+        "http://localhost.evil.example",
+        "http://127.0.0.1.nip.io",
+        "http://ctfd:8000.evil.example",
+        "http://play.l3m0nctf.xyz.evil.example",
+        "http://play.l3monctf.xyz",  # the first version listed this misspelt name, which is some other domain
     ]
     for target in bad_targets:
         res = subprocess.run(

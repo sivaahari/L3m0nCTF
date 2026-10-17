@@ -174,7 +174,7 @@ Measured on 17 October 2026 on the local development environment (Git Bash MINGW
 
 ### 4.2 Load Testing Suite (`tests/load/`)
 - Powered by official pinned `grafana/k6` container image.
-- **Target Allow-List Safety Guard**: Refuses to run if target host is not in allow-list (`localhost`, `127.0.0.1`, `play.l3monctf.xyz` when explicitly added).
+- **Target Allow-List Safety Guard**: Refuses to run if target host is not in allow-list (`localhost`, `127.0.0.1`, `play.l3m0nctf.xyz` when explicitly added).
 - **Test Account Isolation**: All generated test accounts prefixed `zzload_*`.
 - Automated cleanup subcommand/script.
 - Scenarios:

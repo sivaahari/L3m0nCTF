@@ -22,8 +22,8 @@ Organisers must complete the following in the [Google Cloud Console](https://con
 2. Navigate to **APIs & Services > OAuth consent screen**:
    - User Type: **External**.
    - App Name: `L3m0nCTF 2026`.
-   - User support email: `security@l3monctf.xyz` or organiser contact email.
-   - Authorized domains: `l3monctf.xyz`.
+   - User support email: `security@l3m0nctf.xyz` or organiser contact email.
+   - Authorized domains: `l3m0nctf.xyz`.
    - Developer contact email: organiser team contact.
 3. Scopes:
    - Add `openid`, `.../auth/userinfo.email`, and `.../auth/userinfo.profile`.

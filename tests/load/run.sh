@@ -30,12 +30,13 @@ for arg in "$@"; do
 done
 
 # 1. Target Allow-List Safety Check
-ALLOW_LIST=("localhost" "127.0.0.1" "localhost:8080" "127.0.0.1:8080" "ctfd:8000" "nginx:80" "nginx:8080" "play.l3monctf.xyz")
+ALLOW_LIST=("localhost" "127.0.0.1" "localhost:8080" "127.0.0.1:8080" "ctfd:8000" "nginx:80" "nginx:8080" "play.l3m0nctf.xyz")
 TARGET_HOST="$(echo "$TARGET_URL" | sed -e 's|^[^/]*//||' -e 's|/.*$||' | tr '[:upper:]' '[:lower:]')"
 
 ALLOWED=false
 for allowed in "${ALLOW_LIST[@]}"; do
-  if [[ "$TARGET_HOST" == "$allowed"* ]]; then
+  # the whole host name (with or without its port) must be on the list: a name that merely STARTS like an allowed one (localhost.evil.example) is not
+  if [[ "$TARGET_HOST" == "$allowed" || "${TARGET_HOST%%:*}" == "$allowed" ]]; then
     ALLOWED=true
     break
   fi
