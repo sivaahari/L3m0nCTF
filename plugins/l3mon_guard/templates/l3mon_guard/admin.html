@@ -1,0 +1,52 @@
+{% extends "admin/base.html" %}
+
+{% block stylesheets %}
+	<link rel="stylesheet" href="{{ request.script_root }}/plugins/l3mon_guard/assets/guard.css">
+{% endblock %}
+
+{% block content %}
+	<div class="jumbotron">
+		<div class="container">
+			<h1>Anti-abuse evidence review</h1>
+			<p class="lead mb-0">Review abuse indicators, flag reuses, bursts, and shared devices. All decisions are made by humans.</p>
+		</div>
+	</div>
+	<div class="container">
+		<noscript><div class="alert alert-warning">This page needs JavaScript to review and update evidence.</div></noscript>
+		<div id="guard-app" data-api="{{ request.script_root }}/api/v1/l3mon/admin/guard/evidence">
+			<div class="guard-bar">
+				<label for="filter-status">Status:
+					<select id="filter-status" class="form-control d-inline-block w-auto">
+						<option value="">All</option>
+						<option value="new" selected>New</option>
+						<option value="reviewed">Reviewed</option>
+						<option value="dismissed">Dismissed</option>
+						<option value="actioned">Actioned</option>
+					</select>
+				</label>
+				<label for="filter-kind">Kind:
+					<select id="filter-kind" class="form-control d-inline-block w-auto">
+						<option value="">All</option>
+						<option value="flag_reuse">Flag reuse</option>
+						<option value="burst">Flag burst</option>
+						<option value="shared_address">Shared address</option>
+						<option value="registration_burst">Registration burst</option>
+						<option value="captcha_unverified">Unverified CAPTCHA</option>
+						<option value="disposable_email_blocked">Disposable email</option>
+						<option value="name_policy_blocked">Name policy</option>
+					</select>
+				</label>
+				<label for="filter-team">Team ID:
+					<input id="filter-team" type="text" class="form-control d-inline-block w-auto" placeholder="Any team">
+				</label>
+				<button id="btn-refresh" class="btn btn-primary" type="button">Filter</button>
+			</div>
+			<p id="guard-status" role="status" aria-live="polite">Loading evidence queue…</p>
+			<div id="guard-table-wrap"></div>
+		</div>
+	</div>
+{% endblock %}
+
+{% block scripts %}
+	<script defer src="{{ request.script_root }}/plugins/l3mon_guard/assets/guard.js"></script>
+{% endblock %}

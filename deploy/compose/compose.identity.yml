@@ -1,0 +1,34 @@
+# Identity and abuse overlay (SP5, SP8): compose.base.yml plus this file.
+#
+#   L3MON_OVERLAYS=identity tools/compose.sh up -d --wait
+#
+# Adds secrets and environment variables for l3mon_guard (Cloudflare Turnstile,
+# rate limits, campus network allowlist) and l3mon_auth ("Continue with Google" OIDC).
+#
+# Empty secret files in .secrets/ leave each feature off until configured.
+
+services:
+  ctfd:
+    environment:
+      # Turnstile CAPTCHA (l3mon_guard)
+      TURNSTILE_SITEKEY: "${TURNSTILE_SITEKEY:-}"
+      TURNSTILE_SECRET_FILE: "/run/secrets/TURNSTILE_SECRET"
+
+      # Continue with Google OIDC (l3mon_auth)
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+      GOOGLE_CLIENT_SECRET_FILE: "/run/secrets/GOOGLE_CLIENT_SECRET"
+      L3MON_PLATFORM_HOST: "${PLATFORM_HOST:-play.l3m0nctf.xyz}"
+
+      # Campus networks allowlist & limits (l3mon_guard)
+      L3MON_GUARD_CAMPUS_NETS: "${L3MON_GUARD_CAMPUS_NETS:-}"
+      L3MON_GUARD_TEAM_LIMIT: "${L3MON_GUARD_TEAM_LIMIT:-40}"
+      L3MON_GUARD_REG_BURST_THRESHOLD: "${L3MON_GUARD_REG_BURST_THRESHOLD:-5}"
+    secrets:
+      - TURNSTILE_SECRET
+      - GOOGLE_CLIENT_SECRET
+
+secrets:
+  TURNSTILE_SECRET:
+    file: ../../.secrets/TURNSTILE_SECRET
+  GOOGLE_CLIENT_SECRET:
+    file: ../../.secrets/GOOGLE_CLIENT_SECRET
