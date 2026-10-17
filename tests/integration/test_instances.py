@@ -98,11 +98,31 @@ def delete_json(session: t.Session, path: str):
         return response.status, raw.decode("utf-8", "replace")
 
 
+def ctfd_overlays(current: str) -> str:
+    """Every overlay the stack runs with, and `instancer` as well.
+
+    Integration audit: the test used to recreate ctfd with `instancer` alone, which on a stack started with
+    identity,instancer,ops dropped the operations overlay's host names (ctfd, localhost); Prometheus and the readiness
+    probe reach the application as `ctfd:8000`, so from then on every scrape got a 500 ("Host is not trusted").
+    """
+    names = [name for name in current.split(",") if name]
+    if "instancer" not in names:
+        names.append("instancer")
+    return ",".join(names)
+
+
+def test_recreating_ctfd_keeps_every_overlay_the_stack_was_started_with():
+    assert ctfd_overlays("identity,instancer,ops") == "identity,instancer,ops"
+    assert ctfd_overlays("ops") == "ops,instancer"
+    assert ctfd_overlays("") == "instancer"
+    assert ctfd_overlays("ops,") == "ops,instancer"
+
+
 def restart_ctfd():
     t.compose(
         "up", "-d", "--wait", "--force-recreate", "--no-deps", "ctfd",
         timeout=400,
-        env={"L3MON_OVERLAYS": "instancer"},
+        env={"L3MON_OVERLAYS": ctfd_overlays(os.environ.get("L3MON_OVERLAYS", ""))},
     )
     t.wait_healthy("ctfd", 180)
 

@@ -34,18 +34,24 @@ def get_secret(name: str) -> str:
     return ""
 
 
-def test_prometheus_health_and_targets_up():
-    """Verify Prometheus /-/healthy and that all core scrape targets are UP."""
+def _required_targets_state(required_jobs):
+    """(missing jobs, {job: (health, last error)}) as Prometheus sees them right now."""
     url = "http://127.0.0.1:9090/api/v1/targets"
-    try:
-        resp = urllib.request.urlopen(url, timeout=5)
-    except Exception as exc:
-        pytest.fail(f"Could not connect to Prometheus at {url}: {exc}")
-
+    resp = urllib.request.urlopen(url, timeout=5)
     data = json.loads(resp.read().decode("utf-8"))
-    targets = data.get("data", {}).get("activeTargets", [])
-    assert len(targets) > 0, "No active targets found in Prometheus"
+    found = {}
+    for target in data.get("data", {}).get("activeTargets", []):
+        found[target.get("labels", {}).get("job")] = (target.get("health"), target.get("lastError") or "")
+    return required_jobs - set(found), found
 
+
+def test_prometheus_health_and_targets_up():
+    """Verify Prometheus is reachable and that all core scrape targets are UP.
+
+    Integration audit: a target is only UP after Prometheus has scraped it once since it last changed (15 s interval), so a
+    container restarted a moment before is checked for up to a minute. A target that stays down (a persistent error 500, for
+    example) still fails the test with Prometheus's own error text.
+    """
     # Core required targets that must be UP when stack is running
     required_jobs = {
         "ctfd",
@@ -57,19 +63,25 @@ def test_prometheus_health_and_targets_up():
         "blackbox-ctftime",
     }
 
-    found_jobs = {}
-    for t in targets:
-        job = t.get("labels", {}).get("job")
-        health = t.get("health")
-        last_error = t.get("lastError") or ""
-        found_jobs[job] = (health, last_error)
+    deadline = time.time() + 60
+    while True:
+        try:
+            missing, found = _required_targets_state(required_jobs)
+            error = None
+        except Exception as exc:
+            missing, found, error = required_jobs, {}, exc
+        down = {job: found[job] for job in required_jobs & set(found) if found[job][0] != "up"}
+        if (not missing and not down) or time.time() > deadline:
+            break
+        time.sleep(3)
 
-    missing = required_jobs - set(found_jobs.keys())
+    if error is not None:
+        pytest.fail(f"Could not read the targets from Prometheus: {error}")
+    assert found, "No active targets found in Prometheus"
     assert not missing, f"Missing required scrape targets: {missing}"
-
-    for job in required_jobs:
-        health, last_err = found_jobs[job]
-        assert health == "up", f"Target job '{job}' is not UP: health={health}, lastError={last_err}"
+    for job in sorted(down):
+        health, last_err = down[job]
+        pytest.fail(f"Target job '{job}' is not UP: health={health}, lastError={last_err}")
 
 
 def test_prometheus_rules_loaded():
@@ -160,12 +172,12 @@ def test_loki_ready_status():
     """Verify Loki log store answers /ready with 'ready'."""
     cmd = ["docker", "exec", "l3mon-loki-1", "wget", "-qO-", "http://127.0.0.1:3100/ready"]
     out = ""
-    for _ in range(10):
+    for _ in range(30):  # Loki answers 503 for a while after it starts and while the machine is busy (integration audit: ten tries of a second were too few)
         done = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if done.returncode == 0 and "ready" in done.stdout.lower():
             out = done.stdout
             break
-        time.sleep(1)
+        time.sleep(2)
     assert "ready" in out.lower(), f"Loki failed to report ready: {out}"
 
 

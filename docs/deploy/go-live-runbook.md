@@ -573,7 +573,7 @@ CTFtime sends an approval email and opens the event's management page. Then:
 
 ## 8. Later this week: the extra pieces (each is optional and independent)
 
-Add them one at a time. Each is switched on by adding its name to `L3MON_OVERLAYS` in `/etc/l3mon/production.env` and then running `tools/compose.sh up -d --wait`. If one misbehaves, take its name out again and run the same command: the platform keeps working without it.
+Add them one at a time. Each is switched on by adding its name to `L3MON_OVERLAYS` in `/etc/l3mon/production.env` and then running `tools/compose.sh up -d --wait`. If one misbehaves, take its name out again and run the same command: the platform keeps working without it. **Every new SSH session starts without these settings**: run `set -a; . /etc/l3mon/production.env; set +a` first (the line from Part 5), because `tools/compose.sh` reads `L3MON_OVERLAYS` only from the shell's environment. A compose command run without it quietly recreates containers without the overlays' settings (for example the operations overlay adds the host name `ctfd` that monitoring uses, and without it every monitoring scrape gets an error 500), and `tools/compose.sh ps` will show the extra services missing.
 
 ### 8.1 Anti-abuse and "Continue with Google": the overlay `identity`
 

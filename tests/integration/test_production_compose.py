@@ -24,7 +24,8 @@ EXTRA = {"EXTRA_HOST": "crew.l3m0nctf.xyz", "MAIL_SERVER": "smtp.example.org", "
 
 
 def compose_config(environment: str, extra: dict | None = None) -> dict:
-    env = {**os.environ, "L3MON_ENV": environment, **(extra or {})}
+    # these tests read base + the environment's own file; overlays set in the developer's shell (the three-overlay stack) are not part of that (integration audit)
+    env = {**{k: v for k, v in os.environ.items() if k != "L3MON_OVERLAYS"}, "L3MON_ENV": environment, **(extra or {})}
     out = subprocess.run([t.BASH, str(t.ROOT / "tools" / "compose.sh"), "config", "--format", "json"], capture_output=True, text=True, env=env, timeout=60)
     assert out.returncode == 0, out.stderr[-600:]
     return json.loads(out.stdout)
