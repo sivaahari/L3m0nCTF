@@ -369,7 +369,7 @@ Following the 18 October 2026 audit of `pre-deployment`, this branch addressed f
 |---|---|---|
 | **F1** | Full-table `Users.query.all()` scans during registration and Google sign-up | Created `l3mon_email_norm` table (migration `3e4f5a6b7c8d`) with unique constraint on `(user_id)` and `(norm)`. Added SQLAlchemy event listeners (`after_insert`, `after_update`, `after_delete` on `Users`) and lazy batch backfill (`claim("l3mon_email_norm_backfill", 10.0)` in batches of 500). Replaced linear scans in `l3mon_guard` and `l3mon_auth` with $O(1)$ indexed lookup. |
 | **F2** | Campus-wide login CAPTCHA lockouts after 3 typos | Updated `is_login_captcha_required` and `record_login_failure` in `turnstile.py` to check `is_campus_ip(ip)` against `L3MON_GUARD_CAMPUS_NETS`. IP failure buckets are ignored for campus networks, while per-account failure counters remain strictly enforced. |
-| **F3** | Disposable email blocklist starter list | Added `test_guard_disposable_top_providers.py` asserting top 20 providers are never blocked and subdomains of listed domains are blocked. Documented development-time download request for full CC0 list. |
+| **F3** | Disposable email blocklist starter list | Downloaded full open list (9,895 domains) from disposable-email-domains (CC0-1.0) into `disposable_domains.txt` with human permission. Verified $O(1)$ set lookup, subdomain blocking, and added `test_guard_disposable_top_providers.py` asserting top 20 providers are never blocked. |
 | **F4** | Key refresh cooldown bypassed on unknown `kid` | Updated `jwt.verify_id_token` to set `force=False` when looking up unknown keys if `_JWKS_CACHE` is already populated. Enforces `MIN_KEY_REFRESH_INTERVAL` (60s) cooldown between outbound fetches. |
 | **F5(a)** | Arbitrary `TURNSTILE_VERIFY_URL` injection | Validated `TURNSTILE_VERIFY_URL` against `challenges.cloudflare.com` domain, or `localhost`/`127.0.0.1` only when `L3MON_AUTH_TEST_MODE=1`. |
 | **F5(b)** | Wording mismatch: "wrong attempts" vs all flag attempts | Standardized wording to "flag attempts" across code, docs, and UI. Counting all flag attempts is deliberate: even correct flag submissions require database transactions and locking. |
@@ -391,8 +391,9 @@ Following the 18 October 2026 audit of `pre-deployment`, this branch addressed f
 11. `plugins/l3mon_guard/tests/test_guard_disposable_top_providers.py`: Unit tests for top 20 provider protection and subdomain blocking.
 12. `plugins/l3mon_guard/tests/test_guard_turnstile.py`: Turnstile URL whitelist tests and IP address column assertions.
 13. `plugins/l3mon_auth/tests/test_auth_google.py`: Key refresh rate limit tests for unknown `kid`.
-14. `docs/deploy/identity.md`: Updated setting table wording and added Section 6.3 for theme author and nginx CSP.
-15. `docs/superpowers/plans/2026-10-18-identity-followup.md`: Comprehensive follow-up plan.
+14. `plugins/l3mon_guard/data/disposable_domains.txt`: Updated with 9,895 unique disposable domains from disposable-email-domains (CC0-1.0).
+15. `docs/deploy/identity.md`: Updated setting table wording and added Section 6.3 for theme author and nginx CSP.
+16. `docs/superpowers/plans/2026-10-18-identity-followup.md`: Comprehensive follow-up plan.
 
 ### 12.3 Break-on-Purpose Table for Follow-Up
 
