@@ -10,7 +10,7 @@ _log = logging.getLogger("l3mon.instancer.docker")
 
 
 class UnixHTTPConnection(HTTPConnection):
-    def __init__(self, unix_socket_path: str, timeout: int = 30):
+    def __init__(self, unix_socket_path: str, timeout: int = 15):
         super().__init__("localhost", timeout=timeout)
         self.unix_socket_path = unix_socket_path
 
@@ -28,7 +28,7 @@ class DockerClient:
     and UNIX domain sockets (/var/run/docker.sock).
     """
 
-    def __init__(self, base_url: Optional[str] = None, timeout: int = 30):
+    def __init__(self, base_url: Optional[str] = None, timeout: int = 15):
         url = base_url or os.getenv("DOCKER_HOST", "http://socket-proxy:2375")
         self.base_url = url
         self.timeout = timeout
@@ -160,3 +160,22 @@ class DockerClient:
                 "ip": ip,
             })
         return result
+
+    def list_networks(self, label_filter: Optional[dict] = None) -> list[dict]:
+        filters: dict[str, list[str]] = {}
+        if label_filter:
+            label_list = []
+            for k, v in label_filter.items():
+                if v is None:
+                    label_list.append(k)
+                else:
+                    label_list.append(f"{k}={v}")
+            filters["label"] = label_list
+
+        query = urllib.parse.urlencode({"filters": json.dumps(filters)})
+        status, data = self._request("GET", f"/networks?{query}")
+        if status != 200 or not isinstance(data, list):
+            _log.warning("Docker list_networks returned status %s: %s", status, data)
+            return []
+        return data
+
