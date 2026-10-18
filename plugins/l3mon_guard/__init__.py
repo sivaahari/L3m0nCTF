@@ -207,6 +207,10 @@ def load(app):
     # 1. Database migrations
     upgrade(plugin_name="l3mon_guard")
 
+    # 1b. Register email normalization event listeners
+    from CTFd.plugins.l3mon_guard.policies.email_norm import register_email_norm_listeners
+    register_email_norm_listeners()
+
     # 2. Blueprints
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_page_bp)

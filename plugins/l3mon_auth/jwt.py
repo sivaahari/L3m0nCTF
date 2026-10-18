@@ -194,7 +194,9 @@ def verify_id_token(
 
     # Look up public key
     if kid not in _JWKS_CACHE:
-        fetch_jwks(force=True)
+        # Honor MIN_KEY_REFRESH_INTERVAL unless cache is empty (SP8 F4)
+        force_refresh = not bool(_JWKS_CACHE)
+        fetch_jwks(force=force_refresh)
 
     public_key = _JWKS_CACHE.get(kid)
     if not public_key:

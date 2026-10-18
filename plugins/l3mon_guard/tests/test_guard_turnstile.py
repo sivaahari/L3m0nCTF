@@ -109,14 +109,40 @@ def test_turnstile_unreachable_fail_open_login_and_reset():
                 assert err is None
 
                 # Verify captcha_unverified evidence recorded
-                rows = Evidence.query.filter_by(kind="captcha_unverified").all()
+                rows = Evidence.query.filter_by(kind="captcha_unverified").order_by(Evidence.id).all()
                 assert len(rows) == 2
+                assert rows[0].address == "192.0.2.1"
+                assert "192.0.2.1" not in rows[0].detail
+                assert rows[0].detail == "action=login"
+                assert rows[1].address == "192.0.2.2"
+                assert "192.0.2.2" not in rows[1].detail
 
                 # Register fails closed
                 valid, err = verify_turnstile("token", "192.0.2.3", action="register")
                 assert valid is False
                 assert "could not be verified" in err
     destroy_ctfd(app)
+
+
+def test_turnstile_verify_url_whitelist():
+    from CTFd.plugins.l3mon_guard.turnstile import _get_verify_url, VERIFY_URL
+
+    # Disallowed external URL falls back to official Cloudflare URL
+    with mock.patch.dict(os.environ, {"TURNSTILE_VERIFY_URL": "https://evil.com/siteverify", "L3MON_AUTH_TEST_MODE": "0"}, clear=False):
+        assert _get_verify_url() == VERIFY_URL
+
+    # Localhost disallowed in production mode
+    with mock.patch.dict(os.environ, {"TURNSTILE_VERIFY_URL": "http://localhost:8000/siteverify", "L3MON_AUTH_TEST_MODE": "0"}, clear=False):
+        assert _get_verify_url() == VERIFY_URL
+
+    # Localhost allowed only in test mode
+    with mock.patch.dict(os.environ, {"TURNSTILE_VERIFY_URL": "http://localhost:8000/siteverify", "L3MON_AUTH_TEST_MODE": "1"}, clear=False):
+        assert _get_verify_url() == "http://localhost:8000/siteverify"
+
+    # Cloudflare domain always accepted
+    cf_url = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+    with mock.patch.dict(os.environ, {"TURNSTILE_VERIFY_URL": cf_url, "L3MON_AUTH_TEST_MODE": "0"}, clear=False):
+        assert _get_verify_url() == cf_url
 
 
 def test_login_failure_tracking_and_captcha_threshold():

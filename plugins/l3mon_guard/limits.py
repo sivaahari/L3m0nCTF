@@ -1,7 +1,7 @@
 """Rate limiting, campus network allowlisting, and abuse heuristics (SP5 B4.6, B4.8).
 
 Rules:
-- Per-team wrong flag attempt limit (default 40 wrong attempts/min across challenges)
+- Per-team flag attempt limit (default 40 flag attempts/min across challenges)
 - Answers 429 with Retry-After when team limit exceeded
 - Records 'burst' evidence once per window
 - Campus allow-list (L3MON_GUARD_CAMPUS_NETS) ignores address-based heuristics
@@ -80,7 +80,7 @@ def _get_backend_client():
 
 
 def check_and_record_team_attempt(team_id: int) -> tuple[bool, int]:
-    """Check if team has exceeded wrong attempt limit.
+    """Check if team has exceeded flag attempt limit.
 
     Returns (is_allowed, retry_after_seconds).
     """

@@ -55,7 +55,19 @@ def is_active() -> bool:
 
 
 def _get_verify_url() -> str:
-    return os.environ.get("TURNSTILE_VERIFY_URL", VERIFY_URL).strip() or VERIFY_URL
+    raw = os.environ.get("TURNSTILE_VERIFY_URL", VERIFY_URL).strip() or VERIFY_URL
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(raw)
+        if parts.scheme == "https" and parts.hostname == "challenges.cloudflare.com":
+            return raw
+        test_mode = os.environ.get("L3MON_AUTH_TEST_MODE", "").strip() == "1"
+        if test_mode and parts.scheme in ("http", "https") and parts.hostname in ("localhost", "127.0.0.1"):
+            return raw
+    except Exception:
+        pass
+    _log.warning("l3mon_guard: invalid or disallowed TURNSTILE_VERIFY_URL '%s', falling back to default", raw)
+    return VERIFY_URL
 
 
 def _inc_with_ttl(key: str, window: int) -> int:
@@ -89,12 +101,14 @@ def _get_count(key: str) -> int:
 
 
 def record_login_failure(username: str, ip: str) -> None:
-    """Record a failed login attempt for account and IP bucket."""
+    """Record a failed login attempt for account and IP bucket (SP5 F2)."""
     if username:
         canonical_user = username.strip().casefold()
         _inc_with_ttl(f"guard:login_fail:acc:{canonical_user}", LOGIN_FAIL_WINDOW)
     if ip:
-        _inc_with_ttl(f"guard:login_fail:ip:{ip}", LOGIN_FAIL_WINDOW)
+        from CTFd.plugins.l3mon_guard.limits import is_campus_ip
+        if not is_campus_ip(ip):
+            _inc_with_ttl(f"guard:login_fail:ip:{ip}", LOGIN_FAIL_WINDOW)
 
 
 def clear_login_failure(username: str, ip: str) -> None:
@@ -106,7 +120,7 @@ def clear_login_failure(username: str, ip: str) -> None:
 
 
 def is_login_captcha_required(username: str = "", ip: str = "") -> bool:
-    """Return True if login requires CAPTCHA verification due to recent failures."""
+    """Return True if login requires CAPTCHA verification due to recent failures (SP5 F2)."""
     if not is_active():
         return False
 
@@ -117,9 +131,11 @@ def is_login_captcha_required(username: str = "", ip: str = "") -> bool:
             return True
 
     if ip:
-        ip_fails = _get_count(f"guard:login_fail:ip:{ip}")
-        if ip_fails >= LOGIN_FAIL_THRESHOLD:
-            return True
+        from CTFd.plugins.l3mon_guard.limits import is_campus_ip
+        if not is_campus_ip(ip):
+            ip_fails = _get_count(f"guard:login_fail:ip:{ip}")
+            if ip_fails >= LOGIN_FAIL_THRESHOLD:
+                return True
 
     return False
 
@@ -178,7 +194,7 @@ def verify_turnstile(token: str, remote_ip: str | None = None, action: str = "re
         # Fail open for login and reset, fail closed for register
         if action in ("login", "reset"):
             from CTFd.plugins.l3mon_guard.evidence import record
-            record("captcha_unverified", detail=f"action={action}; ip={remote_ip or ''}")
+            record("captcha_unverified", detail=f"action={action}", address=remote_ip or "")
             return True, None
         else:
             # Register fails closed

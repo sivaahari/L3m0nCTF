@@ -211,14 +211,9 @@ def start():
 
 
 def _check_email_collision(email: str) -> bool:
-    """Check if normalized email already belongs to any registered user."""
-    norm_incoming, _ = normalize_email(email)
-    for u in Users.query.all():
-        if u.email:
-            norm_existing, _ = normalize_email(u.email)
-            if norm_incoming == norm_existing:
-                return True
-    return False
+    """Check if normalized email already belongs to any registered user (SP5 F1)."""
+    from CTFd.plugins.l3mon_guard.policies.email_norm import is_email_disguise_used
+    return is_email_disguise_used(email)
 
 
 def _create_google_user(sub: str, email: str, name_hint: str) -> tuple[Users | None, str | None]:

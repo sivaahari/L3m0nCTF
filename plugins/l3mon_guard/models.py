@@ -56,3 +56,15 @@ class Evidence(db.Model):
     status = db.Column(db.String(20), nullable=False, default="new", index=True)
     reviewer_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     note = db.Column(db.String(200), nullable=False, default="")
+
+
+class EmailNorm(db.Model):
+    __tablename__ = "l3mon_email_norm"
+    __table_args__ = (
+        db.UniqueConstraint("user_id", name="uq_l3mon_email_norm_user_id"),
+        db.UniqueConstraint("norm", name="uq_l3mon_email_norm_norm"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    norm = db.Column(db.String(255), nullable=False, index=True)

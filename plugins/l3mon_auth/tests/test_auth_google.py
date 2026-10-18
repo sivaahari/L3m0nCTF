@@ -492,3 +492,56 @@ def test_production_guard_refuses_nongit_hosts():
         # Non-Google host
         with pytest.raises(TokenError, match="refusing undocumented host"):
             jwt_mod._validate_host("https://evil-attacker.com/jwks")
+
+
+def test_jwks_refresh_rate_limit_honored_for_unknown_kid():
+    """Verify that an unknown kid honors MIN_KEY_REFRESH_INTERVAL unless cache is empty (SP8 F4)."""
+    import json
+    server1 = MockGoogleOIDC(kid="key-1")
+    server2 = MockGoogleOIDC(kid="key-2")
+
+    with mock.patch.dict(os.environ, {"L3MON_AUTH_TEST_MODE": "1"}, clear=False):
+        # 1. When cache is empty, fetch_jwks populates cache
+        jwt_mod._JWKS_CACHE = {}
+        jwt_mod._LAST_JWKS_REFRESH = 0.0
+
+        current_mock_server = server1
+
+        def fake_get(url, *args, **kwargs):
+            resp = mock.MagicMock()
+            resp.status_code = 200
+            if "discovery" in url or ".well-known" in url:
+                resp.content = b'{"jwks_uri": "https://accounts.google.com/oauth2/v3/certs"}'
+            else:
+                resp.content = json.dumps(current_mock_server.jwks()).encode("utf-8")
+            return resp
+
+        with mock.patch("requests.get", side_effect=fake_get) as mock_get:
+            with mock.patch("CTFd.plugins.l3mon_core.clock.now", return_value=1000.0):
+                # Token with key-1 should succeed and populate cache
+                claims1 = server1.build_valid_claims(client_id="test-client", nonce="test-nonce")
+                token1 = server1.sign_token(claims1)
+                verified1 = verify_id_token(token1, expected_client_id="test-client", expected_nonce="test-nonce")
+                assert verified1["sub"] == "mock-google-user-12345"
+                assert "key-1" in jwt_mod._JWKS_CACHE
+                assert mock_get.call_count >= 1
+
+            call_count_after_key1 = mock_get.call_count
+
+            # 2. At t=1010.0 (10s later, interval=60s not elapsed), token with key-2 arrives
+            # Mock server now has key-2, but refresh cooldown must block outbound fetch
+            current_mock_server = server2
+            with mock.patch("CTFd.plugins.l3mon_core.clock.now", return_value=1010.0):
+                claims2 = server2.build_valid_claims(client_id="test-client", nonce="test-nonce")
+                token2 = server2.sign_token(claims2)
+                with pytest.raises(TokenError, match="unknown kid 'key-2'"):
+                    verify_id_token(token2, expected_client_id="test-client", expected_nonce="test-nonce")
+                # Outbound network requests MUST NOT increase
+                assert mock_get.call_count == call_count_after_key1
+
+            # 3. At t=1065.0 (65s later, interval=60s elapsed), key-2 is fetched and accepted
+            with mock.patch("CTFd.plugins.l3mon_core.clock.now", return_value=1065.0):
+                verified2 = verify_id_token(token2, expected_client_id="test-client", expected_nonce="test-nonce")
+                assert verified2["sub"] == "mock-google-user-12345"
+                assert "key-2" in jwt_mod._JWKS_CACHE
+                assert mock_get.call_count > call_count_after_key1

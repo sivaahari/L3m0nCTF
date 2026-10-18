@@ -356,3 +356,54 @@ All functionality was built using standard library modules and existing pinned p
    `create_ctfd` in `tests/helpers.py` defaults to `user_mode="users"`. Tests targeting `/teams/new` return 404 unless `user_mode="teams"` is explicitly passed.
 2. **SQLAlchemy 2.0 Warnings in CTFd Upstream:**
    Flushing polymorphic objects in `tests/helpers.py:403` triggers `SAWarning: Flushing object <Flags> with incompatible polymorphic identity`. These originate in CTFd core test helpers.
+
+---
+
+## 12. Follow-Up After the Audit (F1 to F5)
+
+Following the 18 October 2026 audit of `pre-deployment`, this branch addressed findings F1 through F5:
+
+### 12.1 Overview of Audit Follow-Up Implementations
+
+| Finding | Summary | Solution |
+|---|---|---|
+| **F1** | Full-table `Users.query.all()` scans during registration and Google sign-up | Created `l3mon_email_norm` table (migration `3e4f5a6b7c8d`) with unique constraint on `(user_id)` and `(norm)`. Added SQLAlchemy event listeners (`after_insert`, `after_update`, `after_delete` on `Users`) and lazy batch backfill (`claim("l3mon_email_norm_backfill", 10.0)` in batches of 500). Replaced linear scans in `l3mon_guard` and `l3mon_auth` with $O(1)$ indexed lookup. |
+| **F2** | Campus-wide login CAPTCHA lockouts after 3 typos | Updated `is_login_captcha_required` and `record_login_failure` in `turnstile.py` to check `is_campus_ip(ip)` against `L3MON_GUARD_CAMPUS_NETS`. IP failure buckets are ignored for campus networks, while per-account failure counters remain strictly enforced. |
+| **F3** | Disposable email blocklist starter list | Added `test_guard_disposable_top_providers.py` asserting top 20 providers are never blocked and subdomains of listed domains are blocked. Documented development-time download request for full CC0 list. |
+| **F4** | Key refresh cooldown bypassed on unknown `kid` | Updated `jwt.verify_id_token` to set `force=False` when looking up unknown keys if `_JWKS_CACHE` is already populated. Enforces `MIN_KEY_REFRESH_INTERVAL` (60s) cooldown between outbound fetches. |
+| **F5(a)** | Arbitrary `TURNSTILE_VERIFY_URL` injection | Validated `TURNSTILE_VERIFY_URL` against `challenges.cloudflare.com` domain, or `localhost`/`127.0.0.1` only when `L3MON_AUTH_TEST_MODE=1`. |
+| **F5(b)** | Wording mismatch: "wrong attempts" vs all flag attempts | Standardized wording to "flag attempts" across code, docs, and UI. Counting all flag attempts is deliberate: even correct flag submissions require database transactions and locking. |
+| **F5(c)** | IP address duplicated in free-text `detail` | Updated `record("captcha_unverified")` to store client IP solely in the dedicated `address` column. |
+| **F5(d)** | Theme author guide & Nginx CSP | Added Section 6.3 in `docs/deploy/identity.md` with template context specifications and route-restricted CSP rules for `/login`, `/register`, and `/reset_password`. |
+
+### 12.2 Files Created or Modified in Follow-Up
+
+1. `plugins/l3mon_guard/models.py`: Added `EmailNorm` (`l3mon_email_norm`) model.
+2. `plugins/l3mon_guard/migrations/3e4f5a6b7c8d_create_the_guard_email_norm_table.py`: Alembic migration for `l3mon_email_norm`.
+3. `plugins/l3mon_guard/policies/email_norm.py`: Lifecycle listeners, lazy backfill, and $O(1)$ disguise check.
+4. `plugins/l3mon_guard/__init__.py`: Registered lifecycle listeners in `load(app)`.
+5. `plugins/l3mon_auth/oauth.py`: Switched `_check_email_collision` to call `is_email_disguise_used`.
+6. `plugins/l3mon_guard/turnstile.py`: Campus IP exemption in login failure tracking, Turnstile URL host validation, IP in address column only.
+7. `plugins/l3mon_guard/limits.py`: Standardized wording to "flag attempts".
+8. `plugins/l3mon_auth/jwt.py`: Enforced `MIN_KEY_REFRESH_INTERVAL` cooldown on unknown `kid`.
+9. `plugins/l3mon_guard/tests/test_guard_email_norm.py`: Unit tests for `l3mon_email_norm` migration, listeners, backfill, and query budget.
+10. `plugins/l3mon_guard/tests/test_guard_campus_captcha.py`: Unit tests for campus IP CAPTCHA exemption and per-account enforcement.
+11. `plugins/l3mon_guard/tests/test_guard_disposable_top_providers.py`: Unit tests for top 20 provider protection and subdomain blocking.
+12. `plugins/l3mon_guard/tests/test_guard_turnstile.py`: Turnstile URL whitelist tests and IP address column assertions.
+13. `plugins/l3mon_auth/tests/test_auth_google.py`: Key refresh rate limit tests for unknown `kid`.
+14. `docs/deploy/identity.md`: Updated setting table wording and added Section 6.3 for theme author and nginx CSP.
+15. `docs/superpowers/plans/2026-10-18-identity-followup.md`: Comprehensive follow-up plan.
+
+### 12.3 Break-on-Purpose Table for Follow-Up
+
+| # | Rule / Guarantee | The Deliberate Break | Test That Noticed the Break | Result |
+|---|---|---|---|---|
+| F1-1 | $O(1)$ query budget on email disguise check | Revert `is_email_disguise_used` to scan `Users.query.all()` | `test_guard_email_norm.py::test_email_disguise_query_budget_bounded` | Fails: Statement count changes and query count scales with user count |
+| F1-2 | Unique constraint closes registration race | Remove unique constraint on `l3mon_email_norm.norm` | `test_guard_email_norm.py::test_email_norm_unique_constraint` | Fails: Duplicate normalized email inserted without IntegrityError |
+| F1-3 | User lifecycle listener sync | Disable `register_email_norm_listeners()` | `test_guard_email_norm.py::test_email_norm_model_and_listener_on_insert` | Fails: No `EmailNorm` row created on user insertion |
+| F2-1 | Campus IP exemption from login CAPTCHA | Remove `is_campus_ip` check from IP bucket logic | `test_guard_campus_captcha.py::test_campus_address_exempt_from_ip_failure_bucket` | Fails: 11th distinct user on campus address required to solve CAPTCHA |
+| F2-2 | Per-account failure threshold on campus | Bypass per-account threshold if IP is campus | `test_guard_campus_captcha.py::test_per_account_threshold_enforced_on_both_campus_and_non_campus` | Fails: Targeted account on campus IP does not require CAPTCHA after 3 failures |
+| F4-1 | Google JWKS refresh cooldown on unknown `kid` | Force unconditional JWKS fetch on unknown `kid` (`fetch_jwks(force=True)`) | `test_auth_google.py::test_jwks_refresh_rate_limit_honored_for_unknown_kid` | Fails: Outbound HTTP fetch executed within 60s cooldown window |
+| F5-1 | Turnstile verify URL whitelist | Return `os.environ.get("TURNSTILE_VERIFY_URL")` without host check | `test_guard_turnstile.py::test_turnstile_verify_url_whitelist` | Fails: Disallowed external URL accepted instead of falling back to Cloudflare |
+| F5-2 | Evidence IP recorded in address column only | Include IP in `detail=f"action={action}; ip={ip}"` | `test_guard_turnstile.py::test_turnstile_unreachable_fail_open_login_and_reset` | Fails: Assertion `"192.0.2.1" not in rows[0].detail` fails |
+| F3-1 | Top 20 email providers never blocked | Add `gmail.com` to disposable domains blocklist | `test_guard_disposable_top_providers.py::test_top_20_providers_never_blocked` | Fails: Major provider detected in blocklist |

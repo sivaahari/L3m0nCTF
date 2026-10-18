@@ -75,7 +75,7 @@ Set in `compose.env` or the deployment environment:
 | `GOOGLE_CLIENT_ID` | `""` | Public Google OAuth2 Client ID |
 | `L3MON_PLATFORM_HOST` | `play.l3m0nctf.xyz` | Hostname used to build redirect URIs |
 | `L3MON_GUARD_CAMPUS_NETS` | `""` | Comma-separated CIDRs (e.g., `192.0.2.0/24`) exempt from address heuristics |
-| `L3MON_GUARD_TEAM_LIMIT` | `40` | Max wrong flag attempts per team per minute before 429 Retry-After |
+| `L3MON_GUARD_TEAM_LIMIT` | `40` | Max flag attempts per team per minute before 429 Retry-After |
 | `L3MON_GUARD_REG_BURST_THRESHOLD` | `5` | Max account registrations from one non-campus IP per 10 min |
 
 ---
@@ -112,7 +112,7 @@ Available as `l3mon_guard` in Jinja2 templates:
   }
 }
 ```
-- `login` is dynamically `true` only when the visitor's IP or requested account has exceeded 3 recent failed sign-in attempts.
+- `login` is dynamically `true` only when the visitor's IP (if non-campus) or requested account has exceeded 3 recent failed sign-in attempts.
 
 ### 6.2 `l3mon_auth`
 Available as `l3mon_auth` in Jinja2 templates:
@@ -125,6 +125,43 @@ Available as `l3mon_auth` in Jinja2 templates:
 }
 ```
 When `l3mon_auth.google.active` is true, the theme renders the official Google sign-in button pointing to `/auth/google`. If JavaScript is disabled, the button functions as a regular hyperlink.
+
+### 6.3 Instructions for Theme Author & Platform Nginx CSP (SP5 F5d)
+
+#### Required Template Context Values
+1. **Registration (`register.html`):**
+   - Check `{% if l3mon_guard.captcha.register and l3mon_guard.captcha.sitekey %}`
+   - Include Cloudflare Turnstile script:
+     ```html
+     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+     <div class="cf-turnstile" data-sitekey="{{ l3mon_guard.captcha.sitekey }}"></div>
+     ```
+   - Cloudflare Turnstile automatically populates the form input named `cf-turnstile-response` upon completion.
+   - For Google sign-in: `{% if l3mon_auth.google.active %}` render link/button to `{{ l3mon_auth.google.auth_url }}`.
+
+2. **Login (`login.html`):**
+   - Check `{% if l3mon_guard.captcha.login and l3mon_guard.captcha.sitekey %}`
+   - Include Turnstile script and widget container identically as above.
+   - For Google sign-in: `{% if l3mon_auth.google.active %}` render link/button to `{{ l3mon_auth.google.auth_url }}`.
+
+3. **Password Reset (`reset_password.html`):**
+   - Check `{% if l3mon_guard.captcha.reset and l3mon_guard.captcha.sitekey %}`
+   - Include Turnstile script and widget container identically as above.
+
+#### Required Nginx Content-Security-Policy (CSP) Changes for Platform Owner
+By default, the L3m0nCTF platform enforces a strict `default-src 'self'` policy without external scripts. To allow Cloudflare Turnstile to function on the login, registration, and password reset pages, the project owner must update nginx to permit `https://challenges.cloudflare.com` for scripts and frames **on those three routes only**.
+
+In `deploy/nginx/snippets/` or the server block, add route-specific CSP overrides:
+```nginx
+location ~ ^/(register|login|reset_password)$ {
+    # Allow Cloudflare Turnstile widget scripts and iframe frames on authentication pages only
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://challenges.cloudflare.com;" always;
+    
+    proxy_pass http://ctfd:8000;
+    include /etc/nginx/snippets/platform-proxy-headers.conf;
+}
+```
+*Note: Never enable `challenges.cloudflare.com` globally across all pages; restrict it exclusively to `/register`, `/login`, and `/reset_password`.*
 
 ---
 
@@ -140,3 +177,4 @@ curl -X DELETE "https://play.l3m0nctf.xyz/api/v1/l3mon/admin/guard/evidence?olde
      -H "Authorization: Token <ADMIN_API_TOKEN>" \
      -H "Content-Type: application/json"
 ```
+
