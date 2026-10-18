@@ -346,3 +346,115 @@ def test_instances_end_to_end_lifecycle(world):
         admin("DELETE", f"/api/v1/challenges/{chal_id}")
         admin("DELETE", f"/api/v1/users/{uid_a}")
         admin("DELETE", f"/api/v1/users/{uid_b}")
+
+
+def test_router_survives_hostile_traffic(world):
+    # Setup challenge and instance
+    status, out = admin("POST", "/api/v1/challenges", {
+        "name": "Router Hardening Challenge",
+        "category": "Web",
+        "description": "Challenge for router resilience testing",
+        "value": 100,
+        "state": "visible",
+        "type": "standard",
+    })
+    assert status == 200, out
+    chal_id = out["data"]["id"]
+
+    status, out = admin("POST", "/api/v1/flags", {
+        "challenge_id": chal_id,
+        "content": "",
+        "type": "l3mon_dynamic",
+        "data": "",
+    })
+    assert status == 200, out
+
+    chan_slug = f"chan-{pysecrets.token_hex(4)}"
+    status, out = admin("PUT", PROGRAMMES_API, {
+        "channels": [{"slug": chan_slug, "name": "Live Channel", "position": 1}],
+        "programmes": [{
+            "challenge_id": chal_id,
+            "channel": chan_slug,
+            "cell": 0,
+            "number": 202,
+            "slug": "demo-web",
+            "delivery": "live_single",
+        }],
+    })
+    assert status == 200, out
+
+    status, view = admin("GET", RELEASE_API)
+    chan_obj = next(c for c in view["data"]["channels"] if c.get("slug") == chan_slug)
+    chan_id = chan_obj["id"]
+    prog_id = chan_obj["programmes"][0]["id"]
+    admin("PUT", RELEASE_API, {
+        "changes": [
+            {"kind": "channel", "id": chan_id, "mode": "release"},
+            {"kind": "programme", "id": prog_id, "mode": "release"},
+        ]
+    })
+
+    user_name = f"eve_{pysecrets.token_hex(4)}"
+    session, uid, _ = make_player(user_name)
+
+    instance_id = None
+    try:
+        status, resp = post_json(session, "/api/v1/l3mon/instances", {"challenge_id": chal_id})
+        assert status == 201, resp
+        parsed = urllib.parse.urlparse(resp["data"]["url"])
+        host_header = parsed.netloc
+        instance_id = host_header.split(".")[0]
+
+        time.sleep(3)
+        # 1. Normal route works
+        router_status, flag_bytes = request_router(host_header, "/flag")
+        assert router_status == 200
+
+        # 2. Hostile payload: huge declared Content-Length
+        conn = http.client.HTTPConnection("127.0.0.1", ROUTER_PORT, timeout=5)
+        conn.request("POST", "/", headers={"Host": host_header, "Content-Length": "4000000000"})
+        r_resp = conn.getresponse()
+        assert r_resp.status == 413
+        conn.close()
+
+        # 3. Hostile payload: conflicting Transfer-Encoding and Content-Length
+        conn = http.client.HTTPConnection("127.0.0.1", ROUTER_PORT, timeout=5)
+        conn.request("POST", "/", headers={"Host": host_header, "Content-Length": "10", "Transfer-Encoding": "chunked"})
+        r_resp = conn.getresponse()
+        assert r_resp.status == 400
+        conn.close()
+
+        # 4. Hostile payload: chunked body refusal
+        conn = http.client.HTTPConnection("127.0.0.1", ROUTER_PORT, timeout=5)
+        conn.request("POST", "/", headers={"Host": host_header, "Transfer-Encoding": "chunked"})
+        r_resp = conn.getresponse()
+        assert r_resp.status == 400
+        conn.close()
+
+        # 5. Hostile payload: excessive headers (> 100 header lines)
+        conn = http.client.HTTPConnection("127.0.0.1", ROUTER_PORT, timeout=5)
+        bad_headers = {f"X-Spam-{i}": f"value-{i}" for i in range(120)}
+        bad_headers["Host"] = host_header
+        conn.request("GET", "/", headers=bad_headers)
+        r_resp = conn.getresponse()
+        assert r_resp.status == 431
+        conn.close()
+
+        # 6. Verify router memory remains bounded (configured memory limit is 256MB)
+        stats_out = subprocess.run(
+            ["docker", "inspect", "l3mon-router-1", "--format", "{{.HostConfig.Memory}}"],
+            capture_output=True, text=True, check=True
+        )
+        assert int(stats_out.stdout.strip()) == 256 * 1024 * 1024
+
+        # 7. Verify legitimate traffic continues to answer 200 OK
+        router_status, flag_bytes2 = request_router(host_header, "/flag")
+        assert router_status == 200
+        assert flag_bytes2 == flag_bytes
+
+    finally:
+        if instance_id:
+            delete_json(session, f"/api/v1/l3mon/instances/{chal_id}")
+        admin("DELETE", f"/api/v1/challenges/{chal_id}")
+        admin("DELETE", f"/api/v1/users/{uid}")
+
