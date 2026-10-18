@@ -1,0 +1,27 @@
+# Production overlay for per-team challenge instances and dynamic flags (SP4).
+# Used via:
+#   L3MON_ENV=production L3MON_OVERLAYS=instancer,instancer-production tools/compose.sh up -d --wait
+#
+# Production differences:
+#   instancer:
+#     - INSTANCER_DEV is forced to "0" (no dev shortcuts, unpinned images refused, ttl override refused).
+#     - Manifest is mounted read-only from outside the repository (default: /etc/l3mon/challenges.toml).
+#   router:
+#     - Published on public router interface (${ROUTER_BIND_HOST:-0.0.0.0}:${ROUTER_HTTP_PORT:-8090}:8090).
+#     - Instance domain is required and configured from ${INSTANCE_DOMAIN} without localhost default.
+#     - Optional TLS files mounted read-only if used (${ROUTER_TLS_DIR:-/etc/l3mon/router-tls}).
+
+services:
+  instancer:
+    volumes:
+      - ${INSTANCER_MANIFEST_FILE:-/etc/l3mon/challenges.toml}:/etc/instancer/challenges.toml:ro
+    environment:
+      INSTANCER_DEV: "0"
+
+  router:
+    ports: !override
+      - "${ROUTER_BIND_HOST:-0.0.0.0}:${ROUTER_HTTP_PORT:-8090}:8090"
+    environment:
+      INSTANCE_DOMAIN: "${INSTANCE_DOMAIN}"
+    volumes:
+      - ${ROUTER_TLS_DIR:-/etc/l3mon/router-tls}:/etc/router/tls:ro
