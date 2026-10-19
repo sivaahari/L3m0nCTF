@@ -190,6 +190,26 @@ class InstanceManager:
                 if tcp_port is not None:
                     self._allocated_tcp_ports.add(tcp_port)
 
+            # Clean orphan networks (created before a crash without a running container)
+            try:
+                networks = self.docker.list_networks(label_filter={"l3mon.instance": None})
+                for net in networks:
+                    labels = net.get("Labels", {}) or {}
+                    net_inst_id = labels.get("l3mon.instance")
+                    if net_inst_id and net_inst_id not in self._instances:
+                        net_id = net.get("Id") or net.get("Name")
+                        _log.info("Pruning orphan network %s (instance %s)", net_id, net_inst_id)
+                        try:
+                            self.docker.disconnect_network(net_id, self.router_container_name)
+                        except Exception:
+                            pass
+                        try:
+                            self.docker.remove_network(net_id)
+                        except Exception:
+                            pass
+            except Exception as e:
+                _log.warning("Error reconciling orphan networks: %s", e)
+
     def start_instance(
         self, team_id: int, challenge_id: int, slug: str, flag: str, ttl_seconds: Optional[int] = None
     ) -> tuple[dict, bool]:
@@ -251,109 +271,6 @@ class InstanceManager:
                 duration = spec.ttl_minutes * 60
             expires_at = now + duration
 
-            # Network creation
-            net_name = f"l3mon_inst_{inst_id}"
-            try:
-                self.docker.create_network(net_name, internal=True, labels={"l3mon.instance": inst_id})
-            except Exception as e:
-                if allocated_tcp_port is not None:
-                    self._allocated_tcp_ports.discard(allocated_tcp_port)
-                raise InstancerError(f"Failed to create network: {e}")
-
-            # Attach router to network
-            try:
-                self.docker.connect_network(net_name, self.router_container_name)
-            except Exception as e:
-                _log.warning("Could not connect router container '%s' to network '%s': %s", self.router_container_name, net_name, e)
-
-            # Build Docker container spec
-            container_labels = {
-                "l3mon.instance": inst_id,
-                "l3mon.team_id": str(team_id),
-                "l3mon.challenge_id": str(challenge_id),
-                "l3mon.slug": slug,
-                "l3mon.created_at": str(now),
-                "l3mon.expires_at": str(expires_at),
-                "l3mon.protocol": spec.protocol,
-                "l3mon.port": str(spec.port),
-                "l3mon.renewals": "0",
-            }
-            if allocated_tcp_port is not None:
-                container_labels["l3mon.tcp_port"] = str(allocated_tcp_port)
-
-            container_spec = {
-                "Image": spec.image,
-                "User": "10001:10001",
-                "Env": [f"FLAG={flag}"],
-                "Labels": container_labels,
-                "HostConfig": {
-                    "NetworkMode": net_name,
-                    "Privileged": False,
-                    "CapDrop": ["ALL"],
-                    "CapAdd": [],
-                    "SecurityOpt": ["no-new-privileges:true"],
-                    "ReadonlyRootfs": spec.read_only,
-                    "Init": True,
-                    "RestartPolicy": {"Name": "no"},
-                    "Binds": [],
-                    "VolumesFrom": [],
-                    "Devices": [],
-                    "NanoCpus": int(spec.cpus * 1_000_000_000),
-                    "Memory": spec.mem_mb * 1024 * 1024,
-                    "PidsLimit": spec.pids,
-                    "PortBindings": {},
-                    "Tmpfs": {"/tmp": "rw,noexec,nosuid,size=64m"},
-                    "LogConfig": {"Type": "json-file", "Config": {"max-size": "10m", "max-file": "3"}},
-                    "Ulimits": [{"Name": "nofile", "Soft": 1024, "Hard": 2048}],
-                },
-            }
-
-            # Security verification. The network (and a TCP port) already exist, so a refusal must give them back: without this a spec that
-            # assert_safe refuses left a network behind on every attempt (found by the integration audit).
-            try:
-                assert_safe(container_spec, dev_mode=self.dev_mode)
-            except Exception:
-                try:
-                    self.docker.disconnect_network(net_name, self.router_container_name)
-                except Exception:
-                    pass
-                try:
-                    self.docker.remove_network(net_name)
-                except Exception:
-                    pass
-                if allocated_tcp_port is not None:
-                    self._allocated_tcp_ports.discard(allocated_tcp_port)
-                raise
-
-            # Create and start container
-            name = inst_id
-            try:
-                real_cid = self.docker.create_container(container_spec, name=name)
-                self.docker.start_container(real_cid)
-            except Exception as e:
-                # Cleanup on failure
-                try:
-                    self.docker.remove_container(name)
-                except Exception:
-                    pass
-                try:
-                    self.docker.disconnect_network(net_name, self.router_container_name)
-                    self.docker.remove_network(net_name)
-                except Exception:
-                    pass
-                if allocated_tcp_port is not None:
-                    self._allocated_tcp_ports.discard(allocated_tcp_port)
-                raise InstancerError(f"Failed to create/start container: {e}")
-
-            # Retrieve target IP
-            target_ip = None
-            try:
-                cinfo = self.docker.list_containers(label_filter={"l3mon.instance": inst_id})
-                if cinfo:
-                    target_ip = cinfo[0].get("ip")
-            except Exception:
-                pass
-
             record = InstanceRecord(
                 instance_id=inst_id,
                 team_id=team_id,
@@ -364,15 +281,137 @@ class InstanceManager:
                 created_at=now,
                 expires_at=expires_at,
                 allocated_tcp_port=allocated_tcp_port,
-                state=InstanceState.RUNNING,
+                state=InstanceState.STARTING,
                 renewals=0,
-                target_ip=target_ip,
-                container_id=real_cid,
             )
             self._instances[inst_id] = record
             self._team_index.setdefault(team_id, set()).add(inst_id)
             self._challenge_index[key] = inst_id
 
+        # Network creation and Docker calls OUTSIDE self._lock
+        net_name = f"l3mon_inst_{inst_id}"
+        try:
+            self.docker.create_network(net_name, internal=True, labels={"l3mon.instance": inst_id})
+        except Exception as e:
+            with self._lock:
+                self._instances.pop(inst_id, None)
+                if team_id in self._team_index:
+                    self._team_index[team_id].discard(inst_id)
+                if self._challenge_index.get(key) == inst_id:
+                    self._challenge_index.pop(key, None)
+                if allocated_tcp_port is not None:
+                    self._allocated_tcp_ports.discard(allocated_tcp_port)
+            raise InstancerError(f"Failed to create network: {e}")
+
+        # Attach router to network
+        try:
+            self.docker.connect_network(net_name, self.router_container_name)
+        except Exception as e:
+            _log.warning("Could not connect router container '%s' to network '%s': %s", self.router_container_name, net_name, e)
+
+        # Build Docker container spec
+        container_labels = {
+            "l3mon.instance": inst_id,
+            "l3mon.team_id": str(team_id),
+            "l3mon.challenge_id": str(challenge_id),
+            "l3mon.slug": slug,
+            "l3mon.created_at": str(now),
+            "l3mon.expires_at": str(expires_at),
+            "l3mon.protocol": spec.protocol,
+            "l3mon.port": str(spec.port),
+            "l3mon.renewals": "0",
+        }
+        if allocated_tcp_port is not None:
+            container_labels["l3mon.tcp_port"] = str(allocated_tcp_port)
+
+        container_spec = {
+            "Image": spec.image,
+            "User": "10001:10001",
+            "Env": [f"FLAG={flag}"],
+            "Labels": container_labels,
+            "HostConfig": {
+                "NetworkMode": net_name,
+                "Privileged": False,
+                "CapDrop": ["ALL"],
+                "CapAdd": [],
+                "SecurityOpt": ["no-new-privileges:true"],
+                "ReadonlyRootfs": spec.read_only,
+                "Init": True,
+                "RestartPolicy": {"Name": "no"},
+                "Binds": [],
+                "VolumesFrom": [],
+                "Devices": [],
+                "NanoCpus": int(spec.cpus * 1_000_000_000),
+                "Memory": spec.mem_mb * 1024 * 1024,
+                "PidsLimit": spec.pids,
+                "PortBindings": {},
+                "Tmpfs": {"/tmp": "rw,noexec,nosuid,size=64m"},
+                "LogConfig": {"Type": "json-file", "Config": {"max-size": "10m", "max-file": "3"}},
+                "Ulimits": [{"Name": "nofile", "Soft": 1024, "Hard": 2048}],
+            },
+        }
+
+        # Security verification
+        try:
+            assert_safe(container_spec, dev_mode=self.dev_mode)
+        except Exception:
+            try:
+                self.docker.disconnect_network(net_name, self.router_container_name)
+            except Exception:
+                pass
+            try:
+                self.docker.remove_network(net_name)
+            except Exception:
+                pass
+            with self._lock:
+                self._instances.pop(inst_id, None)
+                if team_id in self._team_index:
+                    self._team_index[team_id].discard(inst_id)
+                if self._challenge_index.get(key) == inst_id:
+                    self._challenge_index.pop(key, None)
+                if allocated_tcp_port is not None:
+                    self._allocated_tcp_ports.discard(allocated_tcp_port)
+            raise
+
+        # Create and start container
+        name = inst_id
+        try:
+            real_cid = self.docker.create_container(container_spec, name=name)
+            self.docker.start_container(real_cid)
+        except Exception as e:
+            # Cleanup on failure
+            try:
+                self.docker.remove_container(name)
+            except Exception:
+                pass
+            try:
+                self.docker.disconnect_network(net_name, self.router_container_name)
+                self.docker.remove_network(net_name)
+            except Exception:
+                pass
+            with self._lock:
+                self._instances.pop(inst_id, None)
+                if team_id in self._team_index:
+                    self._team_index[team_id].discard(inst_id)
+                if self._challenge_index.get(key) == inst_id:
+                    self._challenge_index.pop(key, None)
+                if allocated_tcp_port is not None:
+                    self._allocated_tcp_ports.discard(allocated_tcp_port)
+            raise InstancerError(f"Failed to create/start container: {e}")
+
+        # Retrieve target IP
+        target_ip = None
+        try:
+            cinfo = self.docker.list_containers(label_filter={"l3mon.instance": inst_id})
+            if cinfo:
+                target_ip = cinfo[0].get("ip")
+        except Exception:
+            pass
+
+        with self._lock:
+            record.state = InstanceState.RUNNING
+            record.target_ip = target_ip
+            record.container_id = real_cid
             return record.to_dict(self.instance_domain, self.tcp_host), True
 
     def get_instance(self, instance_id: str) -> Optional[dict]:
@@ -422,6 +461,8 @@ class InstanceManager:
             record = self._instances.get(instance_id)
             if not record:
                 return False
+            if record.state == InstanceState.STOPPING:
+                return False
 
             now = self._now()
             record.state = InstanceState.STOPPING
@@ -430,32 +471,34 @@ class InstanceManager:
             key = (record.team_id, record.challenge_id)
             self._cooldowns[key] = now + COOLDOWN_SECONDS
 
-            # Cleanup docker container and network
-            net_name = f"l3mon_inst_{instance_id}"
-            target_container = getattr(record, "container_id", None) or instance_id
-            try:
-                self.docker.stop_container(target_container)
-                self.docker.remove_container(target_container)
-            except Exception as e:
-                _log.warning("Error stopping container %s: %s", target_container, e)
-
-            try:
-                self.docker.disconnect_network(net_name, self.router_container_name)
-                self.docker.remove_network(net_name)
-            except Exception as e:
-                _log.warning("Error removing network %s: %s", net_name, e)
-
             if record.allocated_tcp_port is not None:
                 self._allocated_tcp_ports.discard(record.allocated_tcp_port)
 
-            # Cleanup memory records
-            self._instances.pop(instance_id, None)
             if record.team_id in self._team_index:
                 self._team_index[record.team_id].discard(instance_id)
             if self._challenge_index.get(key) == instance_id:
                 self._challenge_index.pop(key, None)
 
-            return True
+            target_container = getattr(record, "container_id", None) or instance_id
+
+        # Cleanup docker container and network OUTSIDE self._lock
+        net_name = f"l3mon_inst_{instance_id}"
+        try:
+            self.docker.stop_container(target_container)
+            self.docker.remove_container(target_container)
+        except Exception as e:
+            _log.warning("Error stopping container %s: %s", target_container, e)
+
+        try:
+            self.docker.disconnect_network(net_name, self.router_container_name)
+            self.docker.remove_network(net_name)
+        except Exception as e:
+            _log.warning("Error removing network %s: %s", net_name, e)
+
+        with self._lock:
+            self._instances.pop(instance_id, None)
+
+        return True
 
     def kill_instances(self, team_id: Optional[int] = None, challenge_id: Optional[int] = None) -> int:
         """Admin kill by team and/or challenge, or all if none given."""

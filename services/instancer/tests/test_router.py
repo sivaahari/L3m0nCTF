@@ -160,3 +160,268 @@ def test_a_client_that_stops_sending_is_dropped_at_the_timeout_not_kept_for_ever
 def test_an_ordinary_unknown_host_request_still_gets_the_static_404():
     answer = _serve(b"GET / HTTP/1.1\r\nHost: evil.example\r\n\r\n")
     assert answer.startswith(b"HTTP/1.1 404")
+
+
+def test_rejects_conflicting_content_length_and_transfer_encoding():
+    answer = _serve(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\n\r\nhello")
+    assert answer.startswith(b"HTTP/1.1 400"), answer[:80]
+
+
+def test_refuses_chunked_request_body():
+    answer = _serve(b"POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n")
+    assert answer.startswith(b"HTTP/1.1 400"), answer[:80]
+
+
+def test_preserves_multiple_set_cookie_headers_and_single_content_length():
+    """Found by audit: Set-Cookie collapsed in plain dict, duplicate Content-Length was emitted."""
+    async def run():
+        # Mock backend server that returns two Set-Cookie headers
+        backend_received = b""
+
+        async def mock_backend(reader, writer):
+            nonlocal backend_received
+            backend_received = await reader.read(4096)
+            resp = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Set-Cookie: session=abc; Path=/\r\n"
+                b"Set-Cookie: theme=dark; Path=/\r\n"
+                b"Content-Type: text/plain\r\n"
+                b"Content-Length: 4\r\n"
+                b"\r\n"
+                b"pong"
+            )
+            writer.write(resp)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(mock_backend, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": port}])
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET /ping HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        server.close()
+        await server.wait_closed()
+        return writer.data, backend_received
+
+    data, backend_req = asyncio.run(run())
+    text = data.decode("utf-8", errors="replace")
+    # Verify multiple Set-Cookie headers are preserved
+    assert text.count("Set-Cookie: session=abc") == 1
+    assert text.count("Set-Cookie: theme=dark") == 1
+    # Verify Content-Length appears exactly once in the response
+    assert text.lower().count("content-length:") == 1
+    assert "pong" in text
+    # Verify backend received exactly one Content-Length: 0
+    assert backend_req.lower().count(b"content-length:") <= 1
+
+
+def test_caps_streaming_backend_response_at_20mb():
+    """Backend streaming more than 20MB must be cut off to protect router memory."""
+    async def run():
+        async def mock_streaming_backend(reader, writer):
+            await reader.read(4096)
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n")
+            await writer.drain()
+            chunk = b"X" * (64 * 1024)
+            # Send 25 MB
+            try:
+                for _ in range(400):
+                    writer.write(chunk)
+                    await writer.drain()
+            except (ConnectionResetError, BrokenPipeError):
+                pass
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(mock_streaming_backend, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": port}])
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET /stream HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        server.close()
+        await server.wait_closed()
+        return len(writer.data)
+
+    total_received = asyncio.run(run())
+    # Must be cut off at or before 20MB (+ header bytes)
+    assert total_received <= 21 * 1024 * 1024
+
+
+def test_enforces_max_connections_per_instance():
+    """More than 50 concurrent connections to the same instance ID must return 503."""
+    async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": 8080}])
+        # Manually saturate instance connections
+        router._active_connections_per_inst[inst_id] = 50
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 503"), data[:80]
+
+
+def test_enforces_max_total_connections():
+    """More than 1000 total connections on router must return 503."""
+    async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": 8080}])
+        # Manually saturate total connections
+        router._total_active_connections = 1000
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 503"), data[:80]
+
+
+def test_backend_that_never_answers_triggers_504():
+    """Backend connection succeeds but sends no bytes -> times out with 504."""
+    async def run():
+        async def mock_silent_backend(reader, writer):
+            # Read request, but never respond
+            await reader.read(4096)
+            await asyncio.sleep(5)
+
+        server = await asyncio.start_server(mock_silent_backend, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": port}])
+
+        # Monkeypatch IDLE_TIMEOUT_SECONDS for fast test
+        import services.instancer.router.router as router_mod
+        orig_timeout = router_mod.IDLE_TIMEOUT_SECONDS
+        router_mod.IDLE_TIMEOUT_SECONDS = 0.2
+        try:
+            reader = asyncio.StreamReader()
+            reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+            reader.feed_eof()
+            writer = _Writer()
+
+            await handle_client(reader, writer, router)
+            server.close()
+            await server.wait_closed()
+            return writer.data
+        finally:
+            router_mod.IDLE_TIMEOUT_SECONDS = orig_timeout
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 504"), data[:80]
+
+
+def test_backend_sending_garbage_returns_502():
+    """Backend immediately closes without valid HTTP response -> 502."""
+    async def run():
+        async def mock_garbage_backend(reader, writer):
+            await reader.read(4096)
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(mock_garbage_backend, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": port}])
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        server.close()
+        await server.wait_closed()
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 502"), data[:80]
+
+
+def test_slow_body_client_times_out():
+    """Client declared Content-Length but never sends body bytes -> times out with 408."""
+    async def run():
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 50\r\n\r\npart")
+        # Do not feed EOF
+        writer = _Writer()
+        await handle_client(reader, writer, InstanceRouter(instance_domain="inst.test"), header_timeout=1.0, body_timeout=0.2)
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 408"), data[:80]
+
+
+def test_forwards_backend_chunked_response():
+    """Backend sends Transfer-Encoding: chunked without Content-Length -> router forwards Transfer-Encoding: chunked."""
+    async def run():
+        async def mock_chunked_backend(reader, writer):
+            await reader.read(4096)
+            resp = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Transfer-Encoding: chunked\r\n"
+                b"Content-Type: text/plain\r\n\r\n"
+                b"5\r\nhello\r\n0\r\n\r\n"
+            )
+            writer.write(resp)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+
+        server = await asyncio.start_server(mock_chunked_backend, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": port}])
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET /chunked HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        server.close()
+        await server.wait_closed()
+        return writer.data
+
+    data = asyncio.run(run())
+    assert b"Transfer-Encoding: chunked" in data
+    assert b"Content-Length" not in data
+    assert b"hello" in data
+
+
+

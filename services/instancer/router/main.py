@@ -8,11 +8,11 @@ from services.instancer.router.router import MAX_BODY_BYTES, InstanceRouter
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 _log = logging.getLogger("l3mon.instancer.router")
 
-# What the router will read from a stranger (it is reachable by anybody). Found by the integration audit: a declared Content-Length of four gigabytes
-# was believed and read in full before the size check, no host name was needed to do it, and nothing ever timed a slow client out.
+# What the router will read from a stranger (it is reachable by anybody).
 HEADER_TIMEOUT_SECONDS = 10  # the whole request line and header block
 BODY_TIMEOUT_SECONDS = 30
 MAX_HEADER_LINES = 100
+MAX_HEADER_LINE_BYTES = 8192
 
 
 def _read_secret(name: str, default: str = "") -> str:
@@ -30,66 +30,89 @@ def _read_secret(name: str, default: str = "") -> str:
 
 async def _refuse(writer: asyncio.StreamWriter, status: int, text: str) -> None:
     body = (text + "\n").encode("utf-8")
-    head = f"HTTP/1.1 {status} Error\r\nContent-Type: text/plain\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+    status_text = (
+        "OK" if status == 200
+        else "Bad Request" if status == 400
+        else "Not Found" if status == 404
+        else "Request Timeout" if status == 408
+        else "Payload Too Large" if status == 413
+        else "Request Header Fields Too Large" if status == 431
+        else "Bad Gateway" if status == 502
+        else "Service Unavailable" if status == 503
+        else "Gateway Timeout" if status == 504
+        else "Error"
+    )
+    head = f"HTTP/1.1 {status} {status_text}\r\nContent-Type: text/plain\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
     writer.write(head.encode("ascii") + body)
     await writer.drain()
 
 
 async def _read_head(reader: asyncio.StreamReader):
-    """(request line, headers, declared body length), or None when the client sent more header lines than allowed (the caller answers 431)."""
+    """(req_line, headers_list, content_length) or (None, status_code, message) on refusal."""
     line = await reader.readline()
     if not line:
-        return "", {}, 0
+        return "", [], 0
     req_line = line.decode("utf-8", errors="replace").strip()
-    headers = {}
-    content_length = 0
+    headers_list: list[tuple[str, str]] = []
+    content_length: int | None = None
+    has_transfer_encoding = False
+
     for _ in range(MAX_HEADER_LINES + 1):
         header_line = await reader.readline()
         if not header_line or header_line == b"\r\n":
-            return req_line, headers, content_length
+            break
+        if len(header_line) > MAX_HEADER_LINE_BYTES:
+            return None, 431, "Request Header Fields Too Large"
         line_str = header_line.decode("utf-8", errors="replace").strip()
         if ":" in line_str:
             hk, hv = line_str.split(":", 1)
             hk_clean = hk.strip()
-            headers[hk_clean] = hv.strip()
-            if hk_clean.lower() == "content-length":
+            hv_clean = hv.strip()
+            headers_list.append((hk_clean, hv_clean))
+            hkl = hk_clean.lower()
+            if hkl == "content-length":
                 try:
-                    content_length = int(hv.strip())
+                    content_length = int(hv_clean)
                 except ValueError:
-                    pass
-    return None
+                    return None, 400, "Bad Request: Invalid Content-Length"
+            elif hkl == "transfer-encoding":
+                has_transfer_encoding = True
+    else:
+        # Exceeded MAX_HEADER_LINES
+        return None, 431, "Request Header Fields Too Large"
+
+    # Reject if both Content-Length and Transfer-Encoding are present
+    if content_length is not None and has_transfer_encoding:
+        return None, 400, "Bad Request: Conflicting Content-Length and Transfer-Encoding"
+
+    # Refuse chunked request body
+    if has_transfer_encoding:
+        return None, 400, "Bad Request: Chunked request body not supported"
+
+    cl = content_length if content_length is not None else 0
+    if cl > MAX_BODY_BYTES:
+        return None, 413, "Payload Too Large (Max 10MB)"
+
+    return req_line, headers_list, cl
 
 
 async def _serve_one(reader, writer, router, header_timeout, body_timeout):
     head = await asyncio.wait_for(_read_head(reader), header_timeout)
-    if head is None:
-        await _refuse(writer, 431, "Request Header Fields Too Large")
+    if head[0] is None:
+        _, status, msg = head
+        await _refuse(writer, status, msg)
         return
-    req_line, headers, content_length = head
+    req_line, headers_list, content_length = head
     parts = req_line.split()
     if len(parts) < 3:
         return
     method, path, _ = parts
 
-    if content_length > MAX_BODY_BYTES:  # before a single byte of the body is read
-        await _refuse(writer, 413, "Payload Too Large (Max 10MB)")
-        return
     body = b""
     if content_length > 0:
         body = await asyncio.wait_for(reader.readexactly(content_length), body_timeout)
 
-    status, resp_headers, resp_body = await router.handle_http_request(method, path, headers, body)
-
-    status_text = "OK" if status == 200 else ("Not Found" if status == 404 else "Error")
-    lines = [f"HTTP/1.1 {status} {status_text}"]
-    for hk, hv in resp_headers.items():
-        lines.append(f"{hk}: {hv}")
-    lines.append(f"Content-Length: {len(resp_body)}")
-    lines.append("Connection: close")
-    response_bytes = "\r\n".join(lines).encode("utf-8") + b"\r\n\r\n" + resp_body
-
-    writer.write(response_bytes)
-    await writer.drain()
+    await router.forward_stream(method, path, headers_list, body, writer)
 
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, router: InstanceRouter,
