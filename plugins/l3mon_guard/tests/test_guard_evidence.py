@@ -68,3 +68,14 @@ def test_record_redacts_flag_from_detail():
         assert "sensitive_flag_here" not in row.detail
         assert "[redacted" in row.detail
     destroy_ctfd(app)
+
+
+def test_record_with_explicit_address():
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        record("captcha_unverified", detail="action=login", address="198.51.100.42")
+        row = Evidence.query.filter_by(kind="captcha_unverified").first()
+        assert row is not None
+        assert row.address == "198.51.100.42"
+        assert row.detail == "action=login"
+    destroy_ctfd(app)

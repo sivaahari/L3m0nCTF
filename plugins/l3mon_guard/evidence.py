@@ -48,6 +48,7 @@ def record(
     challenge_id: int | None = None,
     other_team_id: int | None = None,
     detail: str = "",
+    address: str | None = None,
 ) -> None:
     """Record an abuse evidence entry into l3mon_evidence.
 
@@ -60,8 +61,8 @@ def record(
     try:
         clean_detail = _sanitize_detail(detail)
 
-        client_ip = None
-        if has_request_context():
+        client_ip = address
+        if client_ip is None and has_request_context():
             try:
                 from CTFd.utils.user import get_ip
                 client_ip = get_ip()

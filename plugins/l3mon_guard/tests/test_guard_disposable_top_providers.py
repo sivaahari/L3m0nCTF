@@ -54,3 +54,20 @@ def test_disposable_domain_and_subdomain_blocking():
     assert is_disposable_domain("cb.students.amrita.edu") is False
     assert is_disposable_domain("mit.edu") is False
     assert is_disposable_domain("google.com") is False
+
+
+def test_the_domains_of_the_first_curated_list_stay_blocked():
+    """Verify that well-known domains from the original curated list remain blocked."""
+    first_curated_domains = (
+        "tempmail.com",
+        "tempmail.net",
+        "tempmailaddress.com",
+        "yopmail.org",
+        "10minutemail.org",
+        "spamgourmet.com",
+        "disposable.com",
+    )
+    for domain in first_curated_domains:
+        assert is_disposable_domain(f"user@{domain}") is True, f"{domain} must stay blocked"
+        assert is_disposable_domain(f"sub.{domain}") is True, f"sub.{domain} must stay blocked"
+
