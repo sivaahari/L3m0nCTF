@@ -197,6 +197,7 @@ class InstanceRouter:
             await self._refuse_stream(client_writer, err_status, f"{err_msg}\n")
             return
 
+        writer = None  # the connection to the instance: closed in the finally below whatever happens (integration audit: a timeout or an error left it open)
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(target_ip, target_port),
@@ -292,6 +293,12 @@ class InstanceRouter:
             _log.warning("Error forwarding to %s:%s: %s", target_ip, target_port, e)
             await self._refuse_stream(client_writer, 502, "Bad Gateway\n")
         finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await asyncio.wait_for(writer.wait_closed(), timeout=2)
+                except Exception:
+                    pass
             await self.release_connection(inst_id)
 
     async def _refuse_stream(self, writer: asyncio.StreamWriter, status: int, text: str) -> None:
