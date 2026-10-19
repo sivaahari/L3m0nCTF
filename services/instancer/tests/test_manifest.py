@@ -139,3 +139,38 @@ port = 8080
 """
     with pytest.raises(ValueError, match="Duplicate"):
         load_manifest_from_string(dup_toml, dev_mode=False)
+
+
+def test_manifest_max_body_bytes_default_and_custom():
+    toml_content = """
+[[challenge]]
+slug = "default-body"
+image = "registry.example/web@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+port = 8080
+
+[[challenge]]
+slug = "custom-body"
+image = "registry.example/web@sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+port = 8080
+max_body_bytes = 2097152
+response_timeout_seconds = 180
+"""
+    m = load_manifest_from_string(toml_content, dev_mode=False)
+    assert m.get("default-body").max_body_bytes == 1048576  # 1 MB default
+    assert m.get("default-body").response_timeout_seconds == 120  # 120s default
+
+    assert m.get("custom-body").max_body_bytes == 2097152
+    assert m.get("custom-body").response_timeout_seconds == 180
+
+
+def test_manifest_max_body_bytes_exceeds_cap_fails():
+    toml_content = """
+[[challenge]]
+slug = "too-large-body"
+image = "registry.example/web@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+port = 8080
+max_body_bytes = 15000000
+"""
+    with pytest.raises(ValueError, match="max_body_bytes"):
+        load_manifest_from_string(toml_content, dev_mode=False)
+

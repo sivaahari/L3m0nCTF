@@ -1,12 +1,50 @@
 # Handoff Report: Per-team challenge instances and per-team flags (the instancer)
 
 Branch: `feat/instancer`  
-Milestone: **Milestone 1 (M1) & Milestone 1b (M1b) Complete**  
-Date: 18 October 2026  
+Milestone: **Milestone 1 (M1), Milestone 1b (M1b), & Round 2 Audit (N1–N6) Complete**  
+Date: 19 October 2026  
+
+---
+
+## Round 2 audit (19 October 2026)
+
+Following the audit of Milestone 1b and integration into `integration/2026-10-19`, Round 2 resolved findings N1 through N6 and incorporated lead engineer audit improvements:
+
+### Lead Engineer Upstream Improvements
+1. **Backend Connection Closed in `finally`**:
+   - `services/instancer/router/router.py` (`forward_stream`): Ensured backend connection socket (`backend_writer`) is explicitly closed inside a `finally` block on all code paths (success, status line failure, idle timeout, 504 gateway timeout, or backend errors). A hostile instance can no longer leave open sockets lingering.
+   - Verified by spy writer test `test_the_connection_to_the_instance_is_closed_by_the_router_when_it_gives_up` (fails when `close()` is removed).
+2. **Python 3.12+ Non-Blocking Test Teardown**:
+   - `services/instancer/tests/test_router.py` (`test_backend_that_never_answers_triggers_504`): The mock backend was sleeping and never closed its side, which on Python 3.12+ caused `server.wait_closed()` to block indefinitely. The mock now listens for client socket closure via `reader.read(1)` with bounded timeout and closes its writer; `server.wait_closed()` is bounded by `asyncio.wait_for(timeout=2.0)`.
+
+### Round 2 Audit Findings (N1–N6)
+- **N1. Host/Route Check Before Body Read, Challenge Body Cap, and Global Reading Budget**:
+  - `services/instancer/router/main.py` (`_serve_one`) inspects the `Host` header and validates the registered route before reading any request body bytes. Unrouted or invalid requests are refused immediately with 404 without reading a single body byte, closing the DoS vector where strangers hold memory by sending bodies slowly.
+  - Per-challenge request body cap added to manifest (`services/instancer/manifest.py`, `max_body_bytes`, default 1 MB, at most 10 MB). Requests declaring `Content-Length` above the challenge cap are refused with 413 before reading.
+  - Global reading budget (`GLOBAL_READING_BUDGET = 64 * 1024 * 1024`) enforces that concurrent reading requests across all connections cannot exceed 64 MB; requests exceeding the budget receive 503 immediately before reading.
+- **N2. Request Line & Header Caps, Pre-Routing Connection Limits, and Cloudflare Real IP**:
+  - Request line length strictly capped at 8 KB (`MAX_REQUEST_LINE_BYTES = 8192`, returns 431).
+  - Entire header block strictly capped at 16 KB (`MAX_HEADER_BLOCK_BYTES = 16384`, returns 431).
+  - Global pre-routing connection limit enforced at 1,000 active connections (`max_total_connections = 1000`, returns 503).
+  - Per-source IP pre-routing connection limit enforced at 50 connections (`max_connections_per_ip = 50`, returns 503).
+  - Real client address resolution: `CF-Connecting-IP` is trusted **exclusively** when the remote peer address falls within Cloudflare's published CIDRs (`CLOUDFLARE_NETWORKS`). Direct callers spoofing the header are not trusted and their direct peer IP is tracked.
+  - Hostile-client test suite extended with: `test_hostile_many_slow_header_connections` (80 concurrent slow headers), `test_hostile_many_slow_bodies` (40 concurrent slow bodies), and `test_hostile_many_connections_burst` (burst of 1,200 connections).
+- **N3. Total Response Deadline Per Request**:
+  - Enforced an absolute deadline per request (`response_timeout_seconds`, default 120s, configurable in manifest for rare long downloads).
+  - Forwarding and response streaming are wrapped in `asyncio.wait_for(..., timeout=total_timeout)`; a dripping backend sending 1 byte every 29 seconds is terminated at the total deadline with 504 Gateway Timeout and backend sockets are closed in `finally`.
+- **N4. Production Overlay Strict Configuration Validation**:
+  - `deploy/compose/compose.instancer-production.yml` updated with `${INSTANCE_DOMAIN:?INSTANCE_DOMAIN must be set}`.
+  - Test `test_production_overlay_fails_without_instance_domain` in `tools/tests/test_instancer_compose.py` verifies that rendering the production overlay without `INSTANCE_DOMAIN` fails with non-zero exit code.
+- **N5. Production Traffic Architecture Note**:
+  - Authored `docs/deploy/instancer-traffic.md` analyzing: (a) wildcard under zone on port 8443 with Nginx Origin TLS, (b) separate cheap domain with its own certificate, and (c) Cloudflare Tunnel (`cloudflared`). Recommended Option (a) with Nginx TLS termination.
+- **N6. True Documentation**:
+  - Updated `docs/security/instancer-threat-model.md` with TH-19 (N1), TH-20 (N2), and TH-21 (N3).
+  - Updated `docs/handoff/instancer.md` with Round 2 audit details and break-on-purpose table.
 
 ---
 
 ## Follow-up after the audit (Milestone 1b)
+
 
 Following the audit of Milestone 1 on 18 October 2026 and its merge into `pre-deployment`, Milestone 1b addressed audit findings A1–A8 and implemented hardening items R1, R2, and R4:
 
@@ -135,10 +173,10 @@ INSTANCER_DEV=1 L3MON_OVERLAYS=instancer tools/compose.sh up -d --wait
 
 ### 2. Run Test Suites
 ```bash
-# 1. Instancer unit tests (103 tests)
+# 1. Instancer unit tests (117 tests)
 python -m pytest services/instancer/tests -q
 
-# 2. Tools test suite (301 tests)
+# 2. Tools test suite (302 tests)
 python -m pytest tools/tests -q
 
 # 3. CTFd plugin tests inside container (27 tests)
@@ -161,16 +199,16 @@ python -m pytest tests/integration/test_instances.py -v
 ### Instancer Unit Tests (`services/instancer/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-103 passed in 15.28s (18 October 2026)
+117 passed in 10.51s (19 October 2026)
 ```
-*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite, streaming response 20MB cap, connection caps, concurrency reservation, 15s Docker timeouts, orphan network prune on startup.*
+*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup.*
 
 ### Tools Regression Suite (`tools/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-301 passed, 12 skipped in 29.72s (18 October 2026)
+302 passed, 12 skipped in 30.65s (19 October 2026)
 ```
-*Includes `test_instancer_compose.py` validating dev overlay vs production overlay rendered configs with `docker compose config`.*
+*Includes `test_instancer_compose.py` validating dev overlay vs production overlay rendered configs with `docker compose config` and verifying that production overlay fails when `INSTANCE_DOMAIN` is unset.*
 
 ### CTFd Plugin Tests inside Container (`tools/run-ctfd-tests.sh`)
 ```
@@ -196,7 +234,7 @@ tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
 ### Repository Hygiene Scan (`tools/ l3mon hygiene`)
 ```
 (cd tools && python -m l3mon hygiene --root .. --history)
-0 finding(s) (18 October 2026)
+0 finding(s) (19 October 2026)
 ```
 
 ---
@@ -253,6 +291,17 @@ tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
 | Starting quota check (R4) | Start 4th instance while 3 are starting | `test_reservation_starting_state_enforces_quota` (returns QuotaError) |
 | Failure reservation release (R4) | Docker daemon fails during container creation | `test_failure_during_docker_calls_cleans_up_and_releases_reservation` |
 | Orphan network prune (R4) | Crash leaves network without running container | `test_reconcile_cleans_orphan_networks` |
+| Backend socket close in finally | Remove `backend_writer.close()` from `finally` | `test_the_connection_to_the_instance_is_closed_by_the_router_when_it_gives_up` |
+| Route check before body read (N1) | Read body before checking Host / route | `test_unknown_host_large_body_refused_immediately_without_reading_body` |
+| Challenge body cap (N1) | Send body larger than challenge `max_body_bytes` | `test_body_exceeding_challenge_cap_refused_immediately_without_reading` |
+| Reading budget exhaustion (N1) | Exhaust 64 MB reading budget with concurrent requests | `test_reading_budget_exhaustion_returns_503` |
+| Request line 8KB cap (N2) | Client sends request line > 8,192 bytes | `test_request_line_too_large_refused_with_431` |
+| Header block 16KB cap (N2) | Client sends header block > 16,384 bytes | `test_header_block_too_large_refused_with_431` |
+| Pre-routing total connection cap (N2) | Exceed 1,000 active connections before routing | `test_pre_routing_connection_limits_and_ip_limiting` |
+| Pre-routing per-IP connection cap (N2) | Exceed 50 connections from same IP before routing | `test_pre_routing_connection_limits_and_ip_limiting` |
+| Cloudflare real IP trust (N2) | Spoof `CF-Connecting-IP` from non-Cloudflare IP | `test_cloudflare_real_ip_trust_and_spoof_refusal` |
+| Total response deadline (N3) | Backend drips 1 byte every 29s exceeding 120s total | `test_backend_dripping_bytes_triggers_total_deadline_timeout_504` |
+| Production INSTANCE_DOMAIN requirement (N4) | Unset `INSTANCE_DOMAIN` and render production overlay | `test_production_overlay_fails_without_instance_domain` |
 
 ---
 
