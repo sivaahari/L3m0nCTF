@@ -48,9 +48,11 @@ def record(
     challenge_id: int | None = None,
     other_team_id: int | None = None,
     detail: str = "",
+    address: str | None = None,
 ) -> None:
     """Record an abuse evidence entry into l3mon_evidence.
 
+    `address` is the visitor's address when the caller has it (the CAPTCHA check does); otherwise it is the request's own.
     Never raises an exception; failures are logged.
     """
     if kind not in EVIDENCE_KINDS:
@@ -75,7 +77,7 @@ def record(
             challenge_id=challenge_id,
             other_team_id=other_team_id,
             detail=clean_detail,
-            address=client_ip,
+            address=(address or None) or client_ip,
             created_at=datetime.datetime.utcfromtimestamp(now()),
             status="new",
             note="",

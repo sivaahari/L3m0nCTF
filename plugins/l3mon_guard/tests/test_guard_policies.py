@@ -9,6 +9,12 @@ from CTFd.plugins.l3mon_guard.policies.disposable import is_disposable_domain
 from CTFd.plugins.l3mon_guard.policies.email_norm import is_email_disguise_used, normalize_email
 
 
+def test_the_domains_of_the_first_curated_list_stay_blocked():
+    """The large open list that replaced the first, small list lacks these well-known ones (integration audit, 2026-10-19): they must stay blocked."""
+    for domain in ("tempmail.com", "tempmail.net", "tempmailaddress.com", "yopmail.org", "10minutemail.org", "spamgourmet.com", "disposable.com"):
+        assert is_disposable_domain(f"player@{domain}") is True, domain
+
+
 def test_disposable_exact_and_subdomain_matching():
     assert is_disposable_domain("player@mailinator.com") is True
     assert is_disposable_domain("player@sub.mailinator.com") is True

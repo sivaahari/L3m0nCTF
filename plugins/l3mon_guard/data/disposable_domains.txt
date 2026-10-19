@@ -9897,3 +9897,12 @@ zzzzzzzzzzzzzz-8874.dynv6.net
 zzzzzzzzzzzzzz-969.dynv6.net
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.loseyourip.com
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.ooguy.com
+
+# kept from the curated list that came before the open list (integration audit, 2026-10-19: the open list lacks these well-known ones)
+10minutemail.org
+disposable.com
+spamgourmet.com
+tempmail.com
+tempmail.net
+tempmailaddress.com
+yopmail.org
