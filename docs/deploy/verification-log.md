@@ -381,3 +381,26 @@ Local results after the round: tool tests 63 passed (2 skipped on Windows); inte
 | nginx's log | the visitor's real address, not Cloudflare's |
 
 **Open:** the admin list holds one temporary entry (the owner's IPv6 network) until the crew's addresses are confirmed; no mail service, so nobody can finish registering yet; Cloudflare Access on `crew.l3m0nctf.xyz` and the firewall and rate-limit rules (hosting guide 3.7 and 3.8) are the owner's to switch on; an older VM, `l3mon-preview`, still exists.
+
+## 2026-10-22: the platform's own sign-in page and error pages, release `release-2026-10-22` (commit `d9bfd63`)
+
+**What changed on the live site:** the sign-in page and the 403, 404, 429 and 500 pages are now ours (generated from the approved prototype), instead of CTFd's own. Nothing else on the platform changed. The release was built and started the way the 19 October one was (`tools/verify-image.sh`, `python3 -m l3mon deploy check`, `tools/compose.sh up -d --wait`).
+
+**Before the release (on the build machine):** the CTFd plugin suite 1845 passed; CTFd's own tests 676 passed; the theme plugin's tests 51 passed; the integration suite through nginx 147 passed; `python -m l3mon hygiene --root .. --history` 0 findings.
+
+**From outside (a laptop, checked again on 22 October after the release):**
+
+| Check | Result |
+|---|---|
+| `GET /healthcheck` | 200 |
+| `GET /readyz` | 200, JSON |
+| `GET /login` | 200, title "Sign in \| L3m0nCTF 2026" (ours); `__Host-session` cookie `Secure; HttpOnly; SameSite=Lax`; HSTS; `x-frame-options: DENY`; `cf-cache-status: DYNAMIC`; no "prototype", "mock data" or "stand-in" wording on the page |
+| `GET /no-such-page` | 404, our "No signal (404)" page |
+| `GET /ctftime/standings.json` | 200 |
+| `GET /auth/ctftime` | 404 (the CTFtime sign-in stays hidden until CTFtime approves) |
+| `GET /l3mon/metrics` | 404 (internal only) |
+| `GET /admin` from an address that is not on the list | 403 |
+
+**Known, and fixed in the next release:** `/favicon.svg` and the channel pictures (`/art/<name>`) are not served by this tag (`GET /favicon.svg` is 404), so the sign-in page's tab icon is missing; the routes arrived in `6153e35`. The human check (the widget for sign-up, reset and failed sign-ins) arrived in `d7328a1` and stays off until the Turnstile keys are set. The older VM `l3mon-preview` mentioned in the 19 October entry has since been deleted.
+
+**Open (unchanged):** the admin list still holds the temporary entry; no mail service, so nobody can finish registering; the Cloudflare rules and Access (hosting guide 3.7 and 3.8) are the owner's.
