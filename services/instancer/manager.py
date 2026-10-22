@@ -70,6 +70,8 @@ class InstanceRecord:
         last_renewed_at: Optional[int] = None,
         target_ip: Optional[str] = None,
         container_id: Optional[str] = None,
+        max_body_bytes: int = 1048576,
+        response_timeout_seconds: int = 120,
     ):
         self.id = instance_id
         self.team_id = team_id
@@ -85,6 +87,8 @@ class InstanceRecord:
         self.last_renewed_at = last_renewed_at
         self.target_ip = target_ip
         self.container_id = container_id
+        self.max_body_bytes = max_body_bytes
+        self.response_timeout_seconds = response_timeout_seconds
 
     def to_dict(self, instance_domain: str, tcp_host: str) -> dict:
         url = f"http://{self.id}.{instance_domain}/" if self.protocol == "http" else None
@@ -169,6 +173,9 @@ class InstanceManager:
                     continue
 
                 state = InstanceState.RUNNING if c.get("state") in ("running", "created") else InstanceState.ERROR
+                spec = self.manifest.get(slug)
+                max_body = spec.max_body_bytes if spec else 1048576
+                resp_timeout = spec.response_timeout_seconds if spec else 120
                 record = InstanceRecord(
                     instance_id=inst_id,
                     team_id=team_id,
@@ -183,6 +190,8 @@ class InstanceManager:
                     renewals=renewals,
                     target_ip=c.get("ip"),
                     container_id=c.get("id"),
+                    max_body_bytes=max_body,
+                    response_timeout_seconds=resp_timeout,
                 )
                 self._instances[inst_id] = record
                 self._team_index.setdefault(team_id, set()).add(inst_id)
@@ -283,6 +292,8 @@ class InstanceManager:
                 allocated_tcp_port=allocated_tcp_port,
                 state=InstanceState.STARTING,
                 renewals=0,
+                max_body_bytes=spec.max_body_bytes,
+                response_timeout_seconds=spec.response_timeout_seconds,
             )
             self._instances[inst_id] = record
             self._team_index.setdefault(team_id, set()).add(inst_id)
@@ -560,5 +571,8 @@ class InstanceManager:
                         "target_ip": inst.target_ip,
                         "target_port": inst.internal_port,
                         "port": inst.allocated_tcp_port,
+                        "max_body_bytes": inst.max_body_bytes,
+                        "response_timeout_seconds": inst.response_timeout_seconds,
                     })
             return routes
+

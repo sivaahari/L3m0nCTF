@@ -17,6 +17,10 @@ DEFAULT_PIDS = 128
 DEFAULT_TTL_MINUTES = 45
 DEFAULT_READ_ONLY = True
 DEFAULT_MAX_PER_TEAM = 1
+DEFAULT_MAX_BODY_BYTES = 1048576  # 1 MB
+GLOBAL_MAX_BODY_BYTES = 10485760  # 10 MB
+DEFAULT_RESPONSE_TIMEOUT_SECONDS = 120
+GLOBAL_MAX_RESPONSE_TIMEOUT_SECONDS = 600
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,9 @@ class ChallengeSpec:
     ttl_minutes: int
     read_only: bool
     max_per_team: int
+    max_body_bytes: int = DEFAULT_MAX_BODY_BYTES
+    response_timeout_seconds: int = DEFAULT_RESPONSE_TIMEOUT_SECONDS
+
 
 
 class Manifest:
@@ -91,6 +98,32 @@ def _validate_and_build_spec(data: dict, dev_mode: bool) -> ChallengeSpec:
     if max_per_team < 1:
         raise ValueError(f"Challenge '{raw_slug}' max_per_team must be at least 1")
 
+    # Request body cap: default 1 MB, at most 10 MB
+    if "max_body_bytes" in data:
+        max_body_bytes = int(data["max_body_bytes"])
+    elif "max_body_mb" in data:
+        max_body_bytes = int(data["max_body_mb"]) * 1024 * 1024
+    else:
+        max_body_bytes = DEFAULT_MAX_BODY_BYTES
+
+    if max_body_bytes <= 0 or max_body_bytes > GLOBAL_MAX_BODY_BYTES:
+        raise ValueError(
+            f"Challenge '{raw_slug}' max_body_bytes ({max_body_bytes}) exceeds allowed limit (0 < max_body_bytes <= {GLOBAL_MAX_BODY_BYTES})"
+        )
+
+    # Response total timeout: default 120s, max 600s
+    if "response_timeout_seconds" in data:
+        response_timeout_seconds = int(data["response_timeout_seconds"])
+    elif "total_timeout_seconds" in data:
+        response_timeout_seconds = int(data["total_timeout_seconds"])
+    else:
+        response_timeout_seconds = DEFAULT_RESPONSE_TIMEOUT_SECONDS
+
+    if response_timeout_seconds <= 0 or response_timeout_seconds > GLOBAL_MAX_RESPONSE_TIMEOUT_SECONDS:
+        raise ValueError(
+            f"Challenge '{raw_slug}' response_timeout_seconds ({response_timeout_seconds}) exceeds allowed limit (0 < timeout <= {GLOBAL_MAX_RESPONSE_TIMEOUT_SECONDS})"
+        )
+
     return ChallengeSpec(
         slug=raw_slug,
         image=image,
@@ -102,7 +135,10 @@ def _validate_and_build_spec(data: dict, dev_mode: bool) -> ChallengeSpec:
         ttl_minutes=ttl_minutes,
         read_only=read_only,
         max_per_team=max_per_team,
+        max_body_bytes=max_body_bytes,
+        response_timeout_seconds=response_timeout_seconds,
     )
+
 
 
 def load_manifest_from_string(content: str, dev_mode: bool = False) -> Manifest:

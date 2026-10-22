@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import ipaddress
 import json
 import logging
 import os
@@ -25,8 +26,43 @@ MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB client request cap
 MAX_RESPONSE_BYTES = 20 * 1024 * 1024  # 20 MB backend response streaming cap
 IDLE_TIMEOUT_SECONDS = 30
 MAX_CONNECTIONS_PER_INSTANCE = 50
+MAX_CONNECTIONS_PER_IP = 50
 MAX_TOTAL_CONNECTIONS = 1000
+GLOBAL_READING_BUDGET = 64 * 1024 * 1024  # 64 MB concurrent reading budget
 CHUNK_SIZE = 64 * 1024  # 64 KB
+
+CLOUDFLARE_NETWORKS = (
+    ipaddress.ip_network("173.245.48.0/20"),
+    ipaddress.ip_network("103.21.244.0/22"),
+    ipaddress.ip_network("103.22.200.0/22"),
+    ipaddress.ip_network("103.31.4.0/22"),
+    ipaddress.ip_network("141.101.64.0/18"),
+    ipaddress.ip_network("108.162.192.0/18"),
+    ipaddress.ip_network("190.93.240.0/20"),
+    ipaddress.ip_network("188.114.96.0/20"),
+    ipaddress.ip_network("197.234.240.0/22"),
+    ipaddress.ip_network("198.41.128.0/17"),
+    ipaddress.ip_network("162.158.0.0/15"),
+    ipaddress.ip_network("104.16.0.0/13"),
+    ipaddress.ip_network("104.24.0.0/14"),
+    ipaddress.ip_network("172.64.0.0/13"),
+    ipaddress.ip_network("131.0.72.0/22"),
+    ipaddress.ip_network("2400:cb00::/32"),
+    ipaddress.ip_network("2606:4700::/32"),
+    ipaddress.ip_network("2803:f800::/32"),
+    ipaddress.ip_network("2405:b500::/32"),
+    ipaddress.ip_network("2405:8100::/32"),
+    ipaddress.ip_network("2a06:98c0::/29"),
+    ipaddress.ip_network("2c0f:f248::/32"),
+)
+
+
+def is_cloudflare_ip(ip_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        return any(addr in net for net in CLOUDFLARE_NETWORKS)
+    except ValueError:
+        return False
 
 
 def extract_instance_id(host_header: str, instance_domain: str) -> Optional[str]:
@@ -78,20 +114,103 @@ class InstanceRouter:
         router_token: str = "",
         poll_interval: float = 2.0,
         max_connections_per_instance: int = MAX_CONNECTIONS_PER_INSTANCE,
+        max_connections_per_ip: int = MAX_CONNECTIONS_PER_IP,
         max_total_connections: int = MAX_TOTAL_CONNECTIONS,
+        global_reading_budget: int = GLOBAL_READING_BUDGET,
     ):
         self.instance_domain = instance_domain
         self.instancer_url = instancer_url
         self.router_token = router_token
         self.poll_interval = poll_interval
         self.max_connections_per_instance = max_connections_per_instance
+        self.max_connections_per_ip = max_connections_per_ip
         self.max_total_connections = max_total_connections
+        self.global_reading_budget = global_reading_budget
 
         self._routes: dict[str, dict] = {}  # instance_id -> route dict
         self._lock = asyncio.Lock()
         self._active_connections_per_inst: dict[str, int] = collections.defaultdict(int)
+        self._active_connections_per_ip: dict[str, int] = collections.defaultdict(int)
         self._total_active_connections: int = 0
         self._conn_lock = asyncio.Lock()
+
+        # Global reading budget tracking (N1)
+        self._current_reading_bytes: int = 0
+        self._budget_lock = asyncio.Lock()
+
+    def get_route(self, inst_id: str) -> dict | None:
+        """Lookup route dictionary for a given instance ID."""
+        return self._routes.get(inst_id)
+
+    def resolve_client_ip(self, peer_ip: str, headers: list[tuple[str, str]]) -> str:
+        """If peer_ip is in Cloudflare's published IP ranges, trust CF-Connecting-IP."""
+        if is_cloudflare_ip(peer_ip):
+            for k, v in headers:
+                if k.lower().strip() == "cf-connecting-ip":
+                    candidate = v.strip()
+                    try:
+                        ipaddress.ip_address(candidate)
+                        return candidate
+                    except ValueError:
+                        pass
+        return peer_ip
+
+    async def acquire_client_connection(self, peer_ip: str) -> tuple[bool, int, str]:
+        """Pre-routing connection rate check and registration."""
+        async with self._conn_lock:
+            if self._total_active_connections >= self.max_total_connections:
+                return False, 503, "Service Busy (Global Limit)"
+            curr = self._active_connections_per_ip.get(peer_ip, 0)
+            if curr >= self.max_connections_per_ip:
+                return False, 503, "Service Busy (IP Limit)"
+            self._total_active_connections += 1
+            self._active_connections_per_ip[peer_ip] = curr + 1
+            return True, 200, ""
+
+    async def rebind_client_connection(self, old_ip: str, new_ip: str) -> tuple[bool, int, str]:
+        """Rebind IP connection slot if Cloudflare CF-Connecting-IP reveals real client IP."""
+        if old_ip == new_ip:
+            return True, 200, ""
+        async with self._conn_lock:
+            curr_new = self._active_connections_per_ip.get(new_ip, 0)
+            if curr_new >= self.max_connections_per_ip:
+                return False, 503, "Service Busy (IP Limit)"
+            # Decrement old
+            curr_old = self._active_connections_per_ip.get(old_ip, 1)
+            if curr_old <= 1:
+                self._active_connections_per_ip.pop(old_ip, None)
+            else:
+                self._active_connections_per_ip[old_ip] = curr_old - 1
+            # Increment new
+            self._active_connections_per_ip[new_ip] = curr_new + 1
+            return True, 200, ""
+
+    async def release_client_connection(self, ip: str) -> None:
+        """Release client connection slot."""
+        async with self._conn_lock:
+            self._total_active_connections = max(0, self._total_active_connections - 1)
+            curr = self._active_connections_per_ip.get(ip, 0)
+            if curr <= 1:
+                self._active_connections_per_ip.pop(ip, None)
+            else:
+                self._active_connections_per_ip[ip] = curr - 1
+
+    async def acquire_reading_budget(self, nbytes: int) -> bool:
+        """Atomically reserve nbytes from the global reading budget."""
+        if nbytes <= 0:
+            return True
+        async with self._budget_lock:
+            if self._current_reading_bytes + nbytes > self.global_reading_budget:
+                return False
+            self._current_reading_bytes += nbytes
+            return True
+
+    async def release_reading_budget(self, nbytes: int) -> None:
+        """Atomically release reserved reading budget bytes."""
+        if nbytes <= 0:
+            return
+        async with self._budget_lock:
+            self._current_reading_bytes = max(0, self._current_reading_bytes - nbytes)
 
     def update_routes(self, routes: list[dict]):
         new_routes = {}
@@ -102,26 +221,23 @@ class InstanceRouter:
         self._routes = new_routes
 
     async def acquire_connection(self, inst_id: str) -> tuple[bool, int, str]:
-        """Atomically check and acquire a connection slot."""
+        """Atomically check and acquire an instance connection slot."""
         async with self._conn_lock:
-            if self._total_active_connections >= self.max_total_connections:
-                return False, 503, "Service Busy (Global Limit)"
             current = self._active_connections_per_inst.get(inst_id, 0)
             if current >= self.max_connections_per_instance:
                 return False, 503, "Service Busy (Instance Limit)"
-            self._total_active_connections += 1
             self._active_connections_per_inst[inst_id] = current + 1
             return True, 200, ""
 
     async def release_connection(self, inst_id: str):
-        """Atomically release an acquired connection slot."""
+        """Atomically release an acquired instance connection slot."""
         async with self._conn_lock:
-            self._total_active_connections = max(0, self._total_active_connections - 1)
             current = self._active_connections_per_inst.get(inst_id, 0)
             if current <= 1:
                 self._active_connections_per_inst.pop(inst_id, None)
             else:
                 self._active_connections_per_inst[inst_id] = current - 1
+
 
     async def poll_routes_loop(self):
         """Poll the instancer service /v1/routes endpoint every 2 seconds."""
@@ -164,6 +280,7 @@ class InstanceRouter:
         client_headers: list[tuple[str, str]],
         body: bytes,
         client_writer: asyncio.StreamWriter,
+        route: Optional[dict] = None,
     ) -> None:
         """Stream client request to backend instance and stream backend response back to client."""
         if len(body) > MAX_BODY_BYTES:
@@ -181,9 +298,15 @@ class InstanceRouter:
             await self._refuse_stream(client_writer, 404, "Instance not found or invalid host\n")
             return
 
-        route = self._routes.get(inst_id)
+        if route is None:
+            route = self._routes.get(inst_id)
         if not route or route.get("protocol") != "http":
             await self._refuse_stream(client_writer, 404, "Instance not found\n")
+            return
+
+        chal_cap = route.get("max_body_bytes", MAX_BODY_BYTES)
+        if len(body) > chal_cap:
+            await self._refuse_stream(client_writer, 413, f"Payload Too Large (Challenge Cap: {chal_cap})\n")
             return
 
         target_ip = route.get("target_ip")
@@ -197,95 +320,97 @@ class InstanceRouter:
             await self._refuse_stream(client_writer, err_status, f"{err_msg}\n")
             return
 
-        writer = None  # the connection to the instance: closed in the finally below whatever happens (integration audit: a timeout or an error left it open)
+        total_timeout = float(route.get("response_timeout_seconds", 120.0))
+
+        backend_writer = None
         try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(target_ip, target_port),
-                timeout=IDLE_TIMEOUT_SECONDS,
-            )
+            async def _do_forward():
+                nonlocal backend_writer
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(target_ip, target_port),
+                    timeout=IDLE_TIMEOUT_SECONDS,
+                )
+                backend_writer = writer
 
-            # Strip hop-by-hop and Content-Length from client headers to send exactly one Content-Length
-            fwd_headers = []
-            for k, v in client_headers:
-                kl = k.lower().strip()
-                if kl not in _HOP_BY_HOP and kl != "content-length":
-                    fwd_headers.append((k.strip(), v.strip()))
+                # Strip hop-by-hop and Content-Length from client headers to send exactly one Content-Length
+                fwd_headers = []
+                for k, v in client_headers:
+                    kl = k.lower().strip()
+                    if kl not in _HOP_BY_HOP and kl != "content-length":
+                        fwd_headers.append((k.strip(), v.strip()))
 
-            req_lines = [f"{method} {path} HTTP/1.1"]
-            for k, v in fwd_headers:
-                req_lines.append(f"{k}: {v}")
-            req_lines.append(f"Content-Length: {len(body)}")
-            req_lines.append("Connection: close")
-            req_data = "\r\n".join(req_lines).encode("utf-8") + b"\r\n\r\n" + body
+                req_lines = [f"{method} {path} HTTP/1.1"]
+                for k, v in fwd_headers:
+                    req_lines.append(f"{k}: {v}")
+                req_lines.append(f"Content-Length: {len(body)}")
+                req_lines.append("Connection: close")
+                req_data = "\r\n".join(req_lines).encode("utf-8") + b"\r\n\r\n" + body
 
-            writer.write(req_data)
-            await writer.drain()
+                writer.write(req_data)
+                await writer.drain()
 
-            # Read backend status line
-            status_line_bytes = await asyncio.wait_for(reader.readline(), timeout=IDLE_TIMEOUT_SECONDS)
-            if not status_line_bytes:
-                await self._refuse_stream(client_writer, 502, "Bad Gateway: Empty backend response\n")
-                writer.close()
-                await writer.wait_closed()
-                return
+                # Read backend status line
+                status_line_bytes = await asyncio.wait_for(reader.readline(), timeout=IDLE_TIMEOUT_SECONDS)
+                if not status_line_bytes:
+                    await self._refuse_stream(client_writer, 502, "Bad Gateway: Empty backend response\n")
+                    return
 
-            status_line = status_line_bytes.decode("utf-8", errors="replace").strip()
+                status_line = status_line_bytes.decode("utf-8", errors="replace").strip()
 
-            # Read backend response headers (up to 100 header lines)
-            backend_resp_headers: list[tuple[str, str]] = []
-            content_length_val: Optional[int] = None
-            is_chunked: bool = False
+                # Read backend response headers (up to 100 header lines)
+                backend_resp_headers: list[tuple[str, str]] = []
+                content_length_val: Optional[int] = None
+                is_chunked: bool = False
 
-            for _ in range(101):
-                header_line = await asyncio.wait_for(reader.readline(), timeout=IDLE_TIMEOUT_SECONDS)
-                if not header_line or header_line == b"\r\n":
-                    break
-                line_str = header_line.decode("utf-8", errors="replace").strip()
-                if ":" in line_str:
-                    hk, hv = line_str.split(":", 1)
-                    hk_clean = hk.strip()
-                    hv_clean = hv.strip()
-                    hkl = hk_clean.lower()
-                    if hkl == "transfer-encoding" and "chunked" in hv_clean.lower():
-                        is_chunked = True
-                    elif hkl not in _HOP_BY_HOP:
-                        if hkl == "content-length":
-                            try:
-                                content_length_val = int(hv_clean)
-                            except ValueError:
-                                pass
-                        else:
-                            backend_resp_headers.append((hk_clean, hv_clean))
+                for _ in range(101):
+                    header_line = await asyncio.wait_for(reader.readline(), timeout=IDLE_TIMEOUT_SECONDS)
+                    if not header_line or header_line == b"\r\n":
+                        break
+                    line_str = header_line.decode("utf-8", errors="replace").strip()
+                    if ":" in line_str:
+                        hk, hv = line_str.split(":", 1)
+                        hk_clean = hk.strip()
+                        hv_clean = hv.strip()
+                        hkl = hk_clean.lower()
+                        if hkl == "transfer-encoding" and "chunked" in hv_clean.lower():
+                            is_chunked = True
+                        elif hkl not in _HOP_BY_HOP:
+                            if hkl == "content-length":
+                                try:
+                                    content_length_val = int(hv_clean)
+                                except ValueError:
+                                    pass
+                            else:
+                                backend_resp_headers.append((hk_clean, hv_clean))
 
-            # Send headers to client
-            out_lines = [status_line]
-            for hk, hv in backend_resp_headers:
-                out_lines.append(f"{hk}: {hv}")
-            if is_chunked:
-                out_lines.append("Transfer-Encoding: chunked")
-            elif content_length_val is not None:
-                out_lines.append(f"Content-Length: {content_length_val}")
-            out_lines.append("Connection: close")
-            head_bytes = "\r\n".join(out_lines).encode("utf-8") + b"\r\n\r\n"
+                # Send headers to client
+                out_lines = [status_line]
+                for hk, hv in backend_resp_headers:
+                    out_lines.append(f"{hk}: {hv}")
+                if is_chunked:
+                    out_lines.append("Transfer-Encoding: chunked")
+                elif content_length_val is not None:
+                    out_lines.append(f"Content-Length: {content_length_val}")
+                out_lines.append("Connection: close")
+                head_bytes = "\r\n".join(out_lines).encode("utf-8") + b"\r\n\r\n"
 
-            client_writer.write(head_bytes)
-            await client_writer.drain()
-
-            # Stream backend response body with 20 MB cap
-            total_streamed = 0
-            while True:
-                chunk = await asyncio.wait_for(reader.read(CHUNK_SIZE), timeout=IDLE_TIMEOUT_SECONDS)
-                if not chunk:
-                    break
-                total_streamed += len(chunk)
-                if total_streamed > MAX_RESPONSE_BYTES:
-                    _log.warning("Backend response exceeded 20MB cap (%d bytes); terminating connection", total_streamed)
-                    break
-                client_writer.write(chunk)
+                client_writer.write(head_bytes)
                 await client_writer.drain()
 
-            writer.close()
-            await writer.wait_closed()
+                # Stream backend response body with 20 MB cap
+                total_streamed = 0
+                while True:
+                    chunk = await asyncio.wait_for(reader.read(CHUNK_SIZE), timeout=IDLE_TIMEOUT_SECONDS)
+                    if not chunk:
+                        break
+                    total_streamed += len(chunk)
+                    if total_streamed > MAX_RESPONSE_BYTES:
+                        _log.warning("Backend response exceeded 20MB cap (%d bytes); terminating connection", total_streamed)
+                        break
+                    client_writer.write(chunk)
+                    await client_writer.drain()
+
+            await asyncio.wait_for(_do_forward(), timeout=total_timeout)
 
         except asyncio.TimeoutError:
             await self._refuse_stream(client_writer, 504, "Gateway Timeout\n")
@@ -293,10 +418,10 @@ class InstanceRouter:
             _log.warning("Error forwarding to %s:%s: %s", target_ip, target_port, e)
             await self._refuse_stream(client_writer, 502, "Bad Gateway\n")
         finally:
-            if writer is not None:
-                writer.close()
+            if backend_writer is not None:
                 try:
-                    await asyncio.wait_for(writer.wait_closed(), timeout=2)
+                    backend_writer.close()
+                    await asyncio.wait_for(backend_writer.wait_closed(), timeout=2)
                 except Exception:
                     pass
             await self.release_connection(inst_id)

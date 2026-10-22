@@ -56,7 +56,11 @@ def test_dev_overlay_properties():
 
 
 def test_production_overlay_properties():
-    data = render_compose("production", ["instancer", "instancer-production"])
+    data = render_compose(
+        "production",
+        ["instancer", "instancer-production"],
+        extra_env={"INSTANCE_DOMAIN": "instances.l3m0nctf.xyz"},
+    )
     services = data.get("services", {})
     instancer = services.get("instancer", {})
     router = services.get("router", {})
@@ -81,3 +85,27 @@ def test_production_overlay_properties():
     ports = router.get("ports", [])
     assert len(ports) > 0
     assert ports[0].get("host_ip") == "0.0.0.0"
+
+    # 5. INSTANCE_DOMAIN configured
+    router_env = router.get("environment", {})
+    assert router_env.get("INSTANCE_DOMAIN") == "instances.l3m0nctf.xyz"
+
+
+
+def test_production_overlay_fails_without_instance_domain():
+    """Rendering production overlay without INSTANCE_DOMAIN must fail loudly."""
+    files = [
+        "-f", str(ROOT / "deploy" / "compose" / "compose.base.yml"),
+        "-f", str(ROOT / "deploy" / "compose" / "compose.production.yml"),
+        "-f", str(ROOT / "deploy" / "compose" / "compose.instancer.yml"),
+        "-f", str(ROOT / "deploy" / "compose" / "compose.instancer-production.yml"),
+    ]
+    env = {k: v for k, v in os.environ.items() if k != "INSTANCE_DOMAIN"}
+    env["INSTANCE_DOMAIN"] = ""
+
+    cmd = ["docker", "compose", *files, "config"]
+    res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=60)
+    assert res.returncode != 0, "Expected docker compose config to fail when INSTANCE_DOMAIN is empty"
+    combined = res.stderr + res.stdout
+    assert "INSTANCE_DOMAIN must be set" in combined, f"Expected error text not found in: {combined}"
+

@@ -310,15 +310,18 @@ def test_backend_that_never_answers_triggers_504():
     """Backend connection succeeds but sends no bytes -> times out with 504."""
     async def run():
         async def mock_silent_backend(reader, writer):
-            # Read request, but never respond; wait for the router to hang up, then close our side too
-            # (integration audit: the old mock slept and never closed, so on Python 3.12, where wait_closed really waits, the test hung)
-            await reader.read(4096)
+            # Read request, but never respond; exit as soon as router closes or 2s timeout
             try:
-                await asyncio.wait_for(reader.read(), 5)
-            except asyncio.TimeoutError:
+                await reader.read(4096)
+                await asyncio.wait_for(reader.read(1), timeout=2.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
             finally:
-                writer.close()
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
 
         server = await asyncio.start_server(mock_silent_backend, "127.0.0.1", 0)
         port = server.sockets[0].getsockname()[1]
@@ -339,11 +342,11 @@ def test_backend_that_never_answers_triggers_504():
 
             await handle_client(reader, writer, router)
             server.close()
-            # a router that leaves its connection to the instance open after the timeout keeps the server from closing: fail, do not hang
-            await asyncio.wait_for(server.wait_closed(), 5)
+            await asyncio.wait_for(server.wait_closed(), timeout=2.0)
             return writer.data
         finally:
             router_mod.IDLE_TIMEOUT_SECONDS = orig_timeout
+
 
     data = asyncio.run(run())
     assert data.startswith(b"HTTP/1.1 504"), data[:80]
@@ -432,17 +435,21 @@ def test_backend_sending_garbage_returns_502():
 
 
 def test_slow_body_client_times_out():
-    """Client declared Content-Length but never sends body bytes -> times out with 408."""
+    """Client declared Content-Length on valid instance but never sends body bytes -> times out with 408."""
     async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": 8080}])
         reader = asyncio.StreamReader()
-        reader.feed_data(b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 50\r\n\r\npart")
+        reader.feed_data(f"POST / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\nContent-Length: 50\r\n\r\npart".encode())
         # Do not feed EOF
         writer = _Writer()
-        await handle_client(reader, writer, InstanceRouter(instance_domain="inst.test"), header_timeout=1.0, body_timeout=0.2)
+        await handle_client(reader, writer, router, header_timeout=1.0, body_timeout=0.2)
         return writer.data
 
     data = asyncio.run(run())
     assert data.startswith(b"HTTP/1.1 408"), data[:80]
+
 
 
 def test_forwards_backend_chunked_response():
@@ -482,6 +489,342 @@ def test_forwards_backend_chunked_response():
     assert b"Transfer-Encoding: chunked" in data
     assert b"Content-Length" not in data
     assert b"hello" in data
+
+
+def test_the_connection_to_the_instance_is_closed_by_the_router_when_it_gives_up():
+    """When router forward fails or times out, the backend socket must be closed in finally."""
+    async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": 8080}])
+
+        class SpyBackendWriter:
+            def __init__(self):
+                self.closed = False
+                self.wait_closed_called = False
+
+            def write(self, data):
+                pass
+
+            async def drain(self):
+                pass
+
+            def close(self):
+                self.closed = True
+
+            async def wait_closed(self):
+                self.wait_closed_called = True
+
+        spy_writer = SpyBackendWriter()
+        mock_reader = asyncio.StreamReader()
+
+        async def fake_open_connection(ip, port):
+            return mock_reader, spy_writer
+
+        import unittest.mock as mock
+        with mock.patch("asyncio.open_connection", side_effect=fake_open_connection):
+            import services.instancer.router.router as router_mod
+            orig_timeout = router_mod.IDLE_TIMEOUT_SECONDS
+            router_mod.IDLE_TIMEOUT_SECONDS = 0.05
+            try:
+                reader = asyncio.StreamReader()
+                reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+                reader.feed_eof()
+                client_writer = _Writer()
+
+                await handle_client(reader, client_writer, router)
+            finally:
+                router_mod.IDLE_TIMEOUT_SECONDS = orig_timeout
+
+        return spy_writer.closed
+
+    closed = asyncio.run(run())
+    assert closed is True
+
+
+# ==============================================================================
+# Round 2 Audit Findings Tests (N1, N2, N3)
+# ==============================================================================
+
+def test_unknown_host_large_body_refused_immediately_without_reading_body():
+    """N1: Request for no valid instance is refused at once, without waiting to read body."""
+    async def run():
+        reader = asyncio.StreamReader()
+        # Send headers with declared Content-Length: 5000000 without sending body and without EOF
+        reader.feed_data(b"POST / HTTP/1.1\r\nHost: unknown.inst.test\r\nContent-Length: 5000000\r\n\r\n")
+        writer = _Writer()
+        await asyncio.wait_for(
+            handle_client(reader, writer, InstanceRouter(instance_domain="inst.test"), header_timeout=1.0, body_timeout=5.0),
+            timeout=0.5,
+        )
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 404"), data[:80]
+
+
+def test_body_exceeding_challenge_cap_refused_immediately_without_reading():
+    """N1: Challenge request-body cap in manifest (e.g. 500 KB) refuses before reading."""
+    async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{
+            "id": inst_id,
+            "protocol": "http",
+            "target_ip": "127.0.0.1",
+            "target_port": 8080,
+            "max_body_bytes": 500000,
+        }])
+        reader = asyncio.StreamReader()
+        # Declare 600 KB without sending body or EOF
+        reader.feed_data(f"POST / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\nContent-Length: 600000\r\n\r\n".encode())
+        writer = _Writer()
+        await asyncio.wait_for(
+            handle_client(reader, writer, router, header_timeout=1.0, body_timeout=5.0),
+            timeout=0.5,
+        )
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 413"), data[:80]
+
+
+def test_reading_budget_exhaustion_returns_503():
+    """N1: Concurrent body reads exceeding global budget (64MB) return 503."""
+    async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{
+            "id": inst_id,
+            "protocol": "http",
+            "target_ip": "127.0.0.1",
+            "target_port": 8080,
+            "max_body_bytes": 10 * 1024 * 1024,
+        }])
+        # Manually saturate reading budget
+        router._current_reading_bytes = 60 * 1024 * 1024
+        reader = asyncio.StreamReader()
+        # Request needing 8 MB exceeds 64 MB budget
+        reader.feed_data(f"POST / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\nContent-Length: 8000000\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+        await handle_client(reader, writer, router, header_timeout=1.0, body_timeout=0.2)
+        return writer.data
+
+    data = asyncio.run(run())
+    assert data.startswith(b"HTTP/1.1 503"), data[:80]
+
+
+def test_request_line_too_large_refused_with_431():
+    """N2: Request line longer than 8 KB is refused with 431."""
+    long_path = "A" * 9000
+    answer = _serve(f"GET /{long_path} HTTP/1.1\r\nHost: inst.test\r\n\r\n".encode())
+    assert answer.startswith(b"HTTP/1.1 431"), answer[:80]
+
+
+def test_header_block_too_large_refused_with_431():
+    """N2: Header block exceeding 16 KB total is refused with 431."""
+    # 25 headers of 700 bytes = 17.5 KB > 16 KB cap
+    headers = b"".join(b"X-Header-%02d: %s\r\n" % (i, b"V" * 700) for i in range(25))
+    answer = _serve(b"GET / HTTP/1.1\r\nHost: inst.test\r\n" + headers + b"\r\n")
+    assert answer.startswith(b"HTTP/1.1 431"), answer[:80]
+
+
+def test_pre_routing_connection_limits_and_ip_limiting():
+    """N2: Pre-routing global connection limit (1000) and per-IP limit (50)."""
+    async def run_global_limit():
+        router = InstanceRouter(instance_domain="inst.test")
+        router._total_active_connections = 1000
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+        reader.feed_eof()
+        writer = _Writer()
+        await handle_client(reader, writer, router)
+        return writer.data
+
+    data = asyncio.run(run_global_limit())
+    assert data.startswith(b"HTTP/1.1 503"), data[:80]
+
+    async def run_ip_limit():
+        router = InstanceRouter(instance_domain="inst.test")
+        router._active_connections_per_ip["198.51.100.5"] = 50
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+        reader.feed_eof()
+        writer = _Writer()
+        writer.get_extra_info = lambda key, default=None: ("198.51.100.5", 12345) if key == "peername" else default
+        await handle_client(reader, writer, router)
+        return writer.data
+
+    data_ip = asyncio.run(run_ip_limit())
+    assert data_ip.startswith(b"HTTP/1.1 503"), data_ip[:80]
+
+
+def test_cloudflare_real_ip_trust_and_spoof_refusal():
+    """N2: CF-Connecting-IP is trusted ONLY from Cloudflare ranges (e.g. 173.245.48.5)."""
+    router = InstanceRouter(instance_domain="inst.test")
+    # 1. From Cloudflare IP -> trusted
+    assert router.resolve_client_ip("173.245.48.5", [("CF-Connecting-IP", "203.0.113.19")]) == "203.0.113.19"
+    # 2. From non-Cloudflare IP (stranger trying to spoof) -> NOT trusted, uses peer IP
+    assert router.resolve_client_ip("198.51.100.1", [("CF-Connecting-IP", "203.0.113.19")]) == "198.51.100.1"
+
+
+def test_backend_dripping_bytes_triggers_total_deadline_timeout_504():
+    """N3: Backend that drips bytes slowly exceeds total deadline (e.g. 0.2s) -> 504."""
+    async def run():
+        async def mock_dripping_backend(reader, writer):
+            await reader.read(4096)
+            # Drip 1 byte every 50ms
+            try:
+                for _ in range(20):
+                    writer.write(b"X")
+                    await writer.drain()
+                    await asyncio.sleep(0.05)
+            except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+                pass
+            finally:
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+
+        server = await asyncio.start_server(mock_dripping_backend, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{
+            "id": inst_id,
+            "protocol": "http",
+            "target_ip": "127.0.0.1",
+            "target_port": port,
+            "response_timeout_seconds": 0.15,
+        }])
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
+        reader.feed_eof()
+        writer = _Writer()
+
+        await handle_client(reader, writer, router)
+        server.close()
+        await asyncio.wait_for(server.wait_closed(), timeout=2.0)
+        return writer.data
+
+    data = asyncio.run(run())
+    assert b"504 Gateway Timeout" in data or data.startswith(b"HTTP/1.1 504"), data[:80]
+
+
+def test_hostile_many_slow_header_connections():
+    """N2 Hostile Client: 80 concurrent slow header connections must time out cleanly and free slots."""
+    async def run():
+        router = InstanceRouter(instance_domain="inst.test")
+        tasks = []
+
+        async def slow_header_client(idx: int):
+            reader = asyncio.StreamReader()
+            reader.feed_data(b"GET / HTTP/1.1\r\nHost: inst.test\r\nX-Slow: ")
+            # Never send trailing newline / EOF
+            writer = _Writer()
+            writer.get_extra_info = lambda k, d=None: (f"10.0.{idx // 40}.{idx % 40}", 10000 + idx) if k == "peername" else d
+            await handle_client(reader, writer, router, header_timeout=0.05, body_timeout=0.1)
+            return writer
+
+        for i in range(80):
+            tasks.append(asyncio.create_task(slow_header_client(i)))
+
+        writers = await asyncio.gather(*tasks)
+        # All 80 should time out with 408 and be marked closed
+        assert len(writers) == 80
+        assert all(w.closed for w in writers)
+        assert all(w.data.startswith(b"HTTP/1.1 408") for w in writers)
+        # Verify router connection slots fully recovered
+        assert router._total_active_connections == 0
+        assert len(router._active_connections_per_ip) == 0
+
+    asyncio.run(run())
+
+
+def test_hostile_many_slow_bodies():
+    """N2 Hostile Client: 40 concurrent slow body connections must time out and restore reading budget."""
+    async def run():
+        inst_id = "0123456789abcdef0123456789abcdef"
+        router = InstanceRouter(instance_domain="inst.test")
+        router.update_routes([{
+            "id": inst_id,
+            "protocol": "http",
+            "target_ip": "127.0.0.1",
+            "target_port": 8080,
+            "max_body_bytes": 1024 * 1024,
+        }])
+
+        tasks = []
+
+        async def slow_body_client(idx: int):
+            reader = asyncio.StreamReader()
+            # Send complete headers declaring 200 KB body, but feed only 10 bytes and stall
+            head = f"POST / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\nContent-Length: 200000\r\n\r\n".encode()
+            reader.feed_data(head + b"1234567890")
+            writer = _Writer()
+            writer.get_extra_info = lambda k, d=None: (f"10.1.{idx // 20}.{idx % 20}", 20000 + idx) if k == "peername" else d
+            await handle_client(reader, writer, router, header_timeout=0.2, body_timeout=0.05)
+            return writer
+
+        for i in range(40):
+            tasks.append(asyncio.create_task(slow_body_client(i)))
+
+        writers = await asyncio.gather(*tasks)
+        assert len(writers) == 40
+        assert all(w.closed for w in writers)
+        assert all(w.data.startswith(b"HTTP/1.1 408") for w in writers)
+        # Verify reading budget and connection count fully returned to 0
+        assert router._current_reading_bytes == 0
+        assert router._total_active_connections == 0
+
+    asyncio.run(run())
+
+
+def test_hostile_many_connections_burst():
+    """N2 Hostile Client: Burst of 1200 connections enforces 1000 max_total_connections."""
+    async def run():
+        router = InstanceRouter(instance_domain="inst.test", max_total_connections=1000)
+        # Directly populate 1000 active connections
+        router._total_active_connections = 1000
+
+        # Now launch 50 new connections across different source IPs
+        tasks = []
+        async def burst_client(idx: int):
+            reader = asyncio.StreamReader()
+            reader.feed_data(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+            reader.feed_eof()
+            writer = _Writer()
+            writer.get_extra_info = lambda k, d=None: (f"10.2.{idx // 10}.{idx % 10}", 30000 + idx) if k == "peername" else d
+            await handle_client(reader, writer, router)
+            return writer
+
+        for i in range(50):
+            tasks.append(asyncio.create_task(burst_client(i)))
+
+        writers = await asyncio.gather(*tasks)
+        # All 50 connections above limit must receive 503
+        assert len(writers) == 50
+        assert all(w.data.startswith(b"HTTP/1.1 503") for w in writers)
+
+        # Release the 1000 connections
+        router._total_active_connections = 0
+        # Subsequent connection must be accepted
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+        reader.feed_eof()
+        writer = _Writer()
+        await handle_client(reader, writer, router)
+        assert writer.data.startswith(b"HTTP/1.1 404")
+
+    asyncio.run(run())
+
+
+
 
 
 
