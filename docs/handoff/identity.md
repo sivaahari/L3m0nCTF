@@ -408,3 +408,46 @@ Following the 18 October 2026 audit of `pre-deployment`, this branch addressed f
 | F5-1 | Turnstile verify URL whitelist | Return `os.environ.get("TURNSTILE_VERIFY_URL")` without host check | `test_guard_turnstile.py::test_turnstile_verify_url_whitelist` | Fails: Disallowed external URL accepted instead of falling back to Cloudflare |
 | F5-2 | Evidence IP recorded in address column only | Include IP in `detail=f"action={action}; ip={ip}"` | `test_guard_turnstile.py::test_turnstile_unreachable_fail_open_login_and_reset` | Fails: Assertion `"192.0.2.1" not in rows[0].detail` fails |
 | F3-1 | Top 20 email providers never blocked | Add `gmail.com` to disposable domains blocklist | `test_guard_disposable_top_providers.py::test_top_20_providers_never_blocked` | Fails: Major provider detected in blocklist |
+
+---
+
+## 13. Round 2 Addendum: Audit Findings Resolution & MariaDB Migration Tests
+
+Following the Round 2 Addendum (`FIX-PROMPT-2b-identity-round2-ADDENDUM.md`), this branch addressed the six integration audit findings and implemented the required MariaDB migration tests:
+
+### 13.1 Audit Findings Resolution
+
+1. **Bug 1 (`evidence.record` address argument):**
+   - Added `address: str | None = None` to `evidence.record(...)`.
+   - Uses explicit `address` if provided, falling back to `get_ip()` if in active request context.
+   - Prevents `TypeError` during Turnstile outage so fail-open on login and password reset operates cleanly.
+   - Covered in `test_guard_evidence.py::test_record_with_explicit_address`.
+
+2. **Regression 2 (Disposable Domains Preservation):**
+   - Appended the 7 curated domains (`tempmail.com`, `tempmail.net`, `tempmailaddress.com`, `yopmail.org`, `10minutemail.org`, `spamgourmet.com`, `disposable.com`) to `plugins/l3mon_guard/data/disposable_domains.txt`.
+   - Added regression test `test_the_domains_of_the_first_curated_list_stay_blocked` in `test_guard_disposable_top_providers.py`.
+
+3. **Test Bug 3 (Google JWKS Refresh Test):**
+   - In `test_auth_google.py::test_jwks_refresh_rate_limit_honored_for_unknown_kid`, updated to call `current_mock_server.get_jwks()`, expect `sub == "google-sub-12345"`, and patch `jwt_mod.now` (the reference imported by `jwt.py`).
+
+4. **Test Bug 4 (Email Norm Unique Constraint Test):**
+   - In `test_guard_email_norm.py::test_email_norm_unique_constraint`, used real user entities persisted in the database to satisfy the foreign key constraint on `l3mon_email_norm.user_id`.
+
+5. **Test Bug 5 (Email Norm Lazy Backfill Test):**
+   - In `test_guard_email_norm.py::test_email_norm_lazy_backfill`, patched `claim` to return `True` across sequential batches to allow multi-batch execution in test environment.
+   - Added `test_email_norm_lazy_backfill_refused_inside_claim_window` proving backfill is refused when called inside the active 10s claim window.
+
+6. **Test Bug 6 (Email Disguise Query Budget Test):**
+   - In `test_guard_email_norm.py::test_email_disguise_query_budget_bounded`, isolated disguise lookup from backfill by mocking `backfill_email_norm`.
+   - Asserted statement count is $\le 2$ and identical between 50 and 500 users ($O(1)$ query cost).
+   - Added `test_email_norm_backfill_statement_cost` measuring batch backfill query count ($\le 15$ statements per batch).
+
+### 13.2 MariaDB Migration Coverage (`test_guard_mariadb.py`)
+
+In accordance with Rule 5 of the Addendum:
+- Updated `REVISION_HEAD = "3e4f5a6b7c8d"` and verified both `l3mon_evidence` and `l3mon_email_norm` tables are created.
+- Added `test_email_norm_table_schema_and_constraints`: validates columns, foreign keys (`ON DELETE CASCADE`), and unique constraints on `user_id` and `norm`.
+- Added `test_email_norm_mariadb_enforces_unique_and_foreign_key`: verifies MariaDB engine enforces duplicate `norm` and `user_id` rejection, and cascade deletion when user is deleted.
+- Added `test_email_norm_migration_idempotent_and_downgrade`: verifies migration `3e4f5a6b7c8d` runs twice safely, supports downgrade (table dropped), safe repeated downgrade, and clean re-upgrade.
+- Added `test_email_norm_concurrent_race_gives_one_row`: uses `ThreadPoolExecutor(max_workers=2)` to simulate two workers inserting the same normalized address simultaneously. Asserts exactly one worker succeeds and exactly one row exists in MariaDB.
+

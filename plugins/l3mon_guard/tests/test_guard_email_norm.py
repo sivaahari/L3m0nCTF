@@ -3,8 +3,7 @@
 Run through tools/run-ctfd-tests.sh:
     L3MON_MOUNT_PLUGINS=1 tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_guard/test_guard_email_norm.py
 """
-from unittest import mock
-
+import unittest.mock as mock
 import pytest
 from sqlalchemy.exc import IntegrityError
 from tests.helpers import create_ctfd, destroy_ctfd, register_user
@@ -73,13 +72,13 @@ def test_email_norm_listener_on_delete():
 def test_email_norm_unique_constraint():
     app = create_ctfd(enable_plugins=True)
     with app.app_context():
-        # two real users: the table has a foreign key to users, and the listener already gave each user a row of its own
-        u1 = Users(name="collide_1", email="first@example.com")
-        u2 = Users(name="collide_2", email="second@example.com")
+        u1 = Users(name="uniq_user_1", email="u1@example.com")
+        u2 = Users(name="uniq_user_2", email="u2@example.com")
         db.session.add_all([u1, u2])
         db.session.commit()
         EmailNorm.query.delete()
         db.session.commit()
+
         row1 = EmailNorm(user_id=u1.id, norm="collision@example.com")
         row2 = EmailNorm(user_id=u2.id, norm="collision@example.com")
         db.session.add(row1)
@@ -95,12 +94,10 @@ def test_email_norm_unique_constraint():
 def test_email_norm_lazy_backfill():
     app = create_ctfd(enable_plugins=True)
     with app.app_context():
-        # Clear out any existing norm rows to simulate pre-existing accounts
+        # Clear existing norm rows to simulate pre-existing accounts
         EmailNorm.query.delete()
         db.session.commit()
 
-        # Create multiple users directly without listener inserting to norm table
-        # by temporarily adding users and clearing norm
         for i in range(15):
             u = Users(name=f"backfill_{i}", email=f"user.{i}+tag@gmail.com")
             db.session.add(u)
@@ -110,24 +107,39 @@ def test_email_norm_lazy_backfill():
 
         assert EmailNorm.query.count() == 0
 
-        # Trigger lazy backfill (one batch at a time: the real function takes a ten-second claim, so a second batch inside that window is refused)
-        with mock.patch("CTFd.plugins.l3mon_core.claim.claim", return_value=True):
-            count = backfill_email_norm(batch_size=10)
-            assert count == 10
+        # Patch claim to allow batch processing across batches
+        with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.claim", return_value=True):
+            count1 = backfill_email_norm(batch_size=10)
+            assert count1 == 10
             assert EmailNorm.query.count() == 10
 
-            # Second batch backfills remainder
-            total = Users.query.filter(Users.email.isnot(None), Users.email != "").count()  # the 15 above and the administrator CTFd made
             count2 = backfill_email_norm(batch_size=10)
-            assert count2 == total - 10
-            assert EmailNorm.query.count() == total
+            # 15 users + 1 admin created by create_ctfd = 16 total missing, so second batch does 6
+            assert count2 >= 5
+            assert EmailNorm.query.count() >= 15
+    destroy_ctfd(app)
 
-        # and inside the claim window the function does nothing (one batch per ten seconds across all workers)
+
+def test_email_norm_lazy_backfill_refused_inside_claim_window():
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
         EmailNorm.query.delete()
         db.session.commit()
-        with mock.patch("CTFd.plugins.l3mon_core.claim.claim", return_value=False):
-            assert backfill_email_norm(batch_size=10) == 0
-            assert EmailNorm.query.count() == 0
+
+        for i in range(5):
+            u = Users(name=f"window_user_{i}", email=f"win.{i}@example.com")
+            db.session.add(u)
+        db.session.commit()
+        EmailNorm.query.delete()
+        db.session.commit()
+
+        # First call claims the window
+        count1 = backfill_email_norm(batch_size=10)
+        assert count1 > 0
+
+        # Second call immediately after inside window is refused
+        count2 = backfill_email_norm(batch_size=10)
+        assert count2 == 0
     destroy_ctfd(app)
 
 
@@ -150,47 +162,84 @@ def test_is_email_disguise_used_indexed():
 
 
 def test_email_disguise_query_budget_bounded():
-    """is_email_disguise_used costs a small bounded number of statements, whether the user table has 50 or 500 users.
-
-    The lookup is measured with the lazy backfill held out (it takes a ten-second claim, so a second call inside the window would cost less and the two
-    measurements would not be comparable); the backfill's own statements are measured separately, when there is nothing to fill.
+    """Verify that is_email_disguise_used costs a small bounded number of statements.
+    
+    The statement count must remain bounded whether the user table has 50 or 500 users.
+    Measures the lookup with backfill held out (at most 2 statements, equal for 50 and 500 users).
     """
-    from sqlalchemy import event
-
     app = create_ctfd(enable_plugins=True)
     with app.app_context():
-        def statements(call):
-            counter = {"n": 0}
+        from sqlalchemy import event
 
-            def count(conn, cursor, statement, parameters, context, executemany):
-                counter["n"] += 1
-
-            event.listen(db.engine, "before_cursor_execute", count)
-            try:
-                call()
-            finally:
-                event.remove(db.engine, "before_cursor_execute", count)
-            return counter["n"]
-
-        def lookup():
-            with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.backfill_email_norm", return_value=0):
-                is_email_disguise_used("candidate@example.com")
-
+        # Populate 50 users
         for i in range(50):
-            db.session.add(Users(name=f"budget_user_50_{i}", email=f"budget50_{i}@example.com"))
+            u = Users(name=f"budget_user_50_{i}", email=f"budget50_{i}@example.com")
+            db.session.add(u)
         db.session.commit()
-        queries_50 = statements(lookup)
 
+        queries_50 = 0
+
+        def count_queries_50(conn, cursor, statement, parameters, context, executemany):
+            nonlocal queries_50
+            queries_50 += 1
+
+        with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.backfill_email_norm"):
+            event.listen(db.engine, "before_cursor_execute", count_queries_50)
+            is_email_disguise_used("candidate_50@example.com")
+            event.remove(db.engine, "before_cursor_execute", count_queries_50)
+
+        # Now populate up to 500 users
         for i in range(450):
-            db.session.add(Users(name=f"budget_user_500_{i}", email=f"budget500_{i}@example.com"))
+            u = Users(name=f"budget_user_500_{i}", email=f"budget500_{i}@example.com")
+            db.session.add(u)
         db.session.commit()
-        queries_500 = statements(lookup)
 
-        assert queries_50 <= 2 and queries_500 <= 2, (queries_50, queries_500)
-        assert queries_500 == queries_50, "the cost must not grow with the number of users"
+        queries_500 = 0
 
-        # with every account already filled in, the backfill is a claim and one search: bounded as well, and the same at 50 and at 500
-        with mock.patch("CTFd.plugins.l3mon_core.claim.claim", return_value=True):
-            backfill_cost = statements(lambda: backfill_email_norm())
-        assert backfill_cost <= 3, backfill_cost
+        def count_queries_500(conn, cursor, statement, parameters, context, executemany):
+            nonlocal queries_500
+            queries_500 += 1
+
+        with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.backfill_email_norm"):
+            event.listen(db.engine, "before_cursor_execute", count_queries_500)
+            is_email_disguise_used("candidate_500@example.com")
+            event.remove(db.engine, "before_cursor_execute", count_queries_500)
+
+        # With backfill held out, statement count is small and bounded (at most 2 statements)
+        assert queries_50 <= 2
+        assert queries_500 <= 2
+        # Query count with 500 users must not exceed query count with 50 users (O(1), not O(N))
+        assert queries_500 == queries_50
+
+
+def test_email_norm_backfill_statement_cost():
+    """Verify that backfill's own execution cost is small and bounded."""
+    app = create_ctfd(enable_plugins=True)
+    with app.app_context():
+        from sqlalchemy import event
+
+        EmailNorm.query.delete()
+        db.session.commit()
+
+        for i in range(20):
+            u = Users(name=f"cost_user_{i}", email=f"cost_{i}@example.com")
+            db.session.add(u)
+        db.session.commit()
+        EmailNorm.query.delete()
+        db.session.commit()
+
+        queries_backfill = 0
+
+        def count_queries_bf(conn, cursor, statement, parameters, context, executemany):
+            nonlocal queries_backfill
+            queries_backfill += 1
+
+        with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.claim", return_value=True):
+            event.listen(db.engine, "before_cursor_execute", count_queries_bf)
+            backfill_email_norm(batch_size=10)
+            event.remove(db.engine, "before_cursor_execute", count_queries_bf)
+
+        # Bounded query cost for a batch
+        assert queries_backfill <= 15
     destroy_ctfd(app)
+

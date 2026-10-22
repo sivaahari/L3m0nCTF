@@ -9899,6 +9899,7 @@ zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.loseyourip.com
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.ooguy.com
 
 # kept from the curated list that came before the open list (integration audit, 2026-10-19: the open list lacks these well-known ones)
+# Curated well-known disposable domains preserved from original starter list
 10minutemail.org
 disposable.com
 spamgourmet.com

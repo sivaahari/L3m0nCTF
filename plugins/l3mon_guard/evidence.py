@@ -62,8 +62,8 @@ def record(
     try:
         clean_detail = _sanitize_detail(detail)
 
-        client_ip = None
-        if has_request_context():
+        client_ip = address
+        if client_ip is None and has_request_context():
             try:
                 from CTFd.utils.user import get_ip
                 client_ip = get_ip()

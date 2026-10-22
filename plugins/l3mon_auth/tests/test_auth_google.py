@@ -499,9 +499,6 @@ def test_jwks_refresh_rate_limit_honored_for_unknown_kid():
     import json
     server1 = MockGoogleOIDC(kid="key-1")
     server2 = MockGoogleOIDC(kid="key-2")
-    import time
-
-    base = time.time()  # the module under test reads its own clock (jwt_mod.now), so that is the one moved on; the tokens carry the real time
 
     with mock.patch.dict(os.environ, {"L3MON_AUTH_TEST_MODE": "1"}, clear=False):
         # 1. When cache is empty, fetch_jwks populates cache
@@ -520,7 +517,7 @@ def test_jwks_refresh_rate_limit_honored_for_unknown_kid():
             return resp
 
         with mock.patch("requests.get", side_effect=fake_get) as mock_get:
-            with mock.patch.object(jwt_mod, "now", return_value=base + 0):
+            with mock.patch.object(jwt_mod, "now", return_value=1000.0):
                 # Token with key-1 should succeed and populate cache
                 claims1 = server1.build_valid_claims(client_id="test-client", nonce="test-nonce")
                 token1 = server1.sign_token(claims1)
@@ -534,7 +531,7 @@ def test_jwks_refresh_rate_limit_honored_for_unknown_kid():
             # 2. At t=1010.0 (10s later, interval=60s not elapsed), token with key-2 arrives
             # Mock server now has key-2, but refresh cooldown must block outbound fetch
             current_mock_server = server2
-            with mock.patch.object(jwt_mod, "now", return_value=base + 10):
+            with mock.patch.object(jwt_mod, "now", return_value=1010.0):
                 claims2 = server2.build_valid_claims(client_id="test-client", nonce="test-nonce")
                 token2 = server2.sign_token(claims2)
                 with pytest.raises(TokenError, match="unknown kid 'key-2'"):
@@ -543,8 +540,9 @@ def test_jwks_refresh_rate_limit_honored_for_unknown_kid():
                 assert mock_get.call_count == call_count_after_key1
 
             # 3. At t=1065.0 (65s later, interval=60s elapsed), key-2 is fetched and accepted
-            with mock.patch.object(jwt_mod, "now", return_value=base + 65):
+            with mock.patch.object(jwt_mod, "now", return_value=1065.0):
                 verified2 = verify_id_token(token2, expected_client_id="test-client", expected_nonce="test-nonce")
                 assert verified2["sub"] == "google-sub-12345"
                 assert "key-2" in jwt_mod._JWKS_CACHE
                 assert mock_get.call_count > call_count_after_key1
+
