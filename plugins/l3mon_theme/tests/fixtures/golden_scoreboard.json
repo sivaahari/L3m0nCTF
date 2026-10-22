@@ -1,0 +1,288 @@
+{
+  "normal_live_studio_2nd": {
+    "input": {
+      "data": {
+        "ver": 42,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "total": 25,
+        "shown": 25,
+        "rows_sig": "sig-live-12345678",
+        "me": {
+          "name": "Studio Lemon",
+          "score": 2000,
+          "pos": 2,
+          "of": 25
+        }
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "42",
+      "top": "100",
+      "total": "25",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-live-12345678",
+      "hasMe": true,
+      "me": {
+        "name": "Studio Lemon",
+        "score": "2000",
+        "place": "2nd of 25",
+        "frozen": ""
+      },
+      "more": ""
+    }
+  },
+  "before_contest_empty": {
+    "input": {
+      "data": {
+        "ver": 1,
+        "phase": {
+          "state": "before",
+          "frozen": false
+        },
+        "total": 0,
+        "shown": 0,
+        "rows_sig": "none",
+        "me": {
+          "name": "Studio Lemon",
+          "score": 0,
+          "pos": null,
+          "of": 0
+        }
+      },
+      "rows_html": ""
+    },
+    "expected": {
+      "ver": "1",
+      "top": "100",
+      "total": "0",
+      "hasRows": false,
+      "rows": "",
+      "sig": "none",
+      "hasMe": true,
+      "me": {
+        "name": "Studio Lemon",
+        "score": "0",
+        "place": "Not ranked yet",
+        "frozen": ""
+      },
+      "more": ""
+    }
+  },
+  "live_studio_unranked": {
+    "input": {
+      "data": {
+        "ver": 88,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "total": 10,
+        "shown": 10,
+        "rows_sig": "sig-unranked-1111",
+        "me": {
+          "name": "New Studio",
+          "score": 0,
+          "pos": null,
+          "of": 10
+        }
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "88",
+      "top": "100",
+      "total": "10",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-unranked-1111",
+      "hasMe": true,
+      "me": {
+        "name": "New Studio",
+        "score": "0",
+        "place": "Not ranked yet",
+        "frozen": ""
+      },
+      "more": ""
+    }
+  },
+  "scoreboard_frozen": {
+    "input": {
+      "data": {
+        "ver": 120,
+        "phase": {
+          "state": "frozen",
+          "frozen": true
+        },
+        "total": 30,
+        "shown": 30,
+        "rows_sig": "sig-frozen-2222",
+        "me": {
+          "name": "Studio Lemon",
+          "score": 2400,
+          "pos": null,
+          "of": 30
+        }
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "120",
+      "top": "100",
+      "total": "30",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-frozen-2222",
+      "hasMe": true,
+      "me": {
+        "name": "Studio Lemon",
+        "score": "2400",
+        "place": "Ranks frozen",
+        "frozen": "true"
+      },
+      "more": ""
+    }
+  },
+  "crew_admin_viewer": {
+    "input": {
+      "data": {
+        "ver": 42,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "total": 25,
+        "shown": 25,
+        "rows_sig": "sig-admin-3333",
+        "me": null
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "42",
+      "top": "100",
+      "total": "25",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-admin-3333",
+      "hasMe": false,
+      "me": null,
+      "more": ""
+    }
+  },
+  "more_than_top_studios": {
+    "input": {
+      "data": {
+        "ver": 200,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "total": 145,
+        "shown": 100,
+        "rows_sig": "sig-large-4444",
+        "me": {
+          "name": "Studio Lemon",
+          "score": 1500,
+          "pos": 45,
+          "of": 145
+        }
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "200",
+      "top": "100",
+      "total": "145",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-large-4444",
+      "hasMe": true,
+      "me": {
+        "name": "Studio Lemon",
+        "score": "1500",
+        "place": "45th of 145",
+        "frozen": ""
+      },
+      "more": "Showing the first 100 of 145 studios."
+    }
+  },
+  "first_place_studio": {
+    "input": {
+      "data": {
+        "ver": 50,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "total": 15,
+        "shown": 15,
+        "rows_sig": "sig-first-5555",
+        "me": {
+          "name": "Top Studio",
+          "score": 3500,
+          "pos": 1,
+          "of": 15
+        }
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "50",
+      "top": "100",
+      "total": "15",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-first-5555",
+      "hasMe": true,
+      "me": {
+        "name": "Top Studio",
+        "score": "3500",
+        "place": "1st of 15",
+        "frozen": ""
+      },
+      "more": ""
+    }
+  },
+  "after_contest": {
+    "input": {
+      "data": {
+        "ver": 300,
+        "phase": {
+          "state": "after",
+          "frozen": false
+        },
+        "total": 50,
+        "shown": 50,
+        "rows_sig": "sig-after-6666",
+        "me": {
+          "name": "Studio Lemon",
+          "score": 2800,
+          "pos": 3,
+          "of": 50
+        }
+      },
+      "rows_html": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>"
+    },
+    "expected": {
+      "ver": "300",
+      "top": "100",
+      "total": "50",
+      "hasRows": true,
+      "rows": "<li class=\"sb-row is-top is-p1\"><b class=\"sb-pos\">1</b><span class=\"sb-name\"><bdi>Studio Alpha</bdi><span class=\"sr-only\"></span></span><span class=\"sb-solves\">10 solves</span><span class=\"sb-trp\"><b>2500</b> TRP</span><span class=\"sb-bar pv-100\" aria-hidden=\"true\"><i></i></span></li><li class=\"sb-row is-you\"><b class=\"sb-pos\">2</b><span class=\"sb-name\"><bdi>Studio Lemon</bdi><span class=\"sr-only\"> (your studio)</span></span><span class=\"sb-solves\">8 solves</span><span class=\"sb-trp\"><b>2000</b> TRP</span><span class=\"sb-bar pv-80\" aria-hidden=\"true\"><i></i></span></li>",
+      "sig": "sig-after-6666",
+      "hasMe": true,
+      "me": {
+        "name": "Studio Lemon",
+        "score": "2800",
+        "place": "3rd of 50",
+        "frozen": ""
+      },
+      "more": ""
+    }
+  }
+}

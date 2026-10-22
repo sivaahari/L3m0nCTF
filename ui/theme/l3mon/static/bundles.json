@@ -4,5 +4,7 @@
   "js.boot": "boot.4bcf0f099b.js",
   "js.guide": "guide.26da35fb16.js",
   "js.login": "login.8b261bcc8e.js",
+  "js.register": "register.ac2c8d8d6c.js",
+  "js.scoreboard": "scoreboard.d7e0d7c4af.js",
   "js.slate": "slate.fa2ca3794b.js"
 }

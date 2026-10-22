@@ -50,6 +50,21 @@ def test_the_sign_in_page_is_the_theme_and_carries_the_session_token(app):
             assert "Continue with Google" not in body
 
 
+def test_sign_in_shows_google_button_when_google_auth_configured(app, monkeypatch):
+    with app.app_context():
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
+        with app.test_client() as client:
+            body = client.get("/login?next=%2Fguide").get_data(as_text=True)
+            assert "Continue with Google" in body
+            assert 'href="/auth/google?next=/guide"' in body
+
+            # And without next
+            body_no_next = client.get("/login").get_data(as_text=True)
+            assert 'href="/auth/google"' in body_no_next
+
+
 def test_a_wrong_password_comes_back_on_the_theme_with_the_alert_and_the_typed_name(app):
     with app.app_context():
         with app.test_client() as client:
@@ -176,6 +191,28 @@ def test_a_server_error_page_is_ours_with_status_500_and_no_traceback(app):
             body = r.get_data(as_text=True)
             assert SLATE in body and "TECHNICAL DIFFICULTY" in body
             assert "a test-only failure" not in body
+
+
+def test_an_unauthorized_error_page_is_ours_with_status_401(app):
+    app.url_map.add(Rule("/l3mon-test/unauthorized", endpoint="l3mon_test_unauthorized"))
+    app.view_functions["l3mon_test_unauthorized"] = lambda: abort(401)
+    with app.app_context():
+        with app.test_client() as client:
+            r = client.get("/l3mon-test/unauthorized")
+            assert r.status_code == 401
+            body = r.get_data(as_text=True)
+            assert SLATE in body and "SIGN IN REQUIRED" in body
+
+
+def test_a_bad_gateway_error_page_is_ours_with_status_502(app):
+    app.url_map.add(Rule("/l3mon-test/bad-gateway", endpoint="l3mon_test_bad_gateway"))
+    app.view_functions["l3mon_test_bad_gateway"] = lambda: abort(502)
+    with app.app_context():
+        with app.test_client() as client:
+            r = client.get("/l3mon-test/bad-gateway")
+            assert r.status_code == 502
+            body = r.get_data(as_text=True)
+            assert SLATE in body and "BACK IN A MOMENT" in body
 
 
 def test_the_pages_have_no_inline_script_style_or_event_attribute(app):

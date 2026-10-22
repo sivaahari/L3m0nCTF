@@ -1,0 +1,12 @@
+{# Unauthorized (401), for the CTFd theme (SP6 Stream C). Hand-written: it sets the values the generated slate page reads, then includes it.
+   The wording is the prototype's for this state. The status is CTFd's. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set target = '/' if request.path.startswith('//') else request.path %}
+{% set login_url = '/login' ~ ('?next=' ~ target|urlencode if target and target != '/login' else '') %}
+{% set page = {'title': 'Sign in required (401) | ' ~ event_name, 'cls': 'pg-slate sl-403'} %}
+{% set asset = {'css': l3.assets['css.slate'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.slate']} %}
+{% set dev = none %}
+{% set news = [] %}
+{% set slate = {'id': 'auth_required', 'status': 401, 'inShell': false, 'cls': 'sl-403', 'srStatus': 'Status 401: ', 'mood': 'sad', 'code': 'SIGN IN REQUIRED', 'h1': 'Sign in to carry on', 'line': 'Your session ended. Sign in again to carry on.', 'retry': none, 'retryLead': '', 'retryUrl': target, 'ways': [{'href': login_url, 'label': 'Sign in', 'cls': 'btn-main'}], 'requestId': none, 'note': none, 'site': l3.site_url} %}
+{% include "_slate.html" %}

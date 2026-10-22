@@ -10,6 +10,8 @@
 {% set cap = l3.captcha %}
 {% set captcha = {'sitekey': cap.sitekey or none} %}
 {% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
+{% set google_on = l3.google_on %}
+{% set google_href = '/auth/google' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
 {% set login = {
   'alert': {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none,
   'summary': [],
@@ -21,9 +23,9 @@
   'showRemember': false,
   'human': true if (cap.sitekey and cap.login) else false,
   'showHuman': false,
-  'showGoogle': false,
+  'showGoogle': google_on,
   'retry': '',
-  'providers': {'google': none, 'ctftime': ctftime_href if ctftime_on else none, 'any': ctftime_on},
+  'providers': {'google': google_href if google_on else none, 'ctftime': ctftime_href if ctftime_on else none, 'any': (ctftime_on or google_on)},
 } %}
 {% set page = {'title': 'Sign in | ' ~ event_name, 'cls': 'pg-app pg-login', 'osd': 'LOGIN · CH 000', 'skip': 'Skip to the form', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
 {% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.login']} %}

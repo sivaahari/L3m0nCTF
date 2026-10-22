@@ -1,0 +1,15 @@
+{# The Scoreboard, for the CTFd theme (SP6 Stream C). Hand-written: it sets the values the generated scoreboard page reads, then includes it. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set page = {'title': 'Scoreboard | ' ~ event_name, 'cls': 'pg-app pg-scoreboard', 'osd': 'SCOREBOARD · CH 00', 'skip': 'Skip to the scoreboard', 'crawl': true, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.scoreboard']} %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': true} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% set sb = l3.scoreboard %}
+{% set banner = l3.scoreboard_banner %}
+{% include "_scoreboard.html" %}

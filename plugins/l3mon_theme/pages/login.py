@@ -8,7 +8,18 @@ CTFd still makes the safety check itself; a destination it would refuse is left 
 from flask import request
 from werkzeug.datastructures import ImmutableMultiDict
 
+from CTFd.plugins.l3mon_theme.registry import value
 from CTFd.utils import validators
+
+
+@value("google_on", default=False)
+def google_on():
+    """True when l3mon_auth has Google OAuth configured."""
+    try:
+        from CTFd.plugins.l3mon_auth.oauth import configured
+        return configured()
+    except Exception:
+        return False
 
 
 def install(app):
