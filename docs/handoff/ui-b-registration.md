@@ -57,7 +57,7 @@ python -m pytest tools/tests -q
 | UI: build and budgets | `cd platform-ui && node tools/build.mjs` | PASS | All budgets met, 0 errors | 2026-10-22 |
 | UI: theme export equivalence (register) | `node --test tests/export-theme-register.test.mjs` | PASS | 6 passed (account, verify, link, studio) | 2026-10-22 |
 | UI: theme export core suite | `node --test tests/export-theme.test.mjs` | PASS | 16 passed | 2026-10-22 |
-| UI: browser smoke tests | `node tools/smoke.mjs` | NOT RUN | Headless Chrome socket blocked in local Windows container environment (documented per prompt A6) | 2026-10-22 |
+| UI: browser smoke tests (registration) | `node tools/smoke.mjs --only=register,register-flows` | PASS | 2,024 checks passed (register: 1,946 in 198.8s; register-flows: 78 in 86.3s; 0 failed) | 2026-10-22 |
 | UI: exporter determinism | Exporter run twice to independent folders | PASS | Byte-for-byte identical output | 2026-10-22 |
 | Public: full theme suite on fresh image | `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_theme` | PASS | 79 passed, 156 warnings in 90.31s | 2026-10-22 |
 | Public: tools test suite | `python -m pytest tools/tests -q` | PASS | 302 passed, 12 skipped in 37.67s | 2026-10-22 |
