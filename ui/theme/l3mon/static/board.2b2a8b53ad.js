@@ -1414,7 +1414,9 @@ setTimeout(()=>el.remove(),600);
 }
 function reportDialog(opener){
 openDialog('Report a problem',(body)=>{
-body.append(mk('p',null,"Prototype: reports go to the crew's channel in the real platform. Nothing was sent from here."));
+const foot=document.querySelector('.foot-small');
+const found=foot?/Contact:[^·]*/.exec(foot.textContent):null;
+body.append(mk('p',null,`To report a problem with this programme, write to the crew. ${found?found[0].trim():''}`.trim()));
 },opener);
 }
 const HN_AD_MS=4000;

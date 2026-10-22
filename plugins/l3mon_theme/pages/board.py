@@ -227,6 +227,32 @@ def notifications_page():
     return {"lines": notice_lines(_lines(viewer.current())), "banner": _phase_banner({"state": phase.state, "frozen": phase.frozen})}
 
 
+CRAWL_LINES = 8  # the news crawl shows the newest public notifications
+
+
+def crawl_text(lines):
+    """The crawl's lines from public notifications (oldest first, `[{title, content}]`): the newest first, each "title: text" (or the title alone)."""
+    out = []
+    for n in notice_lines(lines)[:CRAWL_LINES]:
+        out.append(f"{n['title']}: {n['content']}" if n["content"] else n["title"])
+    return out
+
+
+@value("crawl", default=())
+def crawl():
+    """The news crawl of the board: the newest public notifications (never a studio's private line). Empty when there are none."""
+    from CTFd.models import Notifications, db
+
+    rows = (
+        db.session.query(Notifications.id, Notifications.title, Notifications.content)
+        .filter(Notifications.team_id.is_(None), Notifications.user_id.is_(None))
+        .order_by(Notifications.id.desc())
+        .limit(CRAWL_LINES)
+        .all()
+    )
+    return crawl_text([{"id": i, "title": t, "content": c} for i, t, c in reversed(rows)])
+
+
 @value("start_text", default="")
 def start_text():
     """The start of the event as the slate says it ("10:00 IST on 28 November 2026"); empty when CTFd has no start time."""

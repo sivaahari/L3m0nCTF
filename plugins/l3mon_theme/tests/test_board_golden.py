@@ -165,3 +165,10 @@ def test_the_page_lists_the_newest_fifty_with_a_title_and_a_text():
     assert shown[60 - 56] == {"title": "News", "content": "C56"}, "a line with no title is called News"
     assert page.notice_lines([]) == []
     assert page.notice_lines([{"id": 1, "title": "<b>x</b>", "content": "<script>"}]) == [{"title": "<b>x</b>", "content": "<script>"}], "the page escapes; the builder keeps the text as it is"
+
+
+def test_the_crawl_shows_the_newest_public_lines_title_and_text():
+    lines = [{"id": i, "title": f"T{i}", "content": f"C{i}" if i % 2 else ""} for i in range(1, 13)]
+    shown = page.crawl_text(lines)
+    assert len(shown) == 8 and shown[0] == "T12" and shown[1] == "T11: C11" and shown[-1] == "T5: C5"
+    assert page.crawl_text([]) == []

@@ -1,8 +1,8 @@
 {# The channels board (SP6 stream A). Hand-written: it sets the values the generated board page reads, then includes it.
    CTFd's own /challenges view (and /board and /board/<slug>, which run its gates and its body) render this file; everything the page
    shows comes from one value, l3mon.board_page (plugins/l3mon_theme/pages/board.py), built once from l3mon_board's board data.
-   Before the start only the crew get here (a player is turned away by CTFd with its 403 page), and they see the in-shell "not on air yet" slate.
-   The news crawl has no source on the platform yet, so it is off. #}
+   Before the start a signed-in player or the crew see the in-shell "not on air yet" slate (pages/board.py serves it; /challenges keeps CTFd's 403).
+   The news crawl shows the newest public notifications (l3mon.crawl) and is drawn only when there are some. #}
 {% set l3 = l3mon %}
 {% set bp = l3.board_page %}
 {% set event_name = l3.event_name or 'CTF' %}
@@ -23,8 +23,9 @@
 {% include "_slate.html" %}
 {% else %}
 {% set board = bp.board %}
+{% set news = l3.crawl %}
 {% set shown = (board.entries|selectattr('slug', 'equalto', board.slug)|list|first) if board.slug else none %}
-{% set page = {'title': ((shown.name ~ ' | ') if shown else '') ~ board.chName ~ ' | Channels | ' ~ event_name, 'cls': 'pg-app pg-board', 'osd': 'CHANNELS · ' ~ board.chNo, 'skip': 'Skip to the channels', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set page = {'title': ((shown.name ~ ' | ') if shown else '') ~ board.chName ~ ' | Channels | ' ~ event_name, 'cls': 'pg-app pg-board', 'osd': 'CHANNELS · ' ~ board.chNo, 'skip': 'Skip to the channels', 'crawl': news|length > 0, 'signedIn': l3.signed_in, 'player': l3.player} %}
 {% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.board']} %}
 {% include "_board.html" %}
 {% endif %}

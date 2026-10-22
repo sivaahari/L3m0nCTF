@@ -267,3 +267,16 @@ def test_a_withheld_everything_board_is_an_empty_frame_not_an_error(play):
     assert r.status_code == 200 and "data-board" in html
     assert "0 programmes · 3 coming up" in html
     assert "Lantern Walk" not in html
+
+
+def test_the_crawl_carries_public_news_only_and_is_off_when_there_is_none(play):
+    from theme_a_world import add_notification, clear_news, team_client  # noqa: F401
+    from CTFd.models import Teams
+
+    with clock(T_LIVE):
+        clear_news()
+        assert 'data-crawl' not in text(play.alice.get("/board"))
+        add_notification("Welcome", "The broadcast is on.")
+        add_notification("Only studio B", "Private.", team_id=Teams.query.filter_by(name="studio-b").first().id)
+        html = text(play.alice.get("/board"))
+    assert 'data-crawl' in html and "Welcome: The broadcast is on." in html and "Only studio B" not in html
