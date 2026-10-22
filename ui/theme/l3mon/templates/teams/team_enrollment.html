@@ -1,0 +1,118 @@
+{# Studio enrollment (Create or Join), for the CTFd theme (SP6 stream B). Hand-written:
+   sets the values the generated register-studio page reads, then includes it. #}
+{% set l3 = l3mon %}
+{% set errs = errors|default([]) %}
+{% set infs = infos|default([]) %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set asset = {
+  'css': l3.assets['css.app'],
+  'boot': l3.assets['js.boot'],
+  'js': l3.assets['js.register']
+} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set captcha = {'sitekey': none} %}
+{% set news = [] %}
+{% set dev = none %}
+
+{% set req_mode = forced_mode if forced_mode is defined else (request.form.get('mode') or request.args.get('mode') or 'create') %}
+{% set is_join = (req_mode == 'join') %}
+
+{% set summary = [] %}
+{% set ns = namespace(n_err=none, c_err=none, a_err=none, ct_err=none, i_err=none) %}
+{% for err in errs %}
+  {% set lerr = err|lower %}
+  {% if 'team name' in lerr or 'studio name' in lerr or 'taken' in lerr %}
+    {% if not ns.n_err %}{% set ns.n_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-name', 'text': err}) %}
+  {% elif 'country' in lerr %}
+    {% if not ns.c_err %}{% set ns.c_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-country', 'text': err}) %}
+  {% elif 'affiliation' in lerr %}
+    {% if not ns.a_err %}{% set ns.a_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-affiliation', 'text': err}) %}
+  {% elif 'invite' in lerr or 'code' in lerr or 'passphrase' in lerr or 'password' in lerr %}
+    {% if not ns.i_err %}{% set ns.i_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-invite', 'text': err}) %}
+  {% else %}
+    {% set _ = summary.append({'href': '#reg-h', 'text': err}) %}
+  {% endif %}
+{% endfor %}
+
+{% set alert = {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else (
+  {'kind': 'info', 'lead': '', 'text': infs|join(' '), 'focus': false, 'icon': 'i-info'} if infs else none
+) %}
+
+{% set page = {
+  'title': 'Set up your studio | Setup | ' ~ event_name,
+  'cls': 'pg-app pg-register',
+  'osd': 'STUDIO · CH 000',
+  'skip': 'Skip to main content',
+  'crawl': false,
+  'signedIn': l3.signed_in,
+  'player': l3.player,
+} %}
+
+{% set reg = {
+  'key': 'studio',
+  'h1': 'Set up your studio',
+  'lead': 'Create a studio for your team, or join an existing one.',
+  'phone': 'Step 3 of 3: Studio',
+  'dir': '',
+  'showStepper': true,
+  'stepper': {
+    's1': {'cls': 'st done', 'current': false, 'tick': true, 'link': none, 'label': 'Account', 'sr': ', completed'},
+    's2': {'cls': 'st done', 'current': false, 'tick': true, 'link': none, 'label': 'Verify', 'sr': ', completed'},
+    's3': {'cls': 'st on', 'current': true, 'tick': false, 'link': none, 'label': 'Studio', 'sr': ', current step'},
+    's4': none,
+    'dots': [{'cls': 'done'}, {'cls': 'done'}, {'cls': 'on'}],
+    'count': 'Step 3 of 3',
+  },
+  'alert': alert,
+  'summary': summary,
+  'hasSummary': errs|length > 0,
+  'dev': none,
+} %}
+
+{% set sel_c = request.form.get('country', '')|lower %}
+{% set c_list = [] %}
+{% for c in l3.countries %}
+  {% set _ = c_list.append({'code': c.code, 'name': c.name, 'sel': 'selected' if c.code == sel_c else ''}) %}
+{% endfor %}
+
+{% set studio_name = request.form.get('name', '') %}
+{% set studio_aff = request.form.get('affiliation', '') %}
+{% set studio = {
+  'create': not is_join,
+  'join': is_join,
+  'name': studio_name,
+  'country': sel_c,
+  'affiliation': studio_aff,
+  'ctftime': request.form.get('ctftime', ''),
+  'invite': request.form.get('invite', '') or request.args.get('code', ''),
+  'shuffle': request.form.get('mascot', '0'),
+  'countries': c_list,
+  'ctPreview': '',
+  'hint': none,
+  'err': {
+    'name': ns.n_err,
+    'country': ns.c_err,
+    'affiliation': ns.a_err,
+    'ctftime': ns.ct_err,
+    'invite': ns.i_err,
+  },
+  'pv': {
+    'name': studio_name or 'Your studio',
+    'meta': (studio_aff or 'Country and affiliation show here'),
+  },
+  'mk': 'mascot mk-b0 mk-k0',
+  'mood': 'idle',
+  'action': '/register/studio',
+  'back': '/confirm',
+  'submit': 'Finish setup',
+} %}
+
+{% include "_register-studio.html" %}

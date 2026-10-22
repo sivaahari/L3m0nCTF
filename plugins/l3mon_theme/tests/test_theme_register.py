@@ -195,3 +195,150 @@ def test_register_captcha_when_configured(app):
                 body = client.get("/register").get_data(as_text=True)
                 assert 'class="cf-turnstile"' not in body
                 assert "challenges.cloudflare.com" not in body
+
+
+def test_confirm_verify_page_rendering_and_stepper(app):
+    with app.app_context():
+        user = Users.query.filter_by(name="existing_player").first()
+        user.verified = False
+        db.session.commit()
+
+        client = login_as_user(app, "existing_player", PASSWORD)
+        with mock.patch("CTFd.auth.can_send_mail", return_value=True):
+            r = client.get("/confirm")
+            assert r.status_code == 200
+            body = r.get_data(as_text=True)
+            assert REG_H in body
+            assert "Check your email" in body
+            assert "VERIFY · CH 000" in body
+            assert "Step 2 of 3: Verify" in body
+            assert "I have clicked the link" in body
+            assert "Resend email" in body
+            assert "player@example.com" in body
+            assert nonce_in(body)
+
+            # Strict CSP
+            assert "<style" not in body
+            assert " style=" not in body
+            assert "javascript:" not in body
+
+
+def test_confirm_link_invalid_renders_link_status_page(app):
+    with app.app_context():
+        with app.test_client() as client:
+            with mock.patch("CTFd.auth.can_send_mail", return_value=True):
+                r = client.get("/confirm/completely-bogus-token-data")
+                assert r.status_code == 200
+                body = r.get_data(as_text=True)
+                assert REG_H in body
+                assert "Link not found" in body or "invalid" in body
+                assert "VERIFY · CH 000" in body
+                assert "data-link=\"invalid\"" in body
+                # Stepper is hidden for link verification state
+                assert "Step 2 of 3" not in body
+
+
+def test_teams_enrollment_choice_page(app):
+    with app.app_context():
+        client = login_as_user(app, "existing_player", PASSWORD)
+        r = client.get("/team")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+        assert REG_H in body
+        assert "Set up your studio" in body
+        assert "STUDIO · CH 000" in body
+        assert "Step 3 of 3: Studio" in body
+        assert "Create a studio" in body
+        assert "Join with an invite code" in body
+        assert 'id="f-name"' in body
+        assert 'id="f-country"' in body
+        assert 'id="f-affiliation"' in body
+        assert 'id="f-invite"' in body
+        assert '<option value="in"' in body  # populated from l3mon.countries
+
+
+def test_teams_new_and_join_routes_render_studio(app):
+    with app.app_context():
+        client = login_as_user(app, "existing_player", PASSWORD)
+        r_new = client.get("/teams/new")
+        assert r_new.status_code == 200
+        body_new = r_new.get_data(as_text=True)
+        assert REG_H in body_new
+        assert "Set up your studio" in body_new
+        assert 'value="create" id="m-create" checked' in body_new
+
+        r_join = client.get("/teams/join")
+        assert r_join.status_code == 200
+        body_join = r_join.get_data(as_text=True)
+        assert REG_H in body_join
+        assert "Set up your studio" in body_join
+        assert 'value="join" id="m-join" checked' in body_join
+
+
+def test_studio_creation_and_invite_joining_lifecycle(app):
+    with app.app_context():
+        # 1. Existing player creates "Solar Studio" via /register/studio
+        client1 = login_as_user(app, "existing_player", PASSWORD)
+        r_get = client1.get("/register/studio")
+        assert r_get.status_code == 200
+        nonce = nonce_in(r_get.get_data(as_text=True))
+
+        r_create = client1.post(
+            "/register/studio",
+            data={
+                "nonce": nonce,
+                "mode": "create",
+                "name": "Solar Studio",
+                "country": "in",
+                "affiliation": "Lemon Academy",
+            },
+        )
+        assert r_create.status_code == 302
+        team = Teams.query.filter_by(name="Solar Studio").first()
+        assert team is not None
+        assert team.country == "IN"
+        assert team.affiliation == "Lemon Academy"
+        assert team.password is not None and len(team.password) > 0  # random secret password
+
+        # 2. Register teammate and join via invite code
+        register_user(app, name="teammate", email="teammate@example.com", password=PASSWORD)
+        team = Teams.query.filter_by(name="Solar Studio").first()
+        code = team.get_invite_code()
+        assert code
+
+        client2 = login_as_user(app, "teammate", PASSWORD)
+
+        # GET /teams/invite?code=...
+        r_inv = client2.get(f"/teams/invite?code={code}")
+        assert r_inv.status_code == 200
+        inv_body = r_inv.get_data(as_text=True)
+        assert REG_H in inv_body
+        assert "Solar Studio" in inv_body
+        assert "Join Solar Studio" in inv_body
+        inv_nonce = nonce_in(inv_body)
+
+        # POST /teams/invite?code=...
+        r_join = client2.post(f"/teams/invite?code={code}", data={"nonce": inv_nonce})
+        assert r_join.status_code == 302
+
+        u2 = Users.query.filter_by(name="teammate").first()
+        assert u2.team_id == team.id
+
+
+def test_studio_creation_guard_rejections(app):
+    with app.app_context():
+        register_user(app, name="guard_test_player", email="guard@example.com", password=PASSWORD)
+        client = login_as_user(app, "guard_test_player", PASSWORD)
+        nonce = nonce_in(client.get("/register/studio").get_data(as_text=True))
+
+        # 1. Reserved name "admin"
+        r = client.post("/register/studio", data={"nonce": nonce, "mode": "create", "name": "admin"})
+        assert r.status_code == 403
+        body = r.get_data(as_text=True)
+        assert "reserved" in body.lower() or "taken" in body.lower()
+
+        # 2. Too short name "A"
+        r = client.post("/register/studio", data={"nonce": nonce, "mode": "create", "name": "A"})
+        assert r.status_code == 403
+        body = r.get_data(as_text=True)
+        assert "2 to 32" in body or "invalid" in body.lower()

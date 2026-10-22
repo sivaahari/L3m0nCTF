@@ -687,8 +687,25 @@ return normalise(0,null,e&&e.name==='AbortError'?'timeout':'offline');
 clearTimeout(timer);
 }
 }
-const session=(o)=>apiCall('GET',ROUTES.session,o);
-const resendVerification=()=>apiCall('POST',ROUTES.resend,{body:{}});
+const session=async(o)=>{
+const url=(typeof window!=='undefined'&&window.CTFd)?'/api/v1/users/me':ROUTES.session;
+let r=await apiCall('GET',url,o);
+if(!r.ok&&(r.status===404||(r.error&&r.error.code==='not_found'))&&url===ROUTES.session){
+r=await apiCall('GET','/api/v1/users/me',o);
+}
+if(r.ok&&r.data&&!r.data.user&&typeof r.data.verified==='boolean'){
+r.data={...r.data,user:r.data};
+}
+return r;
+};
+const resendVerification=async()=>{
+const url=(typeof window!=='undefined'&&window.CTFd)?'/confirm':ROUTES.resend;
+let r=await apiCall('POST',url,{body:{}});
+if(!r.ok&&(r.status===404||(r.error&&r.error.code==='not_found'))&&url===ROUTES.resend){
+r=await apiCall('POST','/confirm',{body:{}});
+}
+return r;
+};
 const teamAvailable=(name)=>apiCall('GET',`${ROUTES.teamAvailable}?name=${encodeURIComponent(name)}`,{retries:1});
 const board=(etag,o={})=>apiCall('GET',ROUTES.board,{...o,etag});
 const ticks=()=>apiCall('GET',ROUTES.ticks,{retries:1});

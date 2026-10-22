@@ -1,0 +1,124 @@
+{# Email verification and confirmation link result, for the CTFd theme (SP6 stream B). Hand-written:
+   sets the values the generated register-verify or register-link page reads, then includes it.
+   The link status, user email, resend infos and errors come from CTFd's request and view;
+   the addresses, sign-in state, event name, assets and csrf come from the theme plugin (l3mon). #}
+{% set l3 = l3mon %}
+{% set errs = errors|default([]) %}
+{% set infs = infos|default([]) %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set asset = {
+  'css': l3.assets['css.app'],
+  'boot': l3.assets['js.boot'],
+  'js': l3.assets['js.register']
+} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set captcha = {'sitekey': none} %}
+{% set news = [] %}
+{% set dev = none %}
+
+{% set is_link_result = (request.view_args and request.view_args.get('data')) or (errs and ('confirmation link' in errs[0]|lower or 'token' in errs[0]|lower)) or request.args.get('link_state') %}
+
+{% if is_link_result %}
+  {% set l_err_str = errs|join(' ')|lower %}
+  {% if 'expired' in l_err_str %}
+    {% set l_state = 'expired' %}
+    {% set h1 = 'Link expired' %}
+    {% set lead = 'This confirmation link has expired. Request a fresh one from the setup page.' %}
+  {% elif 'already' in l_err_str or 'used' in l_err_str %}
+    {% set l_state = 'used' %}
+    {% set h1 = 'Link already used' %}
+    {% set lead = 'This confirmation link was already used. Your email is confirmed.' %}
+  {% elif errs %}
+    {% set l_state = 'invalid' %}
+    {% set h1 = 'Link not found' %}
+    {% set lead = 'This confirmation link is invalid or incomplete.' %}
+  {% else %}
+    {% set l_state = 'ok' %}
+    {% set h1 = 'Email confirmed' %}
+    {% set lead = 'Your email address is verified.' %}
+  {% endif %}
+
+  {% set link = {
+    'state': l_state,
+    'done': (l_state in ('ok', 'used')),
+    'signedIn': l3.signed_in,
+    'next': '/team',
+    'loginNext': '/login?next=%2Fteam',
+  } %}
+
+  {% set page = {
+    'title': h1 ~ ' | Setup | ' ~ event_name,
+    'cls': 'pg-app pg-register',
+    'osd': 'VERIFY · CH 000',
+    'skip': 'Skip to main content',
+    'crawl': false,
+    'signedIn': l3.signed_in,
+    'player': l3.player,
+  } %}
+
+  {% set reg = {
+    'key': 'link',
+    'h1': h1,
+    'lead': lead,
+    'phone': 'Email confirmation',
+    'dir': '',
+    'showStepper': false,
+    'stepper': none,
+    'alert': none,
+    'summary': [],
+    'hasSummary': false,
+    'dev': none,
+  } %}
+
+  {% include "_register-link.html" %}
+
+{% else %}
+  {% set user_email = (current_user.email if current_user and current_user.is_authenticated else (l3.user_email or '')) %}
+  {% set alert = {'kind': 'ok', 'lead': 'SENT.', 'text': infs|join(' '), 'focus': false, 'icon': 'i-check'} if infs else ({'kind': 'error', 'lead': 'PLEASE STAND BY.', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none) %}
+
+  {% set page = {
+    'title': 'Check your email | Setup | ' ~ event_name,
+    'cls': 'pg-app pg-register',
+    'osd': 'VERIFY · CH 000',
+    'skip': 'Skip to main content',
+    'crawl': false,
+    'signedIn': l3.signed_in,
+    'player': l3.player,
+  } %}
+
+  {% set reg = {
+    'key': 'verify',
+    'h1': 'Check your email',
+    'lead': 'We sent a link to ' ~ (user_email or 'your email address') ~ '. Open it on any device to verify your address.',
+    'phone': 'Step 2 of 3: Verify',
+    'dir': '',
+    'showStepper': true,
+    'stepper': {
+      's1': {'cls': 'st done', 'current': false, 'tick': true, 'link': none, 'label': 'Account', 'sr': ', completed'},
+      's2': {'cls': 'st on', 'current': true, 'tick': false, 'link': none, 'label': 'Verify', 'sr': ', current step'},
+      's3': {'cls': 'st', 'current': false, 'tick': false, 'link': none, 'label': 'Studio', 'sr': ', not started'},
+      's4': none,
+      'dots': [{'cls': 'done'}, {'cls': 'on'}, {'cls': ''}],
+      'count': 'Step 2 of 3',
+    },
+    'alert': alert,
+    'summary': [],
+    'hasSummary': false,
+    'dev': none,
+  } %}
+
+  {% set verify = {
+    'email': user_email,
+    'wait': 60 if infs else none,
+    'open': false,
+    'err': {'email': none},
+    'action': '/confirm',
+    'back': '/register',
+  } %}
+
+  {% include "_register-verify.html" %}
+{% endif %}
