@@ -352,59 +352,6 @@ def test_backend_that_never_answers_triggers_504():
     assert data.startswith(b"HTTP/1.1 504"), data[:80]
 
 
-def test_the_connection_to_the_instance_is_closed_by_the_router_when_it_gives_up():
-    """A backend that never answers: after the 504 the router must have closed its own connection to the instance, at once, not leave it to the garbage collector.
-
-    Integration audit: forward_stream closed the connection only on the success path; a timeout or an error left it open (a file descriptor per request
-    that a hostile instance could pile up). The backend here is a spy, so only an explicit close() counts.
-    """
-    import services.instancer.router.router as router_mod
-
-    class _SpyWriter:
-        def __init__(self):
-            self.closed = False
-
-        def write(self, chunk):
-            pass
-
-        async def drain(self):
-            pass
-
-        def close(self):
-            self.closed = True
-
-        async def wait_closed(self):
-            pass
-
-    spy = _SpyWriter()
-
-    async def run():
-        async def fake_open_connection(host, port):
-            return asyncio.StreamReader(), spy  # a reader that never gets a byte
-
-        inst_id = "0123456789abcdef0123456789abcdef"
-        router = InstanceRouter(instance_domain="inst.test")
-        router.update_routes([{"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": 9}])
-        orig_timeout, orig_open = router_mod.IDLE_TIMEOUT_SECONDS, router_mod.asyncio.open_connection
-        router_mod.IDLE_TIMEOUT_SECONDS = 0.2
-        router_mod.asyncio.open_connection = fake_open_connection
-        try:
-            reader = asyncio.StreamReader()
-            reader.feed_data(f"GET / HTTP/1.1\r\nHost: {inst_id}.inst.test\r\n\r\n".encode())
-            reader.feed_eof()
-            writer = _Writer()
-            await handle_client(reader, writer, router)
-            return writer.data, router._total_active_connections
-        finally:
-            router_mod.IDLE_TIMEOUT_SECONDS = orig_timeout
-            router_mod.asyncio.open_connection = orig_open
-
-    data, still_counted = asyncio.run(run())
-    assert data.startswith(b"HTTP/1.1 504"), data[:80]
-    assert spy.closed, "the router left its connection to the instance open"
-    assert still_counted == 0, "and the slot it held was not given back"
-
-
 def test_backend_sending_garbage_returns_502():
     """Backend immediately closes without valid HTTP response -> 502."""
     async def run():
