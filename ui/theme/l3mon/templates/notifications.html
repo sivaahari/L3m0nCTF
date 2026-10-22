@@ -1,0 +1,18 @@
+{# The notifications page (SP6 stream A). Hand-written: it sets the values the generated page reads, then includes it.
+   The list is the viewer's own news, newest first, at most 50 (l3mon.notifications_page, plugins/l3mon_theme/pages/board.py). Served only
+   to a signed-in player or the crew (the hook in that module); a visitor is sent to sign in. The bell links here. #}
+{% set l3 = l3mon %}
+{% set np = l3.notifications_page %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set banner = np.banner %}
+{% set nt = {'has': np.lines|length > 0, 'lines': np.lines, 'count': np.lines|length|string} %}
+{% set page = {'title': 'Notifications | ' ~ event_name, 'cls': 'pg-app pg-notices', 'osd': 'NOTIFICATIONS', 'skip': 'Skip to the notifications', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.shell']} %}
+{% include "_notifications.html" %}

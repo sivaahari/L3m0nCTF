@@ -1,0 +1,30 @@
+{# The channels board (SP6 stream A). Hand-written: it sets the values the generated board page reads, then includes it.
+   CTFd's own /challenges view (and /board and /board/<slug>, which run its gates and its body) render this file; everything the page
+   shows comes from one value, l3mon.board_page (plugins/l3mon_theme/pages/board.py), built once from l3mon_board's board data.
+   Before the start only the crew get here (a player is turned away by CTFd with its 403 page), and they see the in-shell "not on air yet" slate.
+   The news crawl has no source on the platform yet, so it is off. #}
+{% set l3 = l3mon %}
+{% set bp = l3.board_page %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% set nav = {'board': true, 'guide': false, 'scoreboard': false} %}
+{% set banner = bp.banner %}
+{% set pn = bp.pn %}
+{% if bp.before %}
+{% set start = l3.start_text %}
+{% set page = {'title': 'Not on air yet | ' ~ event_name, 'cls': 'pg-app pg-slate-in sl-before', 'osd': 'CHANNELS · CH 00', 'skip': 'Skip to the content', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.shell']} %}
+{% set slate = {'id': 'before', 'status': 200, 'inShell': true, 'cls': 'sl-before', 'mood': 'smile', 'srStatus': '', 'code': 'NOT ON AIR YET', 'h1': 'The channels open when the broadcast starts', 'line': ('It starts at ' ~ start ~ '.') if start else 'It has not started yet.', 'retry': none, 'retryLead': '', 'retryUrl': request.path, 'ways': [{'href': l3.routes.guide, 'label': 'Guide', 'cls': 'btn-ghost'}, {'href': l3.site_url ~ '/rules/', 'label': 'Rules', 'cls': 'btn-ghost'}], 'requestId': none, 'note': none, 'site': l3.site_url} %}
+{% include "_slate.html" %}
+{% else %}
+{% set board = bp.board %}
+{% set shown = (board.entries|selectattr('slug', 'equalto', board.slug)|list|first) if board.slug else none %}
+{% set page = {'title': ((shown.name ~ ' | ') if shown else '') ~ board.chName ~ ' | Channels | ' ~ event_name, 'cls': 'pg-app pg-board', 'osd': 'CHANNELS · ' ~ board.chNo, 'skip': 'Skip to the channels', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.board']} %}
+{% include "_board.html" %}
+{% endif %}
