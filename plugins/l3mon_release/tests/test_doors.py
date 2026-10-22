@@ -197,7 +197,7 @@ LIST_PATHS = [  # path, viewer who may use it
     ("/api/v1/users/{u}/solves", "bob"), ("/api/v1/users/{u}/awards", "bob"), ("/api/v1/users/{u}/fails", "bob"),
     ("/api/v1/teams/me/solves", "alice"), ("/api/v1/teams/me/awards", "alice"), ("/api/v1/teams/me/fails", "alice"),
     ("/api/v1/users/me/solves", "alice"), ("/api/v1/users/me/awards", "alice"), ("/api/v1/users/me/fails", "alice"),
-    ("/teams/{t}", "bob"), ("/users/{u}", "bob"), ("/team", "alice"), ("/user", "alice"),
+    ("/team", "alice"),  # CTFd's public pages /teams/<id>, /users/<id> and /user are closed to players (l3mon_board/stock_pages.py: its own tests); the crew still reads them
 ]
 
 
@@ -213,11 +213,10 @@ def check_list_doors(w):
     for path, needle in (
         (f"/api/v1/teams/{w.tid_a}/solves", "Koala Lantern"), (f"/api/v1/users/{w.uid_a}/solves", "Koala Lantern"),
         (f"/api/v1/teams/{w.tid_a}/awards", "Koala Lantern"), (f"/api/v1/users/{w.uid_a}/awards", "Koala Lantern"),
-        (f"/teams/{w.tid_a}", "Koala Lantern"), (f"/users/{w.uid_a}", "Koala Lantern"),
     ):
         text = call(w.bob, "GET", path).get_data(as_text=True)
         assert needle in text, f"control: bob should still see the programme that is on air in {path}"
-    for path in ("/api/v1/teams/me/solves", "/api/v1/users/me/solves", "/team", "/user"):
+    for path in ("/api/v1/teams/me/solves", "/api/v1/users/me/solves", "/team"):
         assert "Koala Lantern" in call(w.alice, "GET", path).get_data(as_text=True), f"control: alice's own {path}"
 
 

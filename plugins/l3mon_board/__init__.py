@@ -6,6 +6,7 @@ scoreboard, the bell and the bought-hint reply (part 3.5).
     board.py       the channels, the programmes on air and the studio's own numbers
     ticks.py       what the pages poll; news.py the viewer's bell list, its ids and its two numbers
     notices.py     CTFd's own notification routes (list, one, page, event stream) closed to everyone but the crew; the bell's list
+    stock_pages.py CTFd's own team and player pages (the lists, a studio's and a player's page, a player's own profile) closed to everyone but the crew
     plan.py        the crew's plan as one viewer reads it (shared by the Guide and the grid)
     guide.py       the studio's own numbers, its members, the channel progress and the story meter
     epg.py         the programme grid (markup, with the signature the Guide carries)
@@ -23,9 +24,10 @@ def load(app):
 
     check_ctfd_version()  # first of all: on a CTFd we were not built for no l3mon plugin loads
 
-    from CTFd.plugins.l3mon_board import api, notices, panel, replies
+    from CTFd.plugins.l3mon_board import api, notices, panel, replies, stock_pages
 
     app.register_blueprint(api.bp)
     panel.install(app)
     replies.install(app)
     notices.install(app)
+    stock_pages.install(app)
