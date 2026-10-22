@@ -77,3 +77,7 @@ merge the `L3m0nCTF-ui` branches first, then run the exporter on the merged resu
 
 Pages other than the sign-in page and the error codes 403, 404, 429 and 500 still come from CTFd's own theme. Later slices add their
 pages through the same steps above.
+
+## The human check (Cloudflare Turnstile)
+
+`l3mon_guard` asks for the check on sign-up and password reset once its two keys are set, and on sign-in after three failures (for the address or for the name just posted). The theme draws the widget through one shared partial (`captcha` in the UI repository) when the page's context has `captcha.sitekey`; the sign-in adapter fills it from `l3mon.captcha` (values.py: `{sitekey, register, login, reset}`, read from the guard). The sign-up and reset adapters do the same with `register` and `reset`: `{% set captcha = {'sitekey': l3.captcha.sitekey or none} %}` and a page that includes the partial only when its flag is true. The widget script comes from `challenges.cloudflare.com`, the one outside address the site's content security policy will allow (the policy is not on the live site yet: it arrives when every player page is ours). **Never switch the two keys on before the sign-up page draws the widget** (nobody could register).

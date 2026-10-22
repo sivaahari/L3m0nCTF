@@ -7,6 +7,8 @@
 {% set event_name = l3.event_name or 'CTF' %}
 {% set next_to = request.args.get('next') or request.form.get('next') or '' %}
 {% set ctftime_on = l3.ctftime_on %}
+{% set cap = l3.captcha %}
+{% set captcha = {'sitekey': cap.sitekey or none} %}
 {% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
 {% set login = {
   'alert': {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none,
@@ -17,7 +19,7 @@
   'next': next_to,
   'remember': false,
   'showRemember': false,
-  'human': false,
+  'human': true if (cap.sitekey and cap.login) else false,
   'showHuman': false,
   'showGoogle': false,
   'retry': '',

@@ -74,6 +74,20 @@ def site_url():
     return raw
 
 
+def captcha_state():
+    from flask import request
+
+    from CTFd.plugins.l3mon_guard import turnstile
+
+    state = turnstile.get_guard_context()["captcha"]
+    login = bool(state["login"])
+    if not login and state["sitekey"] and request.method == "POST" and request.path == "/login":
+        from CTFd.utils.user import get_ip
+
+        login = bool(turnstile.is_login_captcha_required(request.form.get("name", ""), get_ip()))
+    return {"sitekey": state["sitekey"] or "", "register": bool(state["register"]), "login": login, "reset": bool(state["reset"])}
+
+
 def _ctftime_on():
     from CTFd.plugins.l3mon_ctftime import oauth
 
@@ -160,6 +174,12 @@ class Values:
     def site_url(self):
         """The event website's address (no trailing slash), for the footer's links and the pages that lead back to it."""
         return _quiet("site_url", SITE_URL, site_url)
+
+    @property
+    def captcha(self):
+        """The human check (Cloudflare Turnstile, plugin l3mon_guard): {sitekey, register, login, reset}. `sitekey` is "" while the check is off;
+        `login` is true when sign-in asks for it (after failures for the address, or for the name just posted)."""
+        return _quiet("captcha", {"sitekey": "", "register": False, "login": False, "reset": False}, captcha_state)
 
     @property
     def routes(self):
