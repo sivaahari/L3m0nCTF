@@ -1,7 +1,8 @@
 {
-  "css.app": "app.5b3107ab26.css",
+  "css.app": "app.dbe7b31bde.css",
   "css.slate": "slate.e72b2cee76.css",
-  "js.boot": "boot.171a1187fd.js",
+  "js.account": "account.8ad4b91b35.js",
+  "js.boot": "boot.4bcf0f099b.js",
   "js.login": "login.8b261bcc8e.js",
   "js.slate": "slate.fa2ca3794b.js"
 }

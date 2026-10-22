@@ -1,0 +1,16 @@
+{# The settings page, for the CTFd theme (Stream D).
+   Hand-written adapter: sets the context the generated page reads, then includes _settings.html.
+   All values and states come from l3mon.settings_context. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set page = {'title': 'Settings | ' ~ event_name, 'cls': 'pg-app pg-settings', 'osd': 'SETTINGS', 'skip': 'Skip to your settings', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.account']} %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% set st = l3.settings_context %}
+{% include "_settings.html" %}
