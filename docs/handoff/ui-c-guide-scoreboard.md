@@ -3,7 +3,7 @@
 **Stream:** C  
 **Branch:** `ui/c-guide-scoreboard` in both repositories (`L3m0nCTF` and `L3m0nCTF-ui`)  
 **Engineer:** sanjai063928  
-**Current Milestone:** M2 (All pages end-to-end, full A6 test suites passing, theme export verified)  
+**Current Milestone:** M2 (All pages end-to-end, full A6 test suites passing, theme export verified, live stack & browser smoke checks passed)  
 **Date:** 2026-10-22  
 
 ---
@@ -18,6 +18,7 @@
 - `platform-ui/tests/export-reset.test.mjs`: Node test suite verifying reset password export equivalence across 8 prototype states.
 - `platform-ui/tests/export-theme.test.mjs`: Updated theme manifest bundle assertions for scoreboard and register bundles.
 - `platform-ui/tools/dump-golden-scoreboard.mjs`: Script to generate canonical scoreboard golden fixtures for Python tests.
+- `platform-ui/tools/smoke-real-guide.mjs`: Scripted browser smoke runner using CDP against live stack or prototype server.
 
 ### In `L3m0nCTF`:
 - `plugins/l3mon_theme/pages/guide.py`: View model builder and `@value` hooks (`guide`, `guide_banner`, `guide_clock`) for `/guide`.
@@ -34,6 +35,7 @@
 - `plugins/l3mon_theme/tests/test_guide_query_budget.py`: Query count ceiling test for `/guide`.
 - `plugins/l3mon_theme/tests/test_scoreboard_query_budget.py`: Query count ceiling test for `/scoreboard`.
 - `plugins/l3mon_theme/tests/test_theme_pages.py`: Extended tests verifying Google button presence based on `google_on` state.
+- `tests/integration/test_theme_c.py`: Integration tests through nginx on running stack for Scoreboard, Guide, Reset, Login, and static files.
 - `ui/theme/l3mon/templates/_guide.html`: Exported prototype template for guide.
 - `ui/theme/l3mon/templates/guide.html`: Adapter template extending `_guide.html` and providing CTFd block overrides.
 - `ui/theme/l3mon/templates/_scoreboard.html`: Exported prototype template for scoreboard.
@@ -59,12 +61,18 @@ cd L3m0nCTF-ui/platform-ui
 node --test --test-concurrency=1 "tests/*.test.mjs"
 node tools/build.mjs
 node tools/hygiene.mjs --no-challenges
+node tools/smoke-real-guide.mjs --shots
 
 # 2. Platform repository checks & tests
 cd ../../L3m0nCTF
 (cd tools && python -m l3mon hygiene --root .. --history)
 python -m pytest tools/tests -q
 tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_theme
+
+# 3. Stack integration tests through nginx
+tools/compose.sh up -d --wait
+python -m pytest tests/integration/test_theme.py tests/integration/test_theme_c.py -q
+tools/compose.sh down
 ```
 
 ---
@@ -80,6 +88,8 @@ tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider 
 | Platform theme tests (all) | `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_theme` | `94 passed, 169 warnings in 61.21s` | 2026-10-22 |
 | Platform tool tests | `python -m pytest tools/tests -q` | `302 passed, 12 skipped in 11.82s` | 2026-10-22 |
 | Platform hygiene scan | `(cd tools && python -m l3mon hygiene --root .. --history)` | `0 finding(s)` | 2026-10-22 |
+| Live stack integration tests | `python -m pytest tests/integration/test_theme.py tests/integration/test_theme_c.py -q` | `8 passed in 1.48s` | 2026-10-22 |
+| Real browser smoke verification | `node tools/smoke-real-guide.mjs --origin=http://localhost:8080 --shots` | All checks passed, 3 screenshots saved | 2026-10-22 |
 
 ---
 
@@ -130,8 +140,11 @@ None.
 
 ## 9. Screenshots list (kept outside the repository)
 
-Screenshots captured from prototype server and verified across all viewport breakpoints (`360px`, `768px`, `1280px`).
-Stored in temporary local inspection cache.
+Captured via `platform-ui/tools/smoke-real-guide.mjs` against the live running stack:
+- `01-login.png`: Sign in page on desktop (`1440x900`), showing test card background, brand header, login fields, and OSD.
+- `02-guide.png`: Authenticated player Guide page on desktop, showing score, studio ranking, reels progress, and channel bar.
+- `03-scoreboard.png`: Authenticated player Scoreboard page on desktop, showing leaderboard table, studio standing, and freeze banner state.
+Stored in `platform-ui/tmp/shots-real/` (ignored by git).
 
 ---
 
