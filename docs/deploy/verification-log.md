@@ -357,3 +357,27 @@ Local results after the round: tool tests 63 passed (2 skipped on Windows); inte
 | Mutation checks | 17 deliberate breaks of the deploy check, the mail settings and the placeholders: 16 caught at once; the 17th (a key anyone can read) is a Linux-only test and was caught on Linux |
 | Tools tests | **258 passed, 11 skipped** (Windows skips); image checks 32 ok; browser runs 4 passed in 82.62s (0:01:22); hygiene 0 findings |
 | Not done, said plainly | The first start on a real VM behind real Cloudflare (the guide's Parts B and C are the owner's); the metadata block, egress limits, encrypted off-host backups, monitoring (SP9); the mail service itself; CTFtime's approval of the event, without which the sign-in cannot be tried for real |
+
+## 2026-10-19: the first deployment on a real VM behind real Cloudflare, release `release-2026-10-18` (commit `79fa972`)
+
+**Where:** Google Cloud project `l3m0n-ctf-2026`, zone `asia-south1-a`, VM `l3mon-app` (`e2-standard-4`, Debian 12, 100 GB), fixed address `34.100.130.120`, behind Cloudflare (zone `l3m0nctf.xyz`, Full (strict), Authenticated Origin Pulls with our own client-certificate authority). Day-one stack: `L3MON_ENV=production`, no overlays.
+
+**On the VM:** `tools/verify-image.sh` 32 of 32 ok; `python3 -m l3mon deploy check` 0 blocked, 2 to do (the CTFtime sign-in waits for approval; no mail service), 8 in place; `tools/compose.sh up -d --wait` brought `ctfd`, `db`, `cache` and `nginx` up, all healthy.
+
+**From outside (a laptop):**
+
+| Check | Result |
+|---|---|
+| `GET /healthcheck` and `GET /readyz` | 200 |
+| `GET /login` | 200; `__Host-session` cookie `Secure; HttpOnly; SameSite=Lax`; HSTS; `x-frame-options: DENY`; `cf-cache-status: DYNAMIC` (never cached) |
+| `GET /ctftime/standings.json` | 200, `{"standings":[]}` |
+| `GET /auth/ctftime` | 404 (the sign-in stays hidden until CTFtime approves) |
+| `GET /l3mon/metrics` | 404 (internal only) |
+| `GET /admin` from an address that is not on the list | 403 |
+| `GET /admin` from the listed address | 302 to the sign-in page |
+| A theme file, repeated | `MISS`, then `HIT` (cached by Cloudflare, as designed) |
+| A visit to the VM's own address, bypassing Cloudflare | no answer (the firewall) |
+| nginx on the VM, a request without the client certificate | 400 "No required SSL certificate was sent" |
+| nginx's log | the visitor's real address, not Cloudflare's |
+
+**Open:** the admin list holds one temporary entry (the owner's IPv6 network) until the crew's addresses are confirmed; no mail service, so nobody can finish registering yet; Cloudflare Access on `crew.l3m0nctf.xyz` and the firewall and rate-limit rules (hosting guide 3.7 and 3.8) are the owner's to switch on; an older VM, `l3mon-preview`, still exists.
