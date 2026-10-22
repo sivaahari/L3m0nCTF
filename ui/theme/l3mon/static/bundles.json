@@ -1,9 +1,9 @@
 {
   "css.app": "app.dbe7b31bde.css",
   "css.slate": "slate.e72b2cee76.css",
-  "js.board": "board.658426140e.js",
+  "js.board": "board.9b03360fb4.js",
   "js.boot": "boot.171a1187fd.js",
-  "js.login": "login.8b261bcc8e.js",
-  "js.shell": "shell.17cd6bd168.js",
+  "js.login": "login.d654bc5454.js",
+  "js.shell": "shell.d0bd455b7b.js",
   "js.slate": "slate.fa2ca3794b.js"
 }

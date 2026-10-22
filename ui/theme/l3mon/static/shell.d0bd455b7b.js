@@ -589,6 +589,25 @@ return out;
 function valueNote(value,start,floor){
 return`${value<start?'Started':'Starts'} at ${start} TRP. Falls as more studios solve it, down to ${floor}.`;
 }
+function channelKeys(channels){
+const nos=channels.map((c)=>c.no);
+const usable=nos.every((n)=>Number.isInteger(n)&&n>=0&&n<=99)&&new Set(nos).size===nos.length;
+return new Map(channels.map((c)=>[c.id,usable?c.no:c.id]));
+}
+let platformKeys=new Map();
+function boardByKey(data){
+if(!data||!Array.isArray(data.channels)||!Array.isArray(data.programmes))return data;
+platformKeys=channelKeys(data.channels);
+return{
+...data,
+channels:data.channels.map((c)=>({...c,id:platformKeys.get(c.id)})),
+programmes:data.programmes.map((p)=>({...p,channel:platformKeys.has(p.channel)?platformKeys.get(p.channel):p.channel})),
+};
+}
+function challengeByKey(data){
+if(!data||!data.l3mon||!platformKeys.has(data.l3mon.channel))return data;
+return{...data,l3mon:{...data.l3mon,channel:platformKeys.get(data.l3mon.channel)}};
+}
 let skewMs=0;
 function syncClock(dateHeader,serverTimeS){
 const now=Date.now();
@@ -690,10 +709,18 @@ clearTimeout(timer);
 const session=(o)=>apiCall('GET',ROUTES.session,o);
 const resendVerification=()=>apiCall('POST',ROUTES.resend,{body:{}});
 const teamAvailable=(name)=>apiCall('GET',`${ROUTES.teamAvailable}?name=${encodeURIComponent(name)}`,{retries:1});
-const board=(etag,o={})=>apiCall('GET',ROUTES.board,{...o,etag});
+const board=async(etag,o={})=>{
+const r=await apiCall('GET',ROUTES.board,{...o,etag});
+if(r.ok&&r.data)r.data=boardByKey(r.data);
+return r;
+};
 const ticks=()=>apiCall('GET',ROUTES.ticks,{retries:1});
 const notifications=(sinceId)=>apiCall('GET',`${ROUTES.notifications}?since_id=${encodeURIComponent(sinceId||0)}`,{retries:1});
-const challenge=(id,etag)=>apiCall('GET',ROUTES.challenge(id),{etag});
+const challenge=async(id,etag)=>{
+const r=await apiCall('GET',ROUTES.challenge(id),{etag});
+if(r.ok&&r.data)r.data=challengeByKey(r.data);
+return r;
+};
 const attempt=(challengeId,submission)=>apiCall('POST',ROUTES.attempt,{body:{challenge_id:challengeId,submission}});
 const hint=(id)=>apiCall('GET',ROUTES.hint(id));
 const unlockHint=(id)=>apiCall('POST',ROUTES.unlocks,{body:{target:id,type:'hints'}});
@@ -940,69 +967,6 @@ let ended=false;
 on('net',(r)=>{if(!ended&&r.error&&r.error.code==='auth_required'){ended=true;sessionEnded();}});
 document.addEventListener('visibilitychange',()=>audioVisibility(document.hidden));
 }
-function initShow(form){
-const btn=$('[data-show]',form);
-const input=$('#f-password',form);
-if(!btn||!input)return;
-btn.addEventListener('click',()=>{
-const show=input.type==='password';
-input.type=show?'text':'password';
-btn.setAttribute('aria-pressed',String(show));
-});
-form.addEventListener('submit',()=>{input.type='password';btn.setAttribute('aria-pressed','false');});
-}
-function initRetry(form){
-const s=Number(form.dataset.retryAfter);
-if(!(s>0))return;
-const btn=$('[data-submit]',form);
-const wait=$('[data-wait]',form);
-btn.disabled=true;
-wait.hidden=false;
-countdown(s,(left)=>{
-const m=Math.ceil(left/60);
-wait.textContent=left>90?`You can try again in about ${m} minutes.`:`You can try again in ${left} s.`;
-},()=>{
-btn.disabled=false;
-wait.textContent='You can try again now.';
-});
-}
-function initLogin(){
-const form=$('[data-login]');
-if(!form)return;
-const name=$('#f-name',form);
-const pass=$('#f-password',form);
-const btn=$('[data-submit]',form);
-const host=form.parentElement;
-initShow(form);
-initRetry(form);
-for(const input of[name,pass])input.addEventListener('input',()=>{if(input.value)clearFieldError(input);});
-let sent=false;
-form.addEventListener('submit',(e)=>{
-if(sent||btn.getAttribute('aria-disabled')==='true'||btn.disabled){e.preventDefault();return;}
-const problems=[];
-for(const[input,msg]of[[name,'Enter your username or email.'],[pass,'Enter your password.']]){
-if(!input.value.trim()){fieldError(input,msg);problems.push({id:input.id,text:msg});}else clearFieldError(input);
-}
-if(problems.length){
-e.preventDefault();
-showSummary(host,problems);
-sfx('bonk');
-return;
-}
-sent=true;
-setPending(btn,'Tuning in…');
-sfx('click');
-const card=$('[data-card]');
-if(card&&!reduced())card.classList.add('flick');
-});
-addEventListener('pageshow',(e)=>{
-if(!e.persisted)return;
-sent=false;
-clearPending(btn);
-const card=$('[data-card]');
-if(card)card.classList.remove('flick');
-});
-}
 function run(name,fn){
 try{fn();}catch(err){console.error(`[l3m0n] ${name} failed`,err);}
 }
@@ -1010,5 +974,4 @@ run('dialog',initDialog);
 run('prefs',initPrefs);
 run('shell',initShell);
 run('keys',initKeys);
-run('login',initLogin);
 })();

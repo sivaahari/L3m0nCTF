@@ -589,6 +589,25 @@ return out;
 function valueNote(value,start,floor){
 return`${value<start?'Started':'Starts'} at ${start} TRP. Falls as more studios solve it, down to ${floor}.`;
 }
+function channelKeys(channels){
+const nos=channels.map((c)=>c.no);
+const usable=nos.every((n)=>Number.isInteger(n)&&n>=0&&n<=99)&&new Set(nos).size===nos.length;
+return new Map(channels.map((c)=>[c.id,usable?c.no:c.id]));
+}
+let platformKeys=new Map();
+function boardByKey(data){
+if(!data||!Array.isArray(data.channels)||!Array.isArray(data.programmes))return data;
+platformKeys=channelKeys(data.channels);
+return{
+...data,
+channels:data.channels.map((c)=>({...c,id:platformKeys.get(c.id)})),
+programmes:data.programmes.map((p)=>({...p,channel:platformKeys.has(p.channel)?platformKeys.get(p.channel):p.channel})),
+};
+}
+function challengeByKey(data){
+if(!data||!data.l3mon||!platformKeys.has(data.l3mon.channel))return data;
+return{...data,l3mon:{...data.l3mon,channel:platformKeys.get(data.l3mon.channel)}};
+}
 let skewMs=0;
 function syncClock(dateHeader,serverTimeS){
 const now=Date.now();
@@ -690,10 +709,18 @@ clearTimeout(timer);
 const session=(o)=>apiCall('GET',ROUTES.session,o);
 const resendVerification=()=>apiCall('POST',ROUTES.resend,{body:{}});
 const teamAvailable=(name)=>apiCall('GET',`${ROUTES.teamAvailable}?name=${encodeURIComponent(name)}`,{retries:1});
-const board=(etag,o={})=>apiCall('GET',ROUTES.board,{...o,etag});
+const board=async(etag,o={})=>{
+const r=await apiCall('GET',ROUTES.board,{...o,etag});
+if(r.ok&&r.data)r.data=boardByKey(r.data);
+return r;
+};
 const ticks=()=>apiCall('GET',ROUTES.ticks,{retries:1});
 const notifications=(sinceId)=>apiCall('GET',`${ROUTES.notifications}?since_id=${encodeURIComponent(sinceId||0)}`,{retries:1});
-const challenge=(id,etag)=>apiCall('GET',ROUTES.challenge(id),{etag});
+const challenge=async(id,etag)=>{
+const r=await apiCall('GET',ROUTES.challenge(id),{etag});
+if(r.ok&&r.data)r.data=challengeByKey(r.data);
+return r;
+};
 const attempt=(challengeId,submission)=>apiCall('POST',ROUTES.attempt,{body:{challenge_id:challengeId,submission}});
 const hint=(id)=>apiCall('GET',ROUTES.hint(id));
 const unlockHint=(id)=>apiCall('POST',ROUTES.unlocks,{body:{target:id,type:'hints'}});
@@ -1625,6 +1652,9 @@ const code=r.error&&r.error.code;
 inEl.status.textContent=`${rep.lead} ${r.error&&r.error.message&&code!=='server_error'?r.error.message:rep.text}`.trim();
 if(code!=='phase_closed'&&button)inShow(button,true);
 }
+function inPlaceholder(url){
+try{return new URL(url).hostname.endsWith('.invalid');}catch{return true;}
+}
 function inRender(v){
 const prev=inS.view?inS.view.state:null;
 inS.view=v;
@@ -1649,7 +1679,7 @@ const a=mk('a','btn btn-sm btn-ghost','Open');
 a.href=c.url;
 a.target='_blank';
 a.rel='noopener noreferrer';
-a.addEventListener('click',(e)=>{e.preventDefault();toast('Prototype: this address is a placeholder.');});
+a.addEventListener('click',(e)=>{if(inPlaceholder(c.url)){e.preventDefault();toast('Prototype: this address is a placeholder.');}});
 inEl.slot.append(a);
 }
 inShow(inEl.conn,true);
@@ -2142,7 +2172,7 @@ const list=bd.byCh.get(id)||[];
 const c=bdChan(id);
 const total=c&&Number.isFinite(c.total)?Math.max(c.total,list.length):list.length;
 const solved=list.filter((p)=>p.solved_by_me).length;
-return{total,shown:list.length,coming:total-list.length,solved,frac:total?solved/total:0};
+return{total,shown:list.length,coming:bd.showComing===false?0:total-list.length,solved,frac:total?solved/total:0};
 };
 const bdSigText=(pct,s)=>`${pct}% · ${s.solved} of ${s.total} clear`;
 const bdCounts=new WeakMap();
@@ -2325,7 +2355,8 @@ bdApplyView();
 }
 function bdIndex(data){
 bd.data=data;
-bd.chans=data.channels.map((c)=>({id:c.id,name:c.name,synopsis:c.synopsis||'',total:c.total,onAir:c.on_air,coming:c.coming,sponsor:c.sponsor?c.sponsor.name:''}));
+bd.showComing=data.show_coming!==false;
+bd.chans=data.channels.map((c)=>({id:c.id,name:c.name,synopsis:c.synopsis||'',total:c.total,onAir:c.on_air,coming:bd.showComing?c.coming:0,sponsor:c.sponsor?c.sponsor.name:''}));
 bd.byCh=new Map(bd.chans.map((c)=>[c.id,[]]));
 bd.bySlug=new Map();
 for(const p of data.programmes){
