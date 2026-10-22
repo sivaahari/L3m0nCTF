@@ -1,0 +1,102 @@
+{# Registration (Account), for the CTFd theme (SP6 stream B). Hand-written:
+   sets the values the generated register-account page reads, then includes it.
+   The typed fields, next address and errors come from CTFd's request and view;
+   the addresses, sign-in state, event name, assets and captcha state come from
+   the theme plugin (l3mon). #}
+{% set l3 = l3mon %}
+{% set errs = errors|default([]) %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set next_to = request.args.get('next') or request.form.get('next') or '' %}
+{% set ctftime_on = l3.ctftime_on %}
+{% set cap = l3.captcha %}
+{% set captcha = {'sitekey': cap.sitekey or none} %}
+{% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
+
+{% set summary = [] %}
+{% set ns = namespace(u_err=none, e_err=none, p_err=none, pr_err=none) %}
+{% for err in errs %}
+  {% set lerr = err|lower %}
+  {% if 'user name' in lerr or 'username' in lerr or 'slashes' in lerr %}
+    {% if not ns.u_err %}{% set ns.u_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-username', 'text': err}) %}
+  {% elif 'email' in lerr or 'mail' in lerr %}
+    {% if not ns.e_err %}{% set ns.e_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-email', 'text': err}) %}
+  {% elif 'password' in lerr %}
+    {% if not ns.p_err %}{% set ns.p_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-password', 'text': err}) %}
+  {% elif 'privacy' in lerr or 'notice' in lerr or 'policy' in lerr %}
+    {% if not ns.pr_err %}{% set ns.pr_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-privacy', 'text': err}) %}
+  {% else %}
+    {% set _ = summary.append({'href': '#reg-h', 'text': err}) %}
+  {% endif %}
+{% endfor %}
+{% set field_errs = {'username': ns.u_err, 'email': ns.e_err, 'password': ns.p_err, 'privacy': ns.pr_err} %}
+
+{% set alert = {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none %}
+{% set has_summary = errs|length > 0 %}
+
+{% set reg = {
+  'key': 'account',
+  'h1': 'Create your account',
+  'lead': 'One account to play, solve and join a studio.',
+  'phone': 'Step 1 of 3: Account',
+  'dir': '',
+  'showStepper': true,
+  'stepper': {
+    's1': {'cls': 'st on', 'current': true, 'tick': false, 'link': none, 'label': 'Account', 'sr': ', current step'},
+    's2': {'cls': 'st', 'current': false, 'tick': false, 'link': none, 'label': 'Verify', 'sr': ', not started'},
+    's3': {'cls': 'st', 'current': false, 'tick': false, 'link': none, 'label': 'Studio', 'sr': ', not started'},
+    's4': none,
+    'dots': [{'cls': 'on'}, {'cls': ''}, {'cls': ''}],
+    'count': 'Step 1 of 3',
+  },
+  'alert': alert,
+  'summary': summary,
+  'hasSummary': has_summary,
+  'dev': none,
+} %}
+
+{% set acct = {
+  'create': true,
+  'edit': false,
+  'provider': none,
+  'trusted': false,
+  'lockedEmail': none,
+  'password': true,
+  'username': request.form.get('name') or request.form.get('username') or '',
+  'email': request.form.get('email', ''),
+  'privacy': true if request.form.get('privacy') == '1' else false,
+  'err': field_errs,
+  'providers': {'google': none, 'ctftime': ctftime_href if ctftime_on else none, 'any': ctftime_on},
+  'submit': 'Next: check your email ▸',
+  'retry': '',
+  'human': true if (cap.sitekey and cap.register) else false,
+  'action': '/register',
+} %}
+
+{% set page = {
+  'title': 'Create your account | ' ~ event_name,
+  'cls': 'pg-app pg-register',
+  'osd': 'ACCOUNT · CH 000',
+  'skip': 'Skip to the form',
+  'crawl': false,
+  'signedIn': l3.signed_in,
+  'player': l3.player
+} %}
+
+{% set asset = {
+  'css': l3.assets['css.app'],
+  'boot': l3.assets['js.boot'],
+  'js': l3.assets['js.register']
+} %}
+
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% include "_register-account.html" %}

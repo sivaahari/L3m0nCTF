@@ -7,6 +7,11 @@ Lead contact: KabilanMohanraj17.
 
 * `docs/superpowers/plans/2026-10-22-ui-b-registration.md`: Implementation plan and architectural decisions for Stream B.
 * `docs/handoff/ui-b-registration.md`: Progress and verification handoff document.
+* `plugins/l3mon_theme/pages/register.py`: Studio availability endpoint (`/api/v1/l3mon/teams/available`), `/register/account` routing alias, and `username` form handling.
+* `plugins/l3mon_theme/tests/test_theme_register.py`: Tests for theme register template, stepper, CSRF, errors, captcha, and availability endpoint.
+* `ui/theme/l3mon/templates/register.html`: Adapter template for CTFd `/register`.
+* `ui/theme/l3mon/templates/_register-account.html`: Exported Jinja template from prototype `register-account.html`.
+* `ui/theme/l3mon/static/bundles.json`: Manifest including `js.register`.
 
 ## 2. How to Run It from a Clean Clone
 
@@ -32,13 +37,13 @@ env -u MSYS_NO_PATHCONV L3MON_MOUNT_PLUGINS=1 tools/run-ctfd-tests.sh l3mon/ctfd
 
 ## 3. Evidence
 
-*(Checks in progress for Milestone 1)*
-
 | Check | Command | Result | Counts | Date |
 |---|---|---|---|---|
 | UI: prototype suite | `node --test --test-concurrency=1 "tests/*.test.mjs"` | PASS | 321 passed, 1 skipped | 2026-10-22 |
 | UI: build and budgets | `node tools/build.mjs` | PASS | All budgets met | 2026-10-22 |
 | UI: registration suite | `node --test "tests/register-*.test.mjs"` | PASS | 39 passed | 2026-10-22 |
+| UI: theme export equivalence | `node --test tests/export-theme-register.test.mjs` | PASS | 3 passed | 2026-10-22 |
+| Public: theme tests | `env -u MSYS_NO_PATHCONV L3MON_MOUNT_PLUGINS=1 tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_theme` | PASS | 73 passed, 144 warnings in 100.45s | 2026-10-22 |
 
 ## 4. Differences from the Prompt
 
