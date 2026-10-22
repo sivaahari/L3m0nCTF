@@ -108,7 +108,7 @@ def test_email_norm_lazy_backfill():
         assert EmailNorm.query.count() == 0
 
         # Patch claim to allow batch processing across batches
-        with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.claim", return_value=True):
+        with mock.patch("CTFd.plugins.l3mon_core.claim.claim", return_value=True):
             count1 = backfill_email_norm(batch_size=10)
             assert count1 == 10
             assert EmailNorm.query.count() == 10
@@ -234,12 +234,13 @@ def test_email_norm_backfill_statement_cost():
             nonlocal queries_backfill
             queries_backfill += 1
 
-        with mock.patch("CTFd.plugins.l3mon_guard.policies.email_norm.claim", return_value=True):
+        with mock.patch("CTFd.plugins.l3mon_core.claim.claim", return_value=True):
             event.listen(db.engine, "before_cursor_execute", count_queries_bf)
             backfill_email_norm(batch_size=10)
             event.remove(db.engine, "before_cursor_execute", count_queries_bf)
 
-        # Bounded query cost for a batch
-        assert queries_backfill <= 15
+        # Bounded query cost for a batch: one search for the missing rows, then a check and an insert for each of the (at most 10) rows. It grows with the batch size,
+        # not with the number of users (integration audit: the old budget of 15 was below the code's own 1 + 2 x 10 + the commit)
+        assert queries_backfill <= 1 + 2 * 10 + 3, queries_backfill
     destroy_ctfd(app)
 

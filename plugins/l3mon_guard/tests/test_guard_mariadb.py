@@ -283,7 +283,9 @@ def test_email_norm_concurrent_race_gives_one_row():
         # Exactly one worker must succeed, one must fail
         assert sorted([res1, res2]) == [False, True]
 
-        # In the database, exactly one row exists
+        # In the database, exactly one row exists. The session of this test must start a new transaction first: on MariaDB (REPEATABLE READ) it
+        # reads from the snapshot of its first read, which was taken before the two workers committed (integration audit: the count was 0)
+        db.session.rollback()
         count = db.session.query(EmailNorm).filter_by(norm=target_norm).count()
         assert count == 1
     destroy_ctfd(app)
