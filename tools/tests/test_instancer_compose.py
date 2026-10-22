@@ -14,13 +14,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def render_compose(env_name: str, overlays: list[str], extra_env: dict[str, str] | None = None) -> dict:
-    """Render compose config via docker compose config and parse resulting YAML."""
+    """Render compose config via docker compose config and parse the JSON (no PyYAML: CI installs only pytest)."""
     files = [
         "-f", str(ROOT / "deploy" / "compose" / "compose.base.yml"),
         "-f", str(ROOT / "deploy" / "compose" / f"compose.{env_name}.yml"),
@@ -32,10 +31,10 @@ def render_compose(env_name: str, overlays: list[str], extra_env: dict[str, str]
     if extra_env:
         env.update(extra_env)
 
-    cmd = ["docker", "compose", *files, "config"]
+    cmd = ["docker", "compose", *files, "config", "--format", "json"]
     res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=60)
     assert res.returncode == 0, f"docker compose config failed: {res.stderr}\nOutput:\n{res.stdout}"
-    return yaml.safe_load(res.stdout)
+    return json.loads(res.stdout)
 
 
 def test_dev_overlay_properties():
@@ -103,7 +102,7 @@ def test_production_overlay_fails_without_instance_domain():
     env = {k: v for k, v in os.environ.items() if k != "INSTANCE_DOMAIN"}
     env["INSTANCE_DOMAIN"] = ""
 
-    cmd = ["docker", "compose", *files, "config"]
+    cmd = ["docker", "compose", *files, "config", "--format", "json"]
     res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=60)
     assert res.returncode != 0, "Expected docker compose config to fail when INSTANCE_DOMAIN is empty"
     combined = res.stderr + res.stdout
