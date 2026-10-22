@@ -258,6 +258,19 @@ def _guarded(view):
     return require_complete_profile(during_ctf_time_only(require_verified_emails(check_challenge_visibility(view))))
 
 
+def _before_start_view(slug=None):
+    """Before the start, a signed-in player with a studio (or the crew) sees the board's own "not on air yet" page, not CTFd's 403: the same
+    gates as the listing except the one that closes the event to players (`during_ctf_time_only`)."""
+    from flask import redirect, render_template, request, url_for
+
+    from CTFd.utils.config import is_teams_mode
+    from CTFd.utils.user import get_current_team, is_admin
+
+    if is_teams_mode() and get_current_team() is None and not is_admin():
+        return redirect(url_for("teams.private", next=request.full_path))
+    return render_template("challenges.html")
+
+
 def _board_view(slug=None):
     """CTFd's own listing (its team redirect, its notes), drawn by the board adapter. For a programme's page the slug is read by the value; a slug
     the viewer may not see answers 404 once CTFd's own gates have let the request through."""
@@ -301,10 +314,21 @@ def install(app):
 
     existing = {rule.rule for rule in app.url_map.iter_rules()}
     guarded = _guarded(_board_view)
+    from CTFd.utils.decorators import require_complete_profile, require_verified_emails
+    from CTFd.utils.decorators.visibility import check_challenge_visibility
+
+    early = require_complete_profile(require_verified_emails(check_challenge_visibility(_before_start_view)))
+
+    def dispatch(slug=None):
+        from CTFd.plugins.l3mon_core.clock import current_phase
+
+        return (early if current_phase().state == "before" else guarded)(slug=slug)
+
+    guarded_or_early = dispatch
     if "/board" not in existing:
-        app.add_url_rule("/board", endpoint="l3mon_theme_board", view_func=guarded, methods=["GET"])
+        app.add_url_rule("/board", endpoint="l3mon_theme_board", view_func=guarded_or_early, methods=["GET"])
     if "/board/<slug>" not in existing:
-        app.add_url_rule("/board/<slug>", endpoint="l3mon_theme_programme", view_func=guarded, methods=["GET"])
+        app.add_url_rule("/board/<slug>", endpoint="l3mon_theme_programme", view_func=guarded_or_early, methods=["GET"])
     if "l3mon_theme_notifications" not in app.extensions:
         app.extensions["l3mon_theme_notifications"] = True
         hooks = app.before_request_funcs.setdefault(None, [])

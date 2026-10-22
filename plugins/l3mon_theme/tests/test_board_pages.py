@@ -194,21 +194,24 @@ def test_a_suspended_account_is_turned_away_from_every_address(play):
     assert codes == [403, 403, 403]
 
 
-def test_before_the_start_a_player_is_turned_away_and_the_crew_sees_the_slate(play):
+def test_before_the_start_the_board_shows_its_own_not_on_air_page_and_the_stock_address_keeps_ctfds_gate(play):
     set_config("start", T_LIVE + 7200)
     set_config("end", T_END)
     with clock(T_LIVE):
-        for path in BOARD_PATHS + ("/board/lantern_walk",):
-            r = play.alice.get(path)
-            assert r.status_code == 403, path
-            assert 'data-slate="forbidden"' in text(r) and "data-board" not in text(r), "CTFd's own refusal, in the theme's 403 page"
-        crew = play.admin.get("/board")
-        html = text(crew)
-    assert crew.status_code == 200
-    assert 'data-slate="before"' in html and "NOT ON AIR YET" in html and "The channels open when the broadcast starts" in html
-    assert "data-board" not in html
-    assert re.search(r"It starts at \d\d:\d\d IST on \d{1,2} [A-Z][a-z]+ \d{4}\.", html)
-    forbidden_words(html)
+        for who in (play.alice, play.admin):
+            for path in ("/board", "/board/lantern_walk", "/board/never_existed"):
+                r = who.get(path)
+                html = text(r)
+                assert r.status_code == 200, (path, r.status_code)
+                assert 'data-slate="before"' in html and "NOT ON AIR YET" in html and "data-board" not in html
+                assert re.search(r"It starts at \d\d:\d\d IST on \d{1,2} [A-Z][a-z]+ \d{4}\.", html)
+                assert "lantern_walk" not in html and "Lantern Walk" not in html
+        forbidden_words(text(play.alice.get("/board")))
+        assert play.alice.get("/challenges").status_code == 403, "CTFd's own address keeps CTFd's gate"
+        assert seen(play.app.test_client().get("/board"))[0] == 302, "a visitor is still sent to sign in"
+        register_user(play.app, name="loner", email="loner@example.com", password=PASSWORD)
+        loner = login_as_user(play.app, "loner", PASSWORD)
+        assert seen(loner.get("/board"))[0] == 302 and "/team" in seen(loner.get("/board"))[1]
 
 
 @pytest.mark.parametrize("state,banner", [("paused", "PAUSED."), ("ended", "THAT'S A WRAP.")])
@@ -248,9 +251,11 @@ def test_the_gates_of_the_three_addresses_agree_in_every_state(play):
         with clock(at):
             for who, client in clients.items():
                 one = seen(client.get("/challenges"))
+                if name == "before":
+                    continue  # the board shows its own page before the start (tested above); CTFd's address keeps its 403
                 assert seen(client.get("/board")) == one, (name, who, "/board")
                 assert seen(client.get("/board/lantern_walk"))[0] in (one[0], 404), (name, who, "/board/<slug>")
-                if one[0] != 200:
+                if one[0] != 200 and name != "before":
                     assert seen(client.get("/board/lantern_walk")) == one, (name, who, "/board/<slug>")
 
 
