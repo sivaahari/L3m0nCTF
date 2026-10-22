@@ -78,11 +78,13 @@ def test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that
     from CTFd.plugins.l3mon_theme import values
 
     with app.test_client() as client:
-        for path, route in (("/board", "channels"), ("/guide", "guide")):
+        for path, route in (("/guide", "guide"),):  # "/board" is answered by the board itself since stream A (pages/board.py): no alias
             r = client.get(path)
             assert r.status_code == 302 and r.headers["Location"].endswith(values.ROUTES[route]), path
             assert client.head(path).status_code == 302
             assert client.post(path).status_code in (404, 405), "an alias answers GET and HEAD only (CTFd shows its 404 page for a refused method)"
+        r = client.get("/board")
+        assert r.status_code == 302 and r.headers["Location"].startswith("/login"), "the board answers its own address: a visitor is asked to sign in, not sent to /challenges"
         # and the destination really is a page
         assert client.get("/scoreboard").status_code == 200
 
