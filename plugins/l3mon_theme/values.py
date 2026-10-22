@@ -24,7 +24,7 @@ FILE = re.compile(r"^[a-z]+\.[0-9a-f]{10}\.(css|js)$")  # the only names the exp
 SITE_URL = "https://l3m0nctf.xyz"  # the landing page: the public website of the event (the platform host has no Rules or Privacy page)
 SITE_URL_SETTING = "L3MON_SITE_URL"  # an environment setting may name another address (a staging website), https only
 # Where the services are for a visitor, by name. Keep a name here until the page that answers it is built; then change its address.
-ROUTES = {"channels": "/challenges", "scoreboard": "/scoreboard", "guide": "/scoreboard"}  # CTFd has no notifications page for players yet: the bell's slice adds one
+ROUTES = {"channels": "/challenges", "scoreboard": "/scoreboard", "guide": "/guide"}  # CTFd has no notifications page for players yet: the bell's slice adds one
 
 _log = logging.getLogger("l3mon")
 _manifests = {}  # path -> {logical name: file name}, read once per process

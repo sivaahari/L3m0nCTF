@@ -1,0 +1,13 @@
+{# The Guide, for the CTFd theme (SP6 Stream C). Hand-written: it sets the values the generated guide page reads, then includes it. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set page = {'title': 'Guide | ' ~ event_name, 'cls': 'pg-app pg-guide', 'osd': 'GUIDE · CH 00', 'skip': 'Skip to the content', 'crawl': true, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.guide']} %}
+{% set nav = {'board': false, 'guide': true, 'scoreboard': false} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% include "_guide.html" %}

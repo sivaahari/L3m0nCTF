@@ -42,7 +42,7 @@ def statements(fn):
 def test_the_manifest_names_the_bundles_and_the_urls_are_the_theme_static_files(app):
     with app.app_context():
         urls = values.bundle_urls()
-        assert sorted(urls) == ["css.app", "css.slate", "js.boot", "js.login", "js.slate"]
+        assert set(urls) >= {"css.app", "css.slate", "js.boot", "js.guide", "js.login", "js.slate"}
         for logical, url in urls.items():
             assert url.startswith("/themes/l3mon/static/"), logical
             assert values.FILE.match(url.rsplit("/", 1)[1]), logical

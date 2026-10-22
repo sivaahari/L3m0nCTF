@@ -1,0 +1,586 @@
+{
+  "live_one_studio": {
+    "input": {
+      "data": {
+        "ver": 12,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "banner": null,
+        "epg_sig": "sig-live-01",
+        "team": {
+          "score": 1500,
+          "place": 1,
+          "of": 20,
+          "solves": 6,
+          "hints_used": 2,
+          "instances_live": 1,
+          "bonus": 0,
+          "notes": [],
+          "members": [
+            {
+              "id": 1,
+              "name": "Alice",
+              "captain": true,
+              "you": true,
+              "solves": 4,
+              "trp": 1000,
+              "pct": 67
+            },
+            {
+              "id": 2,
+              "name": "Bob",
+              "captain": false,
+              "you": false,
+              "solves": 2,
+              "trp": 500,
+              "pct": 33
+            }
+          ],
+          "by_channel": [
+            {
+              "channel": 1,
+              "name": "Web",
+              "solved": 4,
+              "total": 6
+            },
+            {
+              "channel": 2,
+              "name": "Crypto",
+              "solved": 2,
+              "total": 5
+            }
+          ]
+        },
+        "story": {
+          "reels": 6,
+          "reels_needed": 10,
+          "on_air": 0.45
+        }
+      },
+      "me": {
+        "studio": "Citrus Squad",
+        "name": "Alice"
+      },
+      "epg_html": "<div class=\"epg-live\">EPG GRID</div>"
+    },
+    "expected": {
+      "ver": "12",
+      "hasEpg": true,
+      "epg": "<div class=\"epg-live\">EPG GRID</div>",
+      "epgSig": "sig-live-01",
+      "hasTeam": true,
+      "studio": "Citrus Squad",
+      "team": {
+        "score": "1500",
+        "place": "1st of 20",
+        "frozen": "",
+        "solves": "6",
+        "hints": "2",
+        "live": "1"
+      },
+      "hasBonus": false,
+      "bonus": "0",
+      "hasNotes": false,
+      "notes": [],
+      "hasMembers": true,
+      "members": [
+        {
+          "id": "1",
+          "name": "Alice",
+          "ini": "A",
+          "tag": "captain · you",
+          "cls": "is-you",
+          "solves": "4",
+          "trp": "1000",
+          "pct": "67",
+          "text": "4 solves"
+        },
+        {
+          "id": "2",
+          "name": "Bob",
+          "ini": "B",
+          "tag": "",
+          "cls": "",
+          "solves": "2",
+          "trp": "500",
+          "pct": "33",
+          "text": "2 solves"
+        }
+      ],
+      "chans": [
+        {
+          "id": "1",
+          "no": "01",
+          "name": "Web",
+          "solved": "4",
+          "total": "6",
+          "pct": "67",
+          "text": "4 of 6"
+        },
+        {
+          "id": "2",
+          "no": "02",
+          "name": "Crypto",
+          "solved": "2",
+          "total": "5",
+          "pct": "40",
+          "text": "2 of 5"
+        }
+      ],
+      "hasStory": true,
+      "story": {
+        "reels": "6",
+        "needed": "10",
+        "pct": "60",
+        "text": "6 of 10",
+        "valuetext": "6 of 10 reels",
+        "air": "45"
+      }
+    }
+  },
+  "before_start": {
+    "input": {
+      "data": {
+        "ver": 1,
+        "phase": {
+          "state": "before",
+          "frozen": false
+        },
+        "banner": null,
+        "epg_sig": "none",
+        "team": {
+          "score": 0,
+          "place": null,
+          "of": 0,
+          "solves": 0,
+          "hints_used": 0,
+          "instances_live": 0,
+          "bonus": 0,
+          "notes": [],
+          "members": [
+            {
+              "id": 1,
+              "name": "Alice",
+              "captain": true,
+              "you": true,
+              "solves": 0,
+              "trp": 0,
+              "pct": 0
+            }
+          ],
+          "by_channel": [
+            {
+              "channel": 1,
+              "name": "Web",
+              "solved": 0,
+              "total": 0
+            }
+          ]
+        },
+        "story": null
+      },
+      "me": {
+        "studio": "Citrus Squad",
+        "name": "Alice"
+      },
+      "epg_html": ""
+    },
+    "expected": {
+      "ver": "1",
+      "hasEpg": false,
+      "epg": "",
+      "epgSig": "none",
+      "hasTeam": true,
+      "studio": "Citrus Squad",
+      "team": {
+        "score": "0",
+        "place": "Not ranked yet",
+        "frozen": "",
+        "solves": "0",
+        "hints": "0",
+        "live": "0"
+      },
+      "hasBonus": false,
+      "bonus": "0",
+      "hasNotes": false,
+      "notes": [],
+      "hasMembers": true,
+      "members": [
+        {
+          "id": "1",
+          "name": "Alice",
+          "ini": "A",
+          "tag": "captain · you",
+          "cls": "is-you",
+          "solves": "0",
+          "trp": "0",
+          "pct": "0",
+          "text": "0 solves"
+        }
+      ],
+      "chans": [
+        {
+          "id": "1",
+          "no": "01",
+          "name": "Web",
+          "solved": "0",
+          "total": "0",
+          "pct": "0",
+          "text": "0 of 0"
+        }
+      ],
+      "hasStory": false,
+      "story": null
+    }
+  },
+  "scoreboard_frozen": {
+    "input": {
+      "data": {
+        "ver": 25,
+        "phase": {
+          "state": "live",
+          "frozen": true
+        },
+        "banner": {
+          "id": "frozen",
+          "cls": "bn-frozen",
+          "lead": "SCOREBOARD FROZEN.",
+          "text": "Ranks are frozen."
+        },
+        "epg_sig": "sig-frozen-02",
+        "team": {
+          "score": 2200,
+          "place": null,
+          "of": 35,
+          "solves": 9,
+          "hints_used": 3,
+          "instances_live": 0,
+          "bonus": 50,
+          "notes": [
+            {
+              "title": "Note 1",
+              "content": "Crew message"
+            }
+          ],
+          "members": [
+            {
+              "id": 1,
+              "name": "Alice",
+              "captain": true,
+              "you": false,
+              "solves": 5,
+              "trp": 1200,
+              "pct": 55
+            },
+            {
+              "id": 2,
+              "name": "Bob",
+              "captain": false,
+              "you": true,
+              "solves": 4,
+              "trp": 1000,
+              "pct": 45
+            }
+          ],
+          "by_channel": [
+            {
+              "channel": 1,
+              "name": "Web",
+              "solved": 5,
+              "total": 6
+            },
+            {
+              "channel": 2,
+              "name": "Crypto",
+              "solved": 4,
+              "total": 5
+            }
+          ]
+        },
+        "story": {
+          "reels": 9,
+          "reels_needed": 10,
+          "on_air": 0.8
+        }
+      },
+      "me": {
+        "studio": "Citrus Squad",
+        "name": "Bob"
+      },
+      "epg_html": "<div class=\"epg-frozen\">EPG GRID</div>"
+    },
+    "expected": {
+      "ver": "25",
+      "hasEpg": true,
+      "epg": "<div class=\"epg-frozen\">EPG GRID</div>",
+      "epgSig": "sig-frozen-02",
+      "hasTeam": true,
+      "studio": "Citrus Squad",
+      "team": {
+        "score": "2200",
+        "place": "Ranks frozen",
+        "frozen": "true",
+        "solves": "9",
+        "hints": "3",
+        "live": "0"
+      },
+      "hasBonus": true,
+      "bonus": "+50",
+      "hasNotes": true,
+      "notes": [
+        {
+          "title": "Note 1",
+          "content": "Crew message"
+        }
+      ],
+      "hasMembers": true,
+      "members": [
+        {
+          "id": "1",
+          "name": "Alice",
+          "ini": "A",
+          "tag": "captain",
+          "cls": "",
+          "solves": "5",
+          "trp": "1200",
+          "pct": "55",
+          "text": "5 solves"
+        },
+        {
+          "id": "2",
+          "name": "Bob",
+          "ini": "B",
+          "tag": "you",
+          "cls": "is-you",
+          "solves": "4",
+          "trp": "1000",
+          "pct": "45",
+          "text": "4 solves"
+        }
+      ],
+      "chans": [
+        {
+          "id": "1",
+          "no": "01",
+          "name": "Web",
+          "solved": "5",
+          "total": "6",
+          "pct": "83",
+          "text": "5 of 6"
+        },
+        {
+          "id": "2",
+          "no": "02",
+          "name": "Crypto",
+          "solved": "4",
+          "total": "5",
+          "pct": "80",
+          "text": "4 of 5"
+        }
+      ],
+      "hasStory": true,
+      "story": {
+        "reels": "9",
+        "needed": "10",
+        "pct": "90",
+        "text": "9 of 10",
+        "valuetext": "9 of 10 reels",
+        "air": "80"
+      }
+    }
+  },
+  "crew_account": {
+    "input": {
+      "data": {
+        "ver": 15,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "banner": null,
+        "epg_sig": "sig-crew-03",
+        "team": null,
+        "story": {
+          "reels": 0,
+          "reels_needed": 10,
+          "on_air": 0.5
+        }
+      },
+      "me": {
+        "name": "Organiser"
+      },
+      "epg_html": "<div class=\"epg-crew\">EPG GRID</div>"
+    },
+    "expected": {
+      "ver": "15",
+      "hasEpg": true,
+      "epg": "<div class=\"epg-crew\">EPG GRID</div>",
+      "epgSig": "sig-crew-03",
+      "hasTeam": false,
+      "studio": "Organiser",
+      "team": null,
+      "hasBonus": false,
+      "bonus": "",
+      "hasNotes": false,
+      "notes": [],
+      "hasMembers": false,
+      "members": [],
+      "chans": [],
+      "hasStory": true,
+      "story": {
+        "reels": "0",
+        "needed": "10",
+        "pct": "0",
+        "text": "0 of 10",
+        "valuetext": "0 of 10 reels",
+        "air": "50"
+      }
+    }
+  },
+  "with_bonus_and_notes": {
+    "input": {
+      "data": {
+        "ver": 30,
+        "phase": {
+          "state": "live",
+          "frozen": false
+        },
+        "banner": null,
+        "epg_sig": "sig-bonus-04",
+        "team": {
+          "score": 3100,
+          "place": 3,
+          "of": 40,
+          "solves": 11,
+          "hints_used": 1,
+          "instances_live": 2,
+          "bonus": -20,
+          "notes": [
+            {
+              "title": "Hint Penalty",
+              "content": "Incorrect submission during manual review"
+            },
+            {
+              "title": "Welcome",
+              "content": "Enjoy L3m0nCTF!"
+            }
+          ],
+          "members": [
+            {
+              "id": 10,
+              "name": "Carol",
+              "captain": true,
+              "you": true,
+              "solves": 7,
+              "trp": 2000,
+              "pct": 65
+            },
+            {
+              "id": 11,
+              "name": "Dave",
+              "captain": false,
+              "you": false,
+              "solves": 4,
+              "trp": 1100,
+              "pct": 35
+            }
+          ],
+          "by_channel": [
+            {
+              "channel": 1,
+              "name": "Web",
+              "solved": 6,
+              "total": 8
+            }
+          ]
+        },
+        "story": {
+          "reels": 11,
+          "reels_needed": 15,
+          "on_air": 0.65
+        }
+      },
+      "me": {
+        "studio": "The Lemons",
+        "name": "Carol"
+      },
+      "epg_html": "<div class=\"epg-bonus\">EPG GRID</div>"
+    },
+    "expected": {
+      "ver": "30",
+      "hasEpg": true,
+      "epg": "<div class=\"epg-bonus\">EPG GRID</div>",
+      "epgSig": "sig-bonus-04",
+      "hasTeam": true,
+      "studio": "The Lemons",
+      "team": {
+        "score": "3100",
+        "place": "3rd of 40",
+        "frozen": "",
+        "solves": "11",
+        "hints": "1",
+        "live": "2"
+      },
+      "hasBonus": true,
+      "bonus": "-20",
+      "hasNotes": true,
+      "notes": [
+        {
+          "title": "Hint Penalty",
+          "content": "Incorrect submission during manual review"
+        },
+        {
+          "title": "Welcome",
+          "content": "Enjoy L3m0nCTF!"
+        }
+      ],
+      "hasMembers": true,
+      "members": [
+        {
+          "id": "10",
+          "name": "Carol",
+          "ini": "C",
+          "tag": "captain · you",
+          "cls": "is-you",
+          "solves": "7",
+          "trp": "2000",
+          "pct": "65",
+          "text": "7 solves"
+        },
+        {
+          "id": "11",
+          "name": "Dave",
+          "ini": "D",
+          "tag": "",
+          "cls": "",
+          "solves": "4",
+          "trp": "1100",
+          "pct": "35",
+          "text": "4 solves"
+        }
+      ],
+      "chans": [
+        {
+          "id": "1",
+          "no": "01",
+          "name": "Web",
+          "solved": "6",
+          "total": "8",
+          "pct": "75",
+          "text": "6 of 8"
+        }
+      ],
+      "hasStory": true,
+      "story": {
+        "reels": "11",
+        "needed": "15",
+        "pct": "73",
+        "text": "11 of 15",
+        "valuetext": "11 of 15 reels",
+        "air": "65"
+      }
+    }
+  }
+}

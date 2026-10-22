@@ -69,8 +69,8 @@ def test_the_error_pages_lead_to_pages_that_exist(app):
     with app.test_client() as client:
         body = client.get("/there-is-no-such-page").get_data(as_text=True)
     hrefs = re.findall(r'href="([^"]+)"', body)
-    assert "/challenges" in hrefs and "https://l3m0nctf.xyz/rules/" in hrefs
-    offending = [h for h in hrefs if h in ("/board", "/guide", "/rules", "/privacy")]
+    assert "/challenges" in hrefs and "/guide" in hrefs and "https://l3m0nctf.xyz/rules/" in hrefs
+    offending = [h for h in hrefs if h in ("/board", "/rules", "/privacy")]
     assert not offending, f"links to pages that do not exist yet: {offending}; all links: {[h for h in hrefs if not h.startswith('#')]}"
 
 
@@ -78,7 +78,7 @@ def test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that
     from CTFd.plugins.l3mon_theme import values
 
     with app.test_client() as client:
-        for path, route in (("/board", "channels"), ("/guide", "guide")):
+        for path, route in (("/board", "channels"),):
             r = client.get(path)
             assert r.status_code == 302 and r.headers["Location"].endswith(values.ROUTES[route]), path
             assert client.head(path).status_code == 302
