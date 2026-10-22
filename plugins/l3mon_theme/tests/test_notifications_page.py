@@ -159,3 +159,11 @@ def test_the_page_costs_a_handful_of_statements_whatever_the_number_of_lines(pla
         _, many = statements_of(ask)
     assert len(many) <= len(few) + 2, (len(few), len(many))
     assert len(many) <= 22, len(many)
+
+
+def test_under_another_theme_the_stock_page_stays_closed_to_players(play):
+    """Our hook serves the page only for the platform's own theme: the stock page would list every studio's addressed lines."""
+    with clock(T_LIVE):
+        set_config("ctf_theme", "core")
+        assert play.alice.get("/notifications").status_code == 404
+        assert play.admin.get("/notifications").status_code == 200

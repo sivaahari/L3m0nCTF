@@ -320,6 +320,10 @@ def _serve_notifications():
 
     if request.path != NOTIFICATIONS or request.method not in ("GET", "HEAD"):
         return None
+    from CTFd.utils import get_config
+
+    if get_config("ctf_theme") != "l3mon":
+        return None  # under any other theme there is no page of ours: CTFd's stock page would list every studio's lines, so the board plugin's guard keeps it closed
     from CTFd.plugins.l3mon_board import viewer
 
     no = viewer.refusal()
