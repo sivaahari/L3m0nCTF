@@ -197,7 +197,7 @@ def test_the_bare_address_goes_to_sign_in():
 def test_the_login_page_carries_the_event_name_and_our_theme():
     _, _, body = request("/login")
     html = body.decode("utf-8", "replace")
-    assert "<title>L3m0nCTF 2026</title>" in html
+    assert "<title>Sign in | L3m0nCTF 2026</title>" in html  # the theme's sign-in page (SP6 slice 1): the page's name, then the event's
     assert "themes/l3mon/static" in html
 
 

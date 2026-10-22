@@ -1,0 +1,12 @@
+{# Server error (500), for the CTFd theme (SP6 slice 1). Hand-written: it sets the values the generated slate page reads, then includes it.
+   The wording is the prototype's for this state. CTFd gives no request ID to show, so the ID line and its note are left out.
+   The traceback is never shown; the error text CTFd passes is not shown either. The status is CTFd's. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set target = '/' if request.path.startswith('//') else request.path %}
+{% set page = {'title': 'Technical difficulty (500) | ' ~ event_name, 'cls': 'pg-slate sl-500'} %}
+{% set asset = {'css': l3.assets['css.slate'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.slate']} %}
+{% set dev = none %}
+{% set news = [] %}
+{% set slate = {'id': 'server_error', 'status': 500, 'inShell': false, 'cls': 'sl-500', 'srStatus': 'Status 500: ', 'mood': 'sad', 'code': 'TECHNICAL DIFFICULTY', 'h1': 'Sorry for the interruption', 'line': 'Something broke on our side.', 'retry': none, 'retryLead': '', 'retryUrl': target, 'ways': [{'href': target, 'label': 'Try again', 'cls': 'btn-main'}], 'requestId': none, 'note': none, 'site': l3.site_url} %}
+{% include "_slate.html" %}

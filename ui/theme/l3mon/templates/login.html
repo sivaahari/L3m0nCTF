@@ -1,0 +1,35 @@
+{# Sign in, for the CTFd theme (SP6 slice 1). Hand-written: it sets the values the generated sign-in page reads, then includes it.
+   The typed name, the next address and the errors come from CTFd's request and view; the addresses, the sign-in state and the
+   event name come from the theme plugin (l3mon). CTFd has no "keep me tuned in", no human check and no Google sign-in, so
+   those three controls are switched off here. #}
+{% set l3 = l3mon %}
+{% set errs = errors|default([]) %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set next_to = request.args.get('next') or request.form.get('next') or '' %}
+{% set ctftime_on = l3.ctftime_on %}
+{% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
+{% set login = {
+  'alert': {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none,
+  'summary': [],
+  'hasSummary': false,
+  'errors': {'name': none, 'password': none},
+  'name': request.form.get('name', ''),
+  'next': next_to,
+  'remember': false,
+  'showRemember': false,
+  'human': false,
+  'showHuman': false,
+  'showGoogle': false,
+  'retry': '',
+  'providers': {'google': none, 'ctftime': ctftime_href if ctftime_on else none, 'any': ctftime_on},
+} %}
+{% set page = {'title': 'Sign in | ' ~ event_name, 'cls': 'pg-app pg-login', 'osd': 'LOGIN · CH 000', 'skip': 'Skip to the form', 'crawl': false, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.login']} %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+{% include "_login.html" %}

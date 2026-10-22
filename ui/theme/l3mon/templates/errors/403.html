@@ -1,0 +1,17 @@
+{# Forbidden (403), for the CTFd theme (SP6 slice 1). Hand-written: it sets the values the generated slate page reads, then includes it.
+   CTFd answers a sign-in or a form with a session token that no longer matches with the same 403 as a forbidden page, so a POST
+   gets the "session changed" wording of the prototype's csrf state; any other request gets the forbidden wording. The status is CTFd's. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set target = '/' if request.path.startswith('//') else request.path %}
+{% if request.method == 'POST' %}
+{% set state = {'title': 'Session changed', 'id': 'csrf', 'cls': 'sl-403', 'code': 'SESSION CHANGED', 'h1': 'Your session changed', 'line': 'Reload the page to carry on. Nothing was sent.', 'ways': [{'href': target, 'label': 'Reload the page', 'cls': 'btn-main'}]} %}
+{% else %}
+{% set state = {'title': 'Restricted channel (403)', 'id': 'forbidden', 'cls': 'sl-403', 'code': 'RESTRICTED CHANNEL', 'h1': 'This area is for the crew only', 'line': 'You can carry on from the channels.', 'ways': [{'href': l3.routes.channels, 'label': 'Channels', 'cls': 'btn-main'}]} %}
+{% endif %}
+{% set page = {'title': state.title ~ ' | ' ~ event_name, 'cls': 'pg-slate ' ~ state.cls} %}
+{% set asset = {'css': l3.assets['css.slate'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.slate']} %}
+{% set dev = none %}
+{% set news = [] %}
+{% set slate = {'id': state.id, 'status': 403, 'inShell': false, 'cls': state.cls, 'srStatus': 'Status 403: ', 'mood': 'sad', 'code': state.code, 'h1': state.h1, 'line': state.line, 'retry': none, 'retryLead': '', 'retryUrl': target, 'ways': state.ways, 'requestId': none, 'note': none, 'site': l3.site_url} %}
+{% include "_slate.html" %}

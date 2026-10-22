@@ -1,0 +1,11 @@
+{# Not found (404), for the CTFd theme (SP6 slice 1). Hand-written: it sets the values the generated slate page reads, then includes it.
+   The wording is the prototype's for this state. The status is CTFd's. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set target = '/' if request.path.startswith('//') else request.path %}
+{% set page = {'title': 'No signal (404) | ' ~ event_name, 'cls': 'pg-slate sl-404'} %}
+{% set asset = {'css': l3.assets['css.slate'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.slate']} %}
+{% set dev = none %}
+{% set news = [] %}
+{% set slate = {'id': 'not_found', 'status': 404, 'inShell': false, 'cls': 'sl-404', 'srStatus': 'Status 404: ', 'mood': 'sad', 'code': 'NO SIGNAL', 'h1': 'This channel does not exist', 'line': 'The page may have moved, or it never aired.', 'retry': none, 'retryLead': '', 'retryUrl': target, 'ways': [{'href': l3.routes.channels, 'label': 'Channels', 'cls': 'btn-main'}, {'href': l3.routes.guide, 'label': 'Guide', 'cls': 'btn-ghost'}, {'href': l3.site_url ~ '/rules/', 'label': 'Rules', 'cls': 'btn-ghost'}], 'requestId': none, 'note': none, 'site': l3.site_url} %}
+{% include "_slate.html" %}
