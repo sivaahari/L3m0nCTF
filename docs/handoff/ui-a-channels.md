@@ -28,13 +28,13 @@ Both repositories side by side, branch `ui/a-channels`. The stack: see `docs/dep
 | Check | Result |
 |---|---|
 | UI whole suite, baseline before any change | 334 tests, 333 pass, 1 skipped |
-| UI whole suite, final | EVIDENCE-UI |
+| UI whole suite, final | 347 tests, 346 pass, 1 skipped, 0 fail (23 Oct) |
 | UI build and budgets (`node tools/build.mjs`) | passes, notifications 38.9 of 44 KB |
 | Export identical twice | identical (diff of two output folders) |
-| Theme tests, working tree mounted | 510 passed before the two adjusted tests, all pass after; EVIDENCE-THEME |
+| Theme tests, working tree mounted | 515 passed, 0 failed (`/l3mon_tests/l3mon_theme`, working tree mounted) |
 | Golden: 273 board pairs, 25 notification lists, plus unit cases | 378 passed |
-| Page, notifications and cost tests | board pages 29, notifications 11, cost 30 pass |
-| Whole plugin suite, fresh image | EVIDENCE-PLUGINS |
+| Page, notifications and cost tests | board pages 30, notifications 12, cost 30 pass |
+| Whole plugin suite, fresh image | 2309 passed, 60 skipped, 0 failed (39 min, image built from the final code). The first full run found 4 failures in the board plugin's own tests: my `/notifications` hook served the stock page under any other theme; fixed (the hook serves only under the `l3mon` theme, with a test) and the whole suite rerun |
 | CTFd's own suite | NOT RUN in milestone 1 (about 7 minutes; run before milestone 2) |
 | Integration through nginx (`test_theme_a.py`, 7 tests) | 7 passed on port 9090; the rest of the integration suite: NOT RUN in milestone 1 |
 | Browser run on the real stack (`smoke-real-board.mjs`) | 8 of 8 pass (Chrome headless) |
