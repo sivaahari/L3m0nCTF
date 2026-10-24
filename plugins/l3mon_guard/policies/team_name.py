@@ -1,8 +1,8 @@
 """Studio name policy (SP5 B4.4; made the same as the prototype's `vStudioName` and `studioKey` in SP6, `platform-ui/src/js/validate.js`).
 
 Enforces:
-- Removal of zero-width and bidirectional control characters, collapsing of confusable whitespace (the name that is kept is the cleaned one)
-- No other invisible or unassigned character stays in a name (control, format, private-use, unassigned, line and paragraph separators)
+- A name with a zero-width, bidirectional-control, control, format, private-use or unassigned character in it is REFUSED (never silently cleaned: what is checked must be what is stored)
+- Confusable white space is collapsed and the compatibility forms are composed (NFKC); the cleaned name is the one that is kept, and the guard's wrappers write it back into the request so CTFd stores exactly it
 - Letters of two of Latin, Cyrillic and Greek in one name are refused (the usual trick for an impostor)
 - Length 2 to 32 characters, counted as the browser counts them (characters, not bytes)
 - Prohibition of organisational impersonation words (whole-word match), looking through look-alike letters
@@ -23,6 +23,10 @@ BIDI_ZERO_WIDTH = re.compile(
 
 # Collapsible whitespace (including unicode spaces)
 WHITESPACE = re.compile(r"[\s\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+")
+
+# The white space the browser's own cleaning knows (JavaScript's \s, without the byte order mark, which is refused here as invisible). Python's \s also takes
+# the control characters 0x1c to 0x1f and 0x85 for spaces; those are control characters and are refused.
+BROWSER_SPACE = re.compile(r"[\t\n\x0b\x0c\r \xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+")
 
 # Reserved words indicating organizational impersonation (matched as whole words, case-folded)
 RESERVED_WORDS = {
@@ -119,11 +123,14 @@ def validate_team_name(
     if not name or not isinstance(name, str):
         return None, MSG_EMPTY
 
-    clean = clean_team_name(name)
-    if not clean:
+    # Looked at as it was typed (a tab or a line break is a space, as the browser reads it): an invisible character is refused, not removed, so the name
+    # that was checked is the name that is stored
+    spaced = BROWSER_SPACE.sub(" ", name)
+    if not spaced.strip():
         return None, MSG_EMPTY
-    if has_invisible_characters(clean):
+    if BIDI_ZERO_WIDTH.search(spaced) or has_invisible_characters(spaced):
         return None, MSG_CHARS
+    clean = clean_team_name(name)
     if mixes_alphabets(clean):
         return None, MSG_SCRIPTS
     if len(clean) < NAME_MIN or len(clean) > NAME_MAX:

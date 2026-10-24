@@ -38,9 +38,23 @@ def test_a_tab_or_a_line_break_between_words_is_a_space_as_the_browser_reads_it(
     assert clean_team_name("Team\r\nAlpha") == "Team Alpha"
 
 
-def test_zero_width_and_direction_characters_are_removed_from_the_name_that_is_kept():
-    assert validate_team_name("Zero\u200bWidth") == ("ZeroWidth", None)
-    assert validate_team_name("Evil\u202eStudio") == ("EvilStudio", None)
+def test_an_invisible_character_is_refused_never_removed():
+    """What is checked must be what is stored: a name with a zero-width or direction character in it is refused, not cleaned and then stored as typed."""
+    for name in (
+        "Zero\N{ZERO WIDTH SPACE}Width",
+        "Evil\N{RIGHT-TO-LEFT OVERRIDE}Studio",
+        "A\N{WORD JOINER}B",
+        "Cap\N{ZERO WIDTH NO-BREAK SPACE}tain",
+        "Soft\N{SOFT HYPHEN}hyphen",
+        "Hangul\N{HANGUL FILLER}Fill",
+        "Braille\N{BRAILLE PATTERN BLANK}Blank",
+        "Nul\x00l",
+        "Del\x7f",
+        "Esc\x1bape",
+        "Nel\x85",
+    ):
+        assert validate_team_name(name) == (None, MSG_CHARS), name
+    assert validate_team_name("\N{ZERO WIDTH SPACE}") == (None, MSG_CHARS)
 
 
 def test_the_messages_are_the_prototypes_words():
@@ -167,4 +181,4 @@ def test_length_is_two_to_thirty_two_characters_as_the_browser_counts_them():
 
 def test_only_the_cleaned_length_counts():
     assert validate_team_name("  A  ")[1] == MSG_LENGTH
-    assert validate_team_name("A\u200bB") == ("AB", None)
+    assert validate_team_name("A\N{ZERO WIDTH SPACE}B") == (None, MSG_CHARS)
