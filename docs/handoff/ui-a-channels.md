@@ -101,3 +101,108 @@ Threats: a hostile name, story, sponsor or notification (escaped by the engine; 
 - `tools/hygiene.mjs` needs the monorepo's `challenges` folder.
 - `tools/golden.mjs` writes to a path of the old monorepo layout.
 - Every integration test that opens port 8080 itself cannot run where another program holds it.
+
+
+---
+
+# Round 2 (24 October 2026): the lead's audit, the small fixes and the rest of milestone 2
+
+Branch `ui/a-channels` in both repositories, on top of `pre-deployment` as of 24 October 2026 (`origin/pre-deployment` at `3765e92`; nothing newer to rebase onto). Written 24 October 2026. Read with `platform-ui/docs/contract-a-channels.md` (updated: the crawl, `pn`, the client's replies, CONFIRM-1 and CONFIRM-2).
+
+## R1. What each item of the fix prompt came to
+
+| Item | What I did | The test that proves it |
+|---|---|---|
+| A1 A document that said the opposite | `contract-a-channels.md`, last section: before the start a signed-in player with a studio sees the in-shell "not on air yet" page (the owner's decision, `cf0d852`); a signed-out, studio-less or suspended visitor gets CTFd's gate. The first plan (`docs/superpowers/plans/2026-10-22-ui-a-channels.md`, row 3) said the same old thing and now says it was superseded. No other sentence of either repository describes the first design (searched: "403", "turned away", "only the crew", "before the start") | `test_before_the_start_the_board_shows_its_own_not_on_air_page_and_the_stock_address_keeps_ctfds_gate` (it already held; the documents now agree with it) |
+| A2 The checks | see R3 | |
+| A3 The sentence and the contact | the lead's sentence stands where the flag form would be, and in each locked hint, on a programme's own page. The footer's wording the report box depends on is pinned in both repositories (`Contact: announced soon`; the first small print of the footer). The report box's sentence is now a pure function (`src/js/report.js`) so a missing footer is tested | `test_the_first_small_print_of_the_footer_is_the_contact_line` (4 pages), `theme-a-report.test.mjs` (the real prototype footer with and without an address, with the tools' status text, and no footer) |
+| A4 The crawl for the other pages | documented in `contract-a-channels.md` ("`l3.crawl`": what it returns, 8 lines, newest first, empty when none, a studio's line never in it, the exact adapter lines) | `test_a_request_for_another_page_does_not_read_the_crawl` (8 pages), `test_the_board_reads_the_crawl_once`, `test_the_page_before_the_start_does_not_read_the_crawl` |
+| A5 The slug pattern | pinned by a direct unit test: accepts the loader's slugs, refuses uppercase, a leading dash or underscore, 49 characters, a newline at the end or inside, empty, a space, a dot, a slash, a null, non-ASCII | `test_the_pattern_accepts_the_slugs_the_plan_loader_writes` (10), `test_the_pattern_refuses_what_is_not_a_plain_slug` (19), `test_the_pattern_is_what_find_programme_checks_first` |
+| A6 Lead-owned tests | **not edited**. `git diff` of `export-theme.test.mjs`, `test_theme_site_links.py`, `test_theme_values.py` is empty in this round | |
+| A7 `/board` and the alias | `/board` is registered by this module and never answered by the lead's alias, and the file order that makes it so is pinned | `test_board_is_answered_by_the_board_module_not_by_the_alias`, `test_the_board_module_is_imported_before_the_alias_module`, `test_the_programme_page_is_answered_by_the_board_module_too` |
+| A7 A missing footer | the report box gives the sentence without the contact and without a stray space | `theme-a-report.test.mjs` (the third test) |
+| A7 `template-contract.md` | not edited (the lead does it at the merge); `contract-a-channels.md` is complete: `board.entries`, `nt.lines`, the channel key, `show_coming`, `l3.crawl`, `pn` | |
+
+## R2. Milestone 2: each item of the list
+
+| Item | What I did | The test that proves it |
+|---|---|---|
+| The programme panel's data and its no-script page (`pn`) | `programme_view` and `programme_detail` in `plugins/l3mon_theme/pages/board.py`: the prototype's `programmeView` in Python, fed by the board's entry, `l3mon_board.panel.block` and the database (task text, files with this studio's links, the hints this studio opened, the instance row). Every difference from the prototype is in the contract file (a table). The template `noscript-programme.html` gained four conditions (story, second task paragraph, file hash, the sentence); the prototype's output is unchanged | 132 golden pages (the prototype's own `programmeView` against the Python builder, 66 with the forms and 66 without: `test_the_programme_page_model_is_the_prototypes`, `test_the_platforms_programme_page_is_the_prototypes_without_the_forms`); `theme-a-board.test.mjs` (the platform-style pages render the same HTML in Jinja and in the prototype's engine, 14 situations); `test_programme_page.py` (21 tests through a whole CTFd) |
+| The recorded-reply client tests of the panel | 21 replies recorded once from the running stack for invented data (`platform-ui/tests/fixtures/real-replies/`), the prototype's client code (the adapters and the reply words) run on them | `theme-a-recorded.test.mjs` (19 tests). **They found four things the first milestone did not:** (1) the panel asked CTFd for a programme by its slug and CTFd answers only to the number (every tile would have shown "No signal"); (2) the reply has no `description_html`, no story and no file sizes; (3) the lock-out reply was read as "wait ten seconds" instead of "no tries left" (`contract.js`, one line moved: see R4); (4) the instance plugin's routes and shapes are not the ones the panel's script called |
+| Instances both ways | on the platform `api.js` calls the plugin's list, start, renew and stop and shows the list as the prototype's view; a 503 from the instance service is "Instances are not available right now. The rest of this programme still works. Try again in a minute." with Start kept. The no-script page says "Not running." and that starting needs JavaScript | overlay **off**: `smoke-real-board.mjs` (a live programme, Start, the sentence, no script error); `theme-a-recorded.test.mjs` (the list, the error codes); `test_a_live_programme_without_the_instancer_says_not_running_and_that_starting_needs_script`. overlay **on**: unit tests only (see R5) |
+| CONFIRM-1, CONFIRM-2 | answered from CTFd 3.8.8's source in the image: **403** for "another submission is being processed" (not 429); **403** `status: paused` while paused, and after the end the plugin answers **403** `status: paused`, `reason: ended` (CTFd alone would accept a right flag when `view_after_ctf` is on, or answer a bare 403 when it is off). Written in `contract-a-channels.md` | `theme-a-recorded.test.mjs` (CONFIRM-1 and CONFIRM-2 tests), `plugins/l3mon_board/tests/test_board_ctfd_facts.py` (already pins the server's words) |
+| Every state, for the board, a programme's page and the notifications page | one table: signed out, no studio, suspended, before the start, live, paused, ended (open and closed), frozen, the crew, by the three pages | `test_states_matrix.py` (11 tests); the deeper tests of each page are in `test_board_pages.py`, `test_programme_page.py`, `test_notifications_page.py` |
+| The real-stack browser run, extended | `tools/smoke-real-board.mjs` now also opens a programme by a click, reads its task, file and hint, downloads the file, buys the hint, sends a wrong then a right flag, sees the bell's badge go up when the crew writes a line, reads the report box, starts an instance with the overlay off, loads the no-script page (JavaScript disabled in Chrome) for a solved and an unsolved programme, and checks a phone width | `node tools/smoke-real-board.mjs --origin http://localhost:9090`: 32 of 32 checks pass (24 October 2026, the stack on port 9090, instancer overlay off) |
+
+## R3. Evidence (24 October 2026)
+
+Everything below was run on 24 October 2026 on the working trees of the two branches. Port 9090 stands in for 8080 (an unrelated app holds 8080 on this machine).
+
+| Check | Result |
+|---|---|
+| UI repo, whole suite (`platform-ui`) | 371 tests, 370 pass, 1 skipped, 0 fail |
+| UI build | passes; the board bundle is 63.1 of 66 KB |
+| `tools/hygiene.mjs --no-challenges` (UI) / public hygiene | clean / 0 findings |
+| Public repo, tool tests | 302 passed, 12 skipped |
+| Public repo, whole plugin suite on the fresh image | **2729 passed, 60 skipped, 0 failed** (46 minutes) |
+| Golden pairs (`test_board_golden.py`) | 666 passed (318 board pairs, 132 programme pages) |
+| `test_programme_page.py`, `test_states_matrix.py`, `test_board_cost.py` | 21, 11 and 30 passed (programme ceiling now (46, 34), measured 32 cold / 29 warm) |
+| Exported theme | identical twice, and matches the repository |
+| Integration, stack-independent files (`test_board`, `test_ctftime_login`, `test_freeze`, `test_guide`, `test_scoring`, `test_stack`, `test_story`, `test_theme`, `test_theme_a`) | **82 passed, 1 failed** (see R5, the `test_guide` item). `test_theme_a.py` alone: 10 passed |
+| Real-stack browser run | 32 of 32 |
+| Prototype smoke (`tools/smoke.mjs`) | last full run 5105 of 5113; the 8 failures were the check that asked for a programme by slug, since fixed; the panel subset then passed 236 of 236. **The final full rerun was not completed** (see R5) |
+| CTFd's own suite on the image | 675 passed, 1 failed: `tests/utils/test_updates.py::test_update_check_ignores_downgrades` (`version_latest` came back as a GitHub release link, so the update check reached the network). It looks environmental and was not checked against a baseline |
+
+
+## R4. Changes to files that are not mine (the lead decides)
+
+- `platform-ui/src/js/contract.js`: **one line moved**: the `no_tries` reply is read before the `ratelimited` one. CTFd's lock-out is `403 {"status": "ratelimited", "message": "Not accepted. You have 0 tries remaining"}`, which the plugin marks `reason: "no_tries"`; the old order showed "PLEASE STAND BY. Too many tries. Send again in 10 s." to a studio that had no tries left. `theme-a-recorded.test.mjs` pins it. The shared file is yours to merge.
+- `platform-ui/src/js/api.js` (one seam, allowed): the programme is asked for by its number; the instance calls follow the plugin; both translate through `src/js/platform.js` (new, pure, mine).
+- Nothing in `values.py`, `registry.py`, `pages/login.py`, `pages/routes.py`, the three shared tests, the partials `shell-*`, `head`, `chrome`, `build.mjs`, `export-theme.mjs`.
+
+## R5. What could not be run, and what is still open
+
+**Not run, and why**
+
+- **Instancer overlay ON in a browser.** It needs the instancer, router and fixture images built and the docker-socket-proxy pulled (a download). Covered only by unit tests and the Python page test with a running row. Ask before running.
+- **The full prototype smoke rerun** (`node tools/smoke.mjs`, about 11 minutes) was stopped by the machine running low on memory. Numbers above are from the earlier full run plus the panel subset.
+- **The rest of the integration suite** (`test_hardening`, `test_instances`, `test_ops_*`, `test_production_*`, `test_release`, `test_restore_drill`, `tests/integration/test_ops_backup.py`). A first whole-directory run gave 50 failed, 33 errors: those tests recreate nginx without `DEV_PORT`, so it came back on 8080 and the stack was unreachable on 9090 for everything after. I restored the stack and ran only the files that do not touch it. These should be run on a machine where 8080 is free.
+
+**Open**
+
+- **`tests/integration/test_guide.py::test_04` fails** (`/notifications` answers a player 200; the test expects 404). The page that now answers is the notifications page of milestone 1 (`1f61faa`: served to a signed-in player before the guard of `l3mon_board/notices.py`, by design). The test predates it. I did not edit it and did not run it on a baseline; the lead decides whether the test or the page changes.
+- **No story line on the platform (SP7):** `l3mon.story` is empty, so the panel hides "In the story". This is a small visible design change; **the owner must confirm it.**
+- File size and sha256 are not shown (CTFd lists only addresses). The length of an instance's life is not shown when not running. "Instances unavailable" is learned only when Start is pressed.
+- The no-script page lists only the first 2 files and hints and omits tries and bullets.
+- `contract.js` has one line moved (R4), for the lead.
+
+
+## R6. Break-on-purpose, round 2
+
+Each rule was broken on purpose, the tests run, and the file put back. Every one was noticed by a failing test.
+
+| Rule broken | Noticed by |
+|---|---|
+| The slug pattern accepts anything | `test_board_round2.py` |
+| A page that does not draw the crawl reads it (notifications page) | `test_board_round2.py` |
+| The footer's contact wording changed | `test_board_round2.py` |
+| `/board` not registered by the board module | `test_board_round2.py` |
+| The alias module imported before the board module (files renamed) | `test_board_round2.py` |
+| `needJs` left empty | `test_board_golden.py`, `test_programme_page.py` |
+| Task text passed through as raw HTML | `test_board_golden.py`, `test_programme_page.py` |
+| All hints open, bought or not | `test_programme_page.py` |
+| Category taken as written, not as its id | `test_board_golden.py` |
+| A held-back programme reads its facts | `test_programme_page.py`, `test_board_pages.py` |
+| Lock-out reply read before the rate limit (`contract.js`) | `theme-a-recorded.test.mjs` |
+| A 503 from the instance plugin no longer means "unavailable" | `theme-a-recorded.test.mjs` |
+| Report box contact pattern changed | `theme-a-report.test.mjs` |
+| No-script sentence removed | `theme-a-board.test.mjs` |
+| Category id not normalised (client) | `theme-a-recorded.test.mjs` |
+| A file shows an invented size and hash | `theme-a-recorded.test.mjs` |
+
+Not broken on purpose (they are browser-only): that the panel asks CTFd by number and that the story part hides when empty. The recorded slug 404 in `theme-a-recorded.test.mjs` is the witness for the first.
+
+
+## R7. Screenshots (outside the repositories)
+
+`D:\CTF_Sanjai\work\_shots\round2\`: `board-desktop`, `panel-desktop`, `hint-ad-desktop`, `flag-wrong-desktop`, `flag-right-desktop`, `report-desktop`, `bell-desktop`, `instance-unavailable-desktop`, `noscript-solved-desktop`, `noscript-unsolved-desktop` (1440 and 1100 px wide), `board-phone`, `panel-phone`, `notifications-phone` (390 px), `notifications-desktop`.
