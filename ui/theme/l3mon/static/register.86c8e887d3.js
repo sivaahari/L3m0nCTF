@@ -622,8 +622,8 @@ timer=setTimeout(tick,1000-(Date.now()%1000)+5);
 return()=>{stopped=true;clearTimeout(timer);document.removeEventListener('visibilitychange',onVis);};
 }
 const ROUTES={
-session:'/api/v1/l3mon/session',
-resend:'/api/v1/l3mon/auth/resend',
+session:'/api/v1/users/me',
+resend:'/confirm',
 teamAvailable:'/api/v1/l3mon/teams/available',
 board:'/api/v1/l3mon/board',
 ticks:'/api/v1/l3mon/ticks',
@@ -688,24 +688,13 @@ clearTimeout(timer);
 }
 }
 const session=async(o)=>{
-const url=(typeof window!=='undefined'&&window.CTFd)?'/api/v1/users/me':ROUTES.session;
-let r=await apiCall('GET',url,o);
-if(!r.ok&&(r.status===404||(r.error&&r.error.code==='not_found'))&&url===ROUTES.session){
-r=await apiCall('GET','/api/v1/users/me',o);
-}
+const r=await apiCall('GET',ROUTES.session,o);
 if(r.ok&&r.data&&!r.data.user&&typeof r.data.verified==='boolean'){
 r.data={...r.data,user:r.data};
 }
 return r;
 };
-const resendVerification=async()=>{
-const url=(typeof window!=='undefined'&&window.CTFd)?'/confirm':ROUTES.resend;
-let r=await apiCall('POST',url,{body:{}});
-if(!r.ok&&(r.status===404||(r.error&&r.error.code==='not_found'))&&url===ROUTES.resend){
-r=await apiCall('POST','/confirm',{body:{}});
-}
-return r;
-};
+const resendVerification=async()=>apiCall('POST',ROUTES.resend,{body:{},html:true});
 const teamAvailable=(name)=>apiCall('GET',`${ROUTES.teamAvailable}?name=${encodeURIComponent(name)}`,{retries:1});
 const board=(etag,o={})=>apiCall('GET',ROUTES.board,{...o,etag});
 const ticks=()=>apiCall('GET',ROUTES.ticks,{retries:1});
@@ -1066,17 +1055,36 @@ return{value,error:null};
 function vCtftime(v){
 const value=String(v??'').trim();
 if(!value)return{value,id:null,error:null};
+if(value.length>128)return{value,id:null,error:V_MSG.ctftime};
 const m=/^\d{1,8}$/.test(value)?[value,value]:CTFTIME_RE.exec(value);
 const id=m?Number(m[1]):0;
 if(!(id>0))return{value,id:null,error:V_MSG.ctftime};
 return{value,id,error:null};
 }
 function vInvite(v){
-let value=String(v??'').replace(/\s+/g,'').toUpperCase();
-if(/^[A-Z0-9]{8}$/.test(value))value=`${value.slice(0,4)}-${value.slice(4)}`;
-if(!value)return{value,error:V_MSG.inviteEmpty};
-if(!INVITE_RE.test(value))return{value,error:V_MSG.inviteShape};
-return{value,error:null};
+const raw=String(v??'').trim();
+if(!raw)return{value:raw,error:V_MSG.inviteEmpty};
+if(/\s/.test(raw))return{value:raw,error:V_MSG.inviteShape};
+let token=raw;
+if(raw.includes('?')||raw.startsWith('http://')||raw.startsWith('https://')||raw.startsWith('/')){
+try{
+const url=new URL(raw,'http://localhost');
+if(url.pathname.replace(/\/+$/,'')!=='/teams/invite'){
+return{value:raw,error:V_MSG.inviteShape};
+}
+const code=url.searchParams.get('code');
+if(!code){
+return{value:raw,error:V_MSG.inviteShape};
+}
+token=code.trim();
+}catch{
+return{value:raw,error:V_MSG.inviteShape};
+}
+}
+if(/\s/.test(token)||token.length<4||token.length>256){
+return{value:raw,error:V_MSG.inviteShape};
+}
+return{value:token,error:null};
 }
 function fnv1a(str){
 let h=0x811c9dc5;

@@ -622,8 +622,8 @@ timer=setTimeout(tick,1000-(Date.now()%1000)+5);
 return()=>{stopped=true;clearTimeout(timer);document.removeEventListener('visibilitychange',onVis);};
 }
 const ROUTES={
-session:'/api/v1/l3mon/session',
-resend:'/api/v1/l3mon/auth/resend',
+session:'/api/v1/users/me',
+resend:'/confirm',
 teamAvailable:'/api/v1/l3mon/teams/available',
 board:'/api/v1/l3mon/board',
 ticks:'/api/v1/l3mon/ticks',
@@ -688,24 +688,13 @@ clearTimeout(timer);
 }
 }
 const session=async(o)=>{
-const url=(typeof window!=='undefined'&&window.CTFd)?'/api/v1/users/me':ROUTES.session;
-let r=await apiCall('GET',url,o);
-if(!r.ok&&(r.status===404||(r.error&&r.error.code==='not_found'))&&url===ROUTES.session){
-r=await apiCall('GET','/api/v1/users/me',o);
-}
+const r=await apiCall('GET',ROUTES.session,o);
 if(r.ok&&r.data&&!r.data.user&&typeof r.data.verified==='boolean'){
 r.data={...r.data,user:r.data};
 }
 return r;
 };
-const resendVerification=async()=>{
-const url=(typeof window!=='undefined'&&window.CTFd)?'/confirm':ROUTES.resend;
-let r=await apiCall('POST',url,{body:{}});
-if(!r.ok&&(r.status===404||(r.error&&r.error.code==='not_found'))&&url===ROUTES.resend){
-r=await apiCall('POST','/confirm',{body:{}});
-}
-return r;
-};
+const resendVerification=async()=>apiCall('POST',ROUTES.resend,{body:{},html:true});
 const teamAvailable=(name)=>apiCall('GET',`${ROUTES.teamAvailable}?name=${encodeURIComponent(name)}`,{retries:1});
 const board=(etag,o={})=>apiCall('GET',ROUTES.board,{...o,etag});
 const ticks=()=>apiCall('GET',ROUTES.ticks,{retries:1});

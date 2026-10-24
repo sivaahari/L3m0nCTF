@@ -168,7 +168,7 @@
       <label class="field-l" for="f-invite">Invite code</label>
       <p class="field-h" id="f-invite-h">Ask your captain. It looks like ABCD-1234.</p>
       {% if studio.err.invite %}<p class="field-e" id="f-invite-e"><svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg>{{ studio.err.invite }}</p>{% endif %}
-      <input class="input input-code" id="f-invite" name="invite" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" value="{{ studio.invite or "" }}" aria-describedby="f-invite-h{% if studio.err.invite %} f-invite-e{% endif %}"{% if studio.err.invite %} aria-invalid="true"{% endif %}>
+      <input class="input" id="f-invite" name="invite" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="256" value="{{ studio.invite or "" }}" aria-describedby="f-invite-h{% if studio.err.invite %} f-invite-e{% endif %}"{% if studio.err.invite %} aria-invalid="true"{% endif %}>
     </div>
   </div>
   <div class="reg-actions reg-actions-split">

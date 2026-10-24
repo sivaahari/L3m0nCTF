@@ -20,31 +20,23 @@
 {% set news = [] %}
 {% set dev = none %}
 
-{% set is_link_result = (request.view_args and request.view_args.get('data')) or (errs and ('confirmation link' in errs[0]|lower or 'token' in errs[0]|lower)) or request.args.get('link_state') %}
+{% set is_mail_error = false %}
+{% for err in errs %}
+  {% if "email sending isn't available" in err or "Email verification is enabled but email sending isn't available" in err %}
+    {% set is_mail_error = true %}
+  {% endif %}
+{% endfor %}
+
+{% set is_link_result = ((request.view_args and request.view_args.get('data')) or (errs and 'confirmation link is invalid' in errs[0]|lower)) and not is_mail_error %}
 
 {% if is_link_result %}
-  {% set l_err_str = errs|join(' ')|lower %}
-  {% if 'expired' in l_err_str %}
-    {% set l_state = 'expired' %}
-    {% set h1 = 'Link expired' %}
-    {% set lead = 'This confirmation link has expired. Request a fresh one from the setup page.' %}
-  {% elif 'already' in l_err_str or 'used' in l_err_str %}
-    {% set l_state = 'used' %}
-    {% set h1 = 'Link already used' %}
-    {% set lead = 'This confirmation link was already used. Your email is confirmed.' %}
-  {% elif errs %}
-    {% set l_state = 'invalid' %}
-    {% set h1 = 'Link not found' %}
-    {% set lead = 'This confirmation link is invalid or incomplete.' %}
-  {% else %}
-    {% set l_state = 'ok' %}
-    {% set h1 = 'Email confirmed' %}
-    {% set lead = 'Your email address is verified.' %}
-  {% endif %}
+  {% set l_state = 'invalid' %}
+  {% set h1 = 'Link not found' %}
+  {% set lead = 'This confirmation link is invalid or incomplete.' %}
 
   {% set link = {
-    'state': l_state,
-    'done': (l_state in ('ok', 'used')),
+    'state': 'invalid',
+    'done': false,
     'signedIn': l3.signed_in,
     'next': '/team',
     'loginNext': '/login?next=%2Fteam',
@@ -77,8 +69,8 @@
   {% include "_register-link.html" %}
 
 {% else %}
-  {% set user_email = (current_user.email if current_user and current_user.is_authenticated else (l3.user_email or '')) %}
-  {% set alert = {'kind': 'ok', 'lead': 'SENT.', 'text': infs|join(' '), 'focus': false, 'icon': 'i-check'} if infs else ({'kind': 'error', 'lead': 'PLEASE STAND BY.', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none) %}
+  {% set user_email = l3.user_email or '' %}
+  {% set alert = {'kind': 'ok', 'lead': 'SENT.', 'text': infs|join(' '), 'focus': false, 'icon': 'i-check'} if infs else ({'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none) %}
 
   {% set page = {
     'title': 'Check your email | Setup | ' ~ event_name,

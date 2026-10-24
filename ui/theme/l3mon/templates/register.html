@@ -12,20 +12,35 @@
 {% set captcha = {'sitekey': cap.sitekey or none} %}
 {% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
 
+{% set FIELD_MAP = {
+  'User name has already been taken': 'username',
+  'Your username is too long': 'username',
+  'User names cannot contain slashes': 'username',
+  'Please provide a valid user name': 'username',
+  'That email has already been used': 'email',
+  'Please provide a valid email address': 'email',
+  'Email address is required.': 'email',
+  'Your email domain is not permitted by this server': 'email',
+  'This email address cannot be used here. Please use a permanent email address.': 'email',
+  'Email address contains invalid control characters.': 'email',
+  'Pick a longer password': 'password',
+  'Your password is too long': 'password',
+  'Tick the box to accept the rules.': 'privacy'
+} %}
 {% set summary = [] %}
 {% set ns = namespace(u_err=none, e_err=none, p_err=none, pr_err=none) %}
 {% for err in errs %}
-  {% set lerr = err|lower %}
-  {% if 'user name' in lerr or 'username' in lerr or 'slashes' in lerr %}
+  {% set target = FIELD_MAP.get(err) %}
+  {% if target == 'username' %}
     {% if not ns.u_err %}{% set ns.u_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-username', 'text': err}) %}
-  {% elif 'email' in lerr or 'mail' in lerr %}
+  {% elif target == 'email' %}
     {% if not ns.e_err %}{% set ns.e_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-email', 'text': err}) %}
-  {% elif 'password' in lerr %}
+  {% elif target == 'password' %}
     {% if not ns.p_err %}{% set ns.p_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-password', 'text': err}) %}
-  {% elif 'privacy' in lerr or 'notice' in lerr or 'policy' in lerr %}
+  {% elif target == 'privacy' %}
     {% if not ns.pr_err %}{% set ns.pr_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-privacy', 'text': err}) %}
   {% else %}

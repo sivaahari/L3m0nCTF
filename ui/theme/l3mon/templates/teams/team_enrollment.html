@@ -21,20 +21,39 @@
 {% set req_mode = forced_mode if forced_mode is defined else (request.form.get('mode') or request.args.get('mode') or 'create') %}
 {% set is_join = (req_mode == 'join') %}
 
+{% set FIELD_MAP = {
+  'Team name cannot be empty.': 'name',
+  'That team name is already taken.': 'name',
+  'That team name is reserved.': 'name',
+  'Team name must be between 1 and 64 characters.': 'name',
+  'Studio names are 2 to 32 characters.': 'name',
+  'That team name is invalid': 'name',
+  'Invalid country': 'country',
+  'Please provide a shorter affiliation': 'affiliation',
+  'Affiliations are at most 64 characters.': 'affiliation',
+  'Please provide a valid website': 'ctftime',
+  'That does not look like a CTFtime team page or number.': 'ctftime',
+  'Please provide an invite code': 'invite',
+  'That invite code does not match any studio.': 'invite'
+} %}
+
 {% set summary = [] %}
 {% set ns = namespace(n_err=none, c_err=none, a_err=none, ct_err=none, i_err=none) %}
 {% for err in errs %}
-  {% set lerr = err|lower %}
-  {% if 'team name' in lerr or 'studio name' in lerr or 'taken' in lerr %}
+  {% set target = FIELD_MAP.get(err) %}
+  {% if target == 'name' %}
     {% if not ns.n_err %}{% set ns.n_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-name', 'text': err}) %}
-  {% elif 'country' in lerr %}
+  {% elif target == 'country' %}
     {% if not ns.c_err %}{% set ns.c_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-country', 'text': err}) %}
-  {% elif 'affiliation' in lerr %}
+  {% elif target == 'affiliation' %}
     {% if not ns.a_err %}{% set ns.a_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-affiliation', 'text': err}) %}
-  {% elif 'invite' in lerr or 'code' in lerr or 'passphrase' in lerr or 'password' in lerr %}
+  {% elif target == 'ctftime' %}
+    {% if not ns.ct_err %}{% set ns.ct_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-ctftime', 'text': err}) %}
+  {% elif target == 'invite' %}
     {% if not ns.i_err %}{% set ns.i_err = err %}{% endif %}
     {% set _ = summary.append({'href': '#f-invite', 'text': err}) %}
   {% else %}
