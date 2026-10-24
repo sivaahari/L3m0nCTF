@@ -65,6 +65,27 @@ def test_sign_in_shows_google_button_when_google_auth_configured(app, monkeypatc
             assert 'href="/auth/google"' in body_no_next
 
 
+@pytest.mark.parametrize("hostile_next", [
+    "https://evil.example/steal",
+    "//evil.example",
+    "/\\evil.example",
+    "javascript:alert(1)",
+    "http://attacker.com",
+])
+def test_google_auth_link_sanitizes_hostile_next(app, monkeypatch, hostile_next):
+    """C9: Prove Google auth link suppresses hostile next parameters so users cannot be tricked to leave site."""
+    with app.app_context():
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
+        with app.test_client() as client:
+            body = client.get(f"/login?next={hostile_next}").get_data(as_text=True)
+            assert "Continue with Google" in body
+            # Hostile next must NOT be forwarded to Google OAuth URL
+            assert 'href="/auth/google"' in body
+            assert hostile_next not in body
+
+
 def test_a_wrong_password_comes_back_on_the_theme_with_the_alert_and_the_typed_name(app):
     with app.app_context():
         with app.test_client() as client:

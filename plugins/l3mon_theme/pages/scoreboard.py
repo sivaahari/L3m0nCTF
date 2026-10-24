@@ -1,8 +1,9 @@
 """The Scoreboard page (SP6 Stream C): view-model builder and theme values.
 
-Renders the theme adapter `scoreboard.html`. Publicly visible or gated by CTFd's
-scoreboard visibility settings.
+Renders the theme adapter `scoreboard.html`. Gated for signed-in players with a studio,
+and the crew (CTFd administrators). Suspended users get 403 (the OFF AIR slate).
 """
+from CTFd.plugins.l3mon_board.figures import js_round
 from CTFd.plugins.l3mon_theme.registry import value
 
 
@@ -70,3 +71,37 @@ def scoreboard_banner_value():
 
     phase = current_phase()
     return banner.for_phase(phase)
+
+
+def _guard_scoreboard():
+    """Gate /scoreboard for signed-in players with a studio (or the crew), matching Guide and Stream A's /notifications."""
+    from flask import abort, redirect, request, url_for
+
+    if request.path.rstrip("/") != "/scoreboard" or request.method not in ("GET", "HEAD"):
+        return None
+
+    from CTFd.utils import get_config
+
+    if get_config("ctf_theme") != "l3mon":
+        return None
+
+    from CTFd.plugins.l3mon_board import viewer
+
+    no = viewer.refusal()
+    if no is not None:
+        code = (no.get_json(silent=True) or {}).get("error")
+        if code == "auth_required":
+            next_url = request.full_path.rstrip("?") if not request.query_string else request.full_path
+            return redirect(url_for("auth.login", next=next_url))
+        if code == "unverified":
+            return redirect(url_for("auth.confirm"))
+        if code == "no_team":
+            return redirect(url_for("teams.private"))
+        abort(403)
+    return None
+
+
+def install(app):
+    if "l3mon_theme_scoreboard_gate" not in app.extensions:
+        app.extensions["l3mon_theme_scoreboard_gate"] = True
+        app.before_request(_guard_scoreboard)

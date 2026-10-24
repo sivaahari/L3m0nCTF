@@ -3,6 +3,7 @@
 Renders the theme adapter `guide.html`. Gated for signed-in players with a studio,
 and the crew (CTFd administrators). Suspended users get 403 (the OFF AIR slate).
 """
+from CTFd.plugins.l3mon_board.figures import js_round
 
 
 def ordinal(n: int) -> str:
@@ -14,7 +15,27 @@ def ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def build_guide_view(data: dict, me: dict | None, epg_html: str = "") -> dict:
+def channel_keys(channels):
+    """{database id: the number the page knows the channel by}: `no`, or the database ids when `no` cannot be told apart.
+
+    The lead replaces this helper by A's after merge.
+    """
+    def _get_num(c):
+        if isinstance(c, dict):
+            return c.get("no", c.get("position"))
+        return getattr(c, "no", getattr(c, "position", None))
+
+    def _get_id(c):
+        if isinstance(c, dict):
+            return c.get("id")
+        return getattr(c, "id", None)
+
+    numbers = [_get_num(c) for c in channels]
+    usable = all(isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= 99 for n in numbers) and len(set(numbers)) == len(numbers)
+    return {_get_id(c): (_get_num(c) if usable else _get_id(c)) for c in channels}
+
+
+def build_guide_view(data: dict, me: dict | None, epg_html: str = "", channel_keys_map: dict | None = None) -> dict:
     """The flat template context for the Guide (docs/template-contract.md, section 4)."""
     t = data.get("team")
     phase = data.get("phase", {})
@@ -30,9 +51,7 @@ def build_guide_view(data: dict, me: dict | None, epg_html: str = "") -> dict:
     s = data.get("story")
     has_epg = bool(data.get("epg_sig") and data.get("epg_sig") != "none" and phase.get("state") != "before")
 
-    studio_name = "Your studio"
-    if me:
-        studio_name = me.get("studio") or me.get("name") or "Your studio"
+    studio_name = me.get("studio") if me and me.get("studio") else "Your studio"
 
     team_dict = None
     if t is not None:
@@ -53,14 +72,23 @@ def build_guide_view(data: dict, me: dict | None, epg_html: str = "") -> dict:
     members = t.get("members", []) if t else []
     by_channel = t.get("by_channel", []) if t else []
 
+    keys = channel_keys_map
+    if keys is None:
+        if "channels" in data:
+            keys = channel_keys(data["channels"])
+        else:
+            keys = {}
+
     chans = []
     for c in by_channel:
+        cid = c["channel"]
+        k = keys.get(cid, cid)
         solved = c.get("solved", 0)
         total = c.get("total", 0)
-        pct = round(solved / total * 100) if total > 0 else 0
+        pct = js_round(solved / total * 100) if total > 0 else 0
         chans.append({
-            "id": str(c["channel"]),
-            "no": f"{c['channel']:02d}",
+            "id": str(k),
+            "no": f"{k:02d}",
             "name": c["name"],
             "solved": str(solved),
             "total": str(total),
@@ -96,14 +124,14 @@ def build_guide_view(data: dict, me: dict | None, epg_html: str = "") -> dict:
     if s is not None:
         reels = s.get("reels", 0)
         needed = s.get("reels_needed", 0)
-        pct_story = round(reels / needed * 100) if needed > 0 else 0
+        pct_story = js_round(reels / needed * 100) if needed > 0 else 0
         story_dict = {
             "reels": str(reels),
             "needed": str(needed),
             "pct": str(pct_story),
             "text": f"{reels} of {needed}",
             "valuetext": f"{reels} of {needed} reels",
-            "air": str(round(s.get("on_air", 0) * 100)),
+            "air": str(js_round(s.get("on_air", 0) * 100)),
         }
 
     return {
@@ -133,36 +161,31 @@ def guide_page():
     from CTFd.plugins.l3mon_board import epg, plan, viewer
     from CTFd.plugins.l3mon_board import guide as board_guide
     from CTFd.plugins.l3mon_core.clock import current_phase
-    from CTFd.utils import get_config
-    from CTFd.utils.config import is_teams_mode
-    from CTFd.utils.user import authed, get_current_user, is_admin
 
-    if not authed():
-        return redirect(url_for("auth.login", next=request.path))
-
-    user = get_current_user()
-    if user is None:
-        return redirect(url_for("auth.login", next=request.path))
-
-    if user.banned:
+    no = viewer.refusal()
+    if no is not None:
+        code = (no.get_json(silent=True) or {}).get("error")
+        if code == "auth_required":
+            next_url = request.full_path.rstrip("?") if not request.query_string else request.full_path
+            return redirect(url_for("auth.login", next=next_url))
+        if code == "unverified":
+            return redirect(url_for("auth.confirm"))
+        if code == "no_team":
+            return redirect(url_for("teams.private"))
         abort(403)
-
-    if get_config("verify_emails") and not user.verified and not is_admin():
-        return redirect(url_for("auth.confirm"))
-
-    if is_teams_mode() and user.team_id is None and not is_admin():
-        return redirect(url_for("teams.private"))
 
     v = viewer.current()
     data, _ = board_guide.build(v)
     phase = current_phase()
     view_plan = plan.read(v, phase)
+    keys = channel_keys(view_plan.channels)
     grid_model = epg.model(view_plan, v)
     epg_markup = epg.html(grid_model)
 
+    user = v.user
     studio_name = v.team.name if v.team else user.name
     me_info = {"name": user.name, "studio": studio_name}
-    guide_ctx = build_guide_view(data, me_info, epg_markup)
+    guide_ctx = build_guide_view(data, me_info, epg_markup, channel_keys_map=keys)
 
     return render_template("guide.html", guide=guide_ctx, banner=data.get("banner"))
 

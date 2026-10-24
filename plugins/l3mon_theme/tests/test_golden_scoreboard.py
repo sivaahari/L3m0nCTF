@@ -21,6 +21,10 @@ def load_fixtures():
 FIXTURES = load_fixtures()
 
 
+def test_scoreboard_fixture_count():
+    assert len(FIXTURES) == 16, "exactly 16 golden scoreboard scenarios are tested"
+
+
 @pytest.mark.parametrize("name", sorted(FIXTURES.keys()))
 def test_golden_scoreboard_view_model(name):
     scenario = FIXTURES[name]

@@ -1,14 +1,17 @@
 """Theme tests for the Guide page (SP6 Stream C).
 
-Verifies `/guide` route gating, rendering, context passing, security stance, and state transitions
-through a full CTFd application with the l3mon theme and plugins loaded.
+Verifies `/guide` route gating, rendering, context passing, security stance, channel keys mapping (C4),
+empty news crawl absence (C5), and state transitions through a full CTFd application with the l3mon theme
+and plugins loaded.
 """
 import re
 
 import pytest
 
-from CTFd.models import Teams, Users, db
+from CTFd.models import Awards, Teams, Users, db
 from CTFd.plugins.l3mon_core.clock import current_phase
+from CTFd.plugins.l3mon_theme.pages.guide import channel_keys
+from CTFd.utils import set_config
 from tests.helpers import create_ctfd, destroy_ctfd, login_as_user, register_user
 
 PASSWORD = "test-guide-password-123"
@@ -60,6 +63,19 @@ def test_user_without_studio_is_redirected_to_team_setup(app):
     assert r.headers["Location"].endswith("/team")
 
 
+def test_unverified_user_is_redirected_to_confirm(app):
+    with app.app_context():
+        set_config("verify_emails", True)
+        u = Users.query.filter_by(name="captain").first()
+        u.verified = False
+        db.session.commit()
+
+    client = login_as_user(app, "captain", PASSWORD)
+    r = client.get("/guide")
+    assert r.status_code == 302
+    assert r.headers["Location"].endswith("/confirm")
+
+
 def test_banned_user_gets_403_off_air(app):
     with app.app_context():
         u = Users.query.filter_by(name="captain").first()
@@ -85,6 +101,9 @@ def test_signed_in_player_with_studio_renders_guide(app):
     assert "data-k=\"place\"" in body
     assert "Channel progress" in body
 
+    # C5 check: empty crawl bar is NOT drawn
+    assert '<section class="crawl"' not in body
+
     # Security check: no inline scripts or styles
     assert "<style>" not in body and "style=\"" not in body
     assert "<script>" not in body
@@ -102,3 +121,27 @@ def test_crew_admin_renders_guide_without_studio(app):
     assert "data-guide" in body
     assert "Crew accounts do not belong to a studio" in body
     assert "Channel progress" in body
+
+
+def test_channel_keys_helper_maps_no_or_falls_back():
+    """C4: test channel_keys when database row IDs differ from channel numbers."""
+    channels = [
+        {"id": 31, "no": 3, "name": "Alpha"},
+        {"id": 7, "no": 1, "name": "Bravo"},
+    ]
+    keys = channel_keys(channels)
+    assert keys == {31: 3, 7: 1}, "Unique valid numbers 0..99 map row id to no"
+
+    # Duplicates fall back to row id
+    duplicates = [
+        {"id": 31, "no": 3, "name": "Alpha"},
+        {"id": 7, "no": 3, "name": "Bravo"},
+    ]
+    assert channel_keys(duplicates) == {31: 31, 7: 7}
+
+    # Outside 0..99 falls back to row id
+    outside = [
+        {"id": 31, "no": 105, "name": "Alpha"},
+        {"id": 7, "no": 1, "name": "Bravo"},
+    ]
+    assert channel_keys(outside) == {31: 31, 7: 7}

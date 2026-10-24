@@ -21,7 +21,6 @@ deploy/ops/backup/
 # Local tooling and build output
 .claude/
 .superpowers/
-PROMPT-*.md
 node_modules/
 __pycache__/
 *.pyc
