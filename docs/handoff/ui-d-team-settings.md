@@ -99,7 +99,7 @@
    - *Decision:* Used `TeamSchema(view="self", instance=team, partial=True)` and `UserSchema(view="self", instance=user, partial=True)`.
    - *Why:* Guarantees underlying database consistency and preserves CTFd's built-in field validations without touching core files.
 3. **Guard name policy integration:**
-   - *Decision:* Wired `validate_team_name` from `CTFd.plugins.l3mon_guard.names` into `POST /team`.
+   - *Decision:* Wired `validate_team_name` from `CTFd.plugins.l3mon_guard.policies.team_name` into `POST /team`.
    - *Why:* Protects against bidi Trojan attacks, confusable homoglyphs, and crew/admin impersonation.
 4. **Session invalidation on password change:**
    - *Decision:* Called `update_user(user)` which resets the session hash.
