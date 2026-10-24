@@ -31,6 +31,7 @@ CATEGORIES = (
 )
 DIFFICULTIES = (("warmup", "Warm-up"), ("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard"), ("insane", "Insane"))
 _LABEL = dict(CATEGORIES)
+_CATEGORY_IDS = {cid for cid, _ in CATEGORIES}
 NOTICES_SHOWN = 50  # the page lists the newest 50 (the prototype's NOTICES_SHOWN)
 SLUG = re.compile(r"[a-z0-9][a-z0-9_-]{0,47}\Z")  # a programme's slug as the plan loader writes it (l3mon_release/plan.py PROGRAMME_SLUG; the column holds 48); `match` anchors the start, \Z the end
 CHANNEL_ASK = re.compile(r"[0-9]{1,2}\Z")  # ?ch=
@@ -52,6 +53,14 @@ def channel_keys(channels):
     numbers = [c.get("no") for c in channels]
     usable = all(isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= 99 for n in numbers) and len(set(numbers)) == len(numbers)
     return {c["id"]: (c["no"] if usable else c["id"]) for c in channels}
+
+
+def category_id(raw):
+    """The id a programme's category is known by: CTFd keeps the crew's own text ("Web"), the board knows eleven ids ("web"). Anything else stays as it was
+    written (src/js/platform.js `categoryId` is the same rule; tests/theme-a-recorded.test.mjs and test_board_golden.py pin both)."""
+    if not isinstance(raw, str):
+        return raw
+    return raw.strip().lower() if raw.strip().lower() in _CATEGORY_IDS else raw
 
 
 def _plural(n):
@@ -107,7 +116,7 @@ def board_view(data, ask=None, programme=None, show_coming=None):
     pct = js_round(s["frac"] * 100)
     rows = max(1, math.ceil(s["slots"] / COLUMNS))
     coming = s["slots"] - len(s["list"]) if show_coming else 0
-    present = {p["category"] for p in programmes}
+    present = {category_id(p["category"]) for p in programmes}
 
     def strip(channel):
         st = stats(channel)
@@ -129,7 +138,7 @@ def board_view(data, ask=None, programme=None, show_coming=None):
         "countText": count_text(len(s["list"]), len(s["list"]), False, coming),
         "channels": [strip(c) for c in channels],
         "entries": [
-            {"slug": p["slug"], "no": _pad(p["number"], 3), "name": p["name"], "cat": _LABEL.get(p["category"], p["category"]),
+            {"slug": p["slug"], "no": _pad(p["number"], 3), "name": p["name"], "cat": _LABEL.get(category_id(p["category"]), p["category"]),
              "pts": str(p["value"]), "solved": " · solved by your studio" if p["solved_by_me"] else ""}
             for p in s["list"]
         ],
@@ -152,6 +161,129 @@ def notice_lines(lines):
     """The notifications page's list from a viewer's lines (oldest first, `[{id, title, content}]`): the newest first, at most 50, each a title and a text."""
     newest = list(reversed(lines))[:NOTICES_SHOWN]
     return [{"title": str(n.get("title") or "News"), "content": str(n.get("content") or "")} for n in newest]
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# A programme's own page without script: `pn` (contract "pn", the Python form of `programmeView` in server/api-challenge.mjs)
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+NEEDS_SCRIPT = "Flags and hints need JavaScript. Turn it on in your browser to send a flag or open a hint."  # the lead's sentence (round 2, A3)
+INSTANCE_NOTE = "Starting, renewing and stopping an instance need JavaScript."  # the prototype says "in this prototype"; a platform page never does
+SLOTS = 2  # the page has two file slots and two hint slots (`f0`, `f1`, `h0`, `h1`); a programme with more shows its first two
+_BLOCKS = {"p", "div", "li", "ul", "ol", "br", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "blockquote", "tr", "table", "hr", "section", "article"}
+_DROPPED = {"script", "style", "template", "noscript", "iframe", "object", "embed", "svg", "math", "head", "title"}
+
+
+def _size(n):
+    """src/js/panel.js pnFmtSize / server/api-challenge.mjs fmtSize."""
+    if n < 1024:
+        return f"{n} B"
+    return f"{n / 1024:.1f} KB" if n < 1048576 else f"{n / 1048576:.1f} MB"
+
+
+def value_note(value, start, floor):
+    """src/js/contract.js valueNote."""
+    return f"{'Started' if value < start else 'Starts'} at {start} TRP. Falls as more studios solve it, down to {floor}."
+
+
+def task_paragraphs(description):
+    """The crew's task text (HTML, as CTFd keeps it) as plain paragraphs: every tag is dropped, a script or style with its contents, each block (paragraph,
+    list item, heading, line break) starts a new paragraph. The page escapes them again, so nothing in the text can be markup."""
+    from html.parser import HTMLParser
+
+    class Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts, self.skip = [[]], 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag in _DROPPED:
+                self.skip += 1
+            if tag in _BLOCKS:
+                self.parts.append([])
+
+        def handle_startendtag(self, tag, attrs):
+            if tag in _BLOCKS:
+                self.parts.append([])
+
+        def handle_endtag(self, tag):
+            if tag in _DROPPED and self.skip:
+                self.skip -= 1
+            if tag in _BLOCKS:
+                self.parts.append([])
+
+        def handle_data(self, data):
+            if not self.skip:
+                self.parts[-1].append(data)
+
+    reader = Text()
+    reader.feed(str(description or ""))
+    reader.close()
+    return [text for text in (" ".join("".join(part).split()) for part in reader.parts) if text]
+
+
+def instance_text(view, note=INSTANCE_NOTE):
+    """The no-script page's "Your instance" lines (api-challenge.mjs `instanceText`). `view` is the prototype's instance view: {state, connection, expires_in, quota}."""
+    quota = f"Your studio has {view['quota']['used']} of {view['quota']['limit']} instances running."
+    connection = view.get("connection") or {}
+    where = connection.get("url") if connection.get("kind") == "http" else connection.get("command", "")
+    text = {
+        "running": f"Running at {where}. It switches off in about {max(1, js_round(view.get('expires_in', 0) / 60))} minutes.",
+        "starting": "Warming up the set.",
+        "stopping": "Switching off.",
+        "expired": "This instance has expired.",
+        "error": "That instance did not start.",
+        "stopped": "Not running.",
+    }.get(view["state"], "Not running.")
+    return {"text": text, "quota": quota, "note": note}
+
+
+def programme_view(programme, channel, detail):
+    """The programme's own page without script: the view model `pn` (contract section 4) from the board's entry for the programme, its channel line
+    ("CH 3 · Name"), and `detail`, the facts only the database holds (`programme_detail` collects them; the golden pairs feed the prototype's own).
+
+    detail: {description, author, story, sponsor, decay, start, floor, first_blood_open, tries_left, phase, files: [{name, url, size?, sha256?}],
+             hints: [{id, cost, content|None}], score (None for the crew), instance (the prototype's instance view, or None), forms (False on the platform)}
+
+    On the platform a flag and a hint are sent by script only (CTFd's attempt route takes JSON, and a second way to send a flag would bypass its limits):
+    `canSend` is false and the sentence NEEDS_SCRIPT stands where the form would be. `forms` True gives the prototype's own forms (only the golden pairs use it)."""
+    forms = bool(detail.get("forms"))
+    phase = detail["phase"]["state"]
+    score = detail.get("score")
+    paragraphs = task_paragraphs(detail.get("description"))
+    files = []
+    for f in detail.get("files", [])[:SLOTS]:
+        sized = isinstance(f.get("size"), int) and isinstance(f.get("sha256"), str) and len(f["sha256"]) >= 10
+        files.append({"name": f["name"], "size": _size(f["size"]) if sized else "", "sha": f"{f['sha256'][:6]}…{f['sha256'][-4:]}" if sized else "", "url": f["url"]})
+    hints = []
+    for i, h in enumerate(detail.get("hints", [])[:SLOTS]):
+        affordable = bool(forms and score is not None and score >= h["cost"])
+        need = f"Not enough TRP yet. Your studio has {score or 0} TRP; this hint costs {h['cost']}." if forms else NEEDS_SCRIPT
+        hints.append({
+            "n": str(i + 1), "id": f"pn-hint-{i + 1}", "cost": str(h["cost"]), "unlocked": bool(h.get("content")), "text": h.get("content") or "",
+            "action": f"/board/{programme['slug']}/hints/{h['id']}" if forms else "", "affordable": affordable, "need": need,
+        })
+    solved = bool(programme["solved_by_me"])
+    first = bool(detail.get("first_blood_open", programme["solves"] == 0))
+    left = detail.get("tries_left")
+    sponsor = detail.get("sponsor") or ""
+    return {
+        "slug": programme["slug"], "name": programme["name"], "number": f"P{_pad(programme['number'], 3)}", "value": str(programme["value"]),
+        "channel": channel, "category": _LABEL.get(category_id(programme["category"]), programme["category"]),
+        "difficulty": dict(DIFFICULTIES).get(programme["difficulty"], programme["difficulty"]), "author": detail.get("author") or "",
+        "solves": "First blood open" if first else f"{programme['solves']} {'solve' if programme['solves'] == 1 else 'solves'}",
+        "sponsor": f"Sponsored by {sponsor}" if sponsor else "", "decay": bool(detail.get("decay")),
+        "note": value_note(programme["value"], detail["start"], detail["floor"]) if detail.get("decay") and detail.get("start") is not None and detail.get("floor") is not None else "",
+        "solved": solved, "story": detail.get("story") or "",
+        "task": {"lead": paragraphs[0] if paragraphs else "", "where": paragraphs[1] if len(paragraphs) > 1 else "", "fmt": " ".join(paragraphs[2:])},
+        "f0": files[0] if files else None, "f1": files[1] if len(files) > 1 else None, "hasFiles": bool(files),
+        "inst": instance_text(detail["instance"]) if detail.get("instance") else None,
+        "h0": hints[0] if hints else None, "h1": hints[1] if len(hints) > 1 else None, "hasHints": bool(hints),
+        "flash": None, "flagAction": f"/board/{programme['slug']}/attempt" if forms else "",
+        "canSend": bool(forms and not solved and phase not in ("ended", "before") and score is not None), "paused": phase == "paused", "ended": phase == "ended",
+        "tries": "" if left is None else f"{left} {'try' if left == 1 else 'tries'} left on this programme.",
+        "needJs": "" if forms or solved or phase in ("ended", "before") else NEEDS_SCRIPT,
+    }
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -190,20 +322,86 @@ def _phase_banner(state):
     return banner.for_phase(SimpleNamespace(state=state["state"], frozen=state["frozen"]))
 
 
+def _instance_view(team, challenge_id):
+    """The instance plugin's rows for this studio in the prototype's instance view ({state, connection, expires_in, quota}); None when the plugin is not there.
+    With the instancer overlay off nothing was ever started, so the answer is "stopped" and the page says "Not running."."""
+    try:
+        from CTFd.plugins.l3mon_core.clock import now
+        from CTFd.plugins.l3mon_instances.api import MAX_TEAM_INSTANCES
+        from CTFd.plugins.l3mon_instances.models import L3monInstance
+    except ImportError:
+        return None
+    import datetime
+
+    moment = datetime.datetime.utcfromtimestamp(now())
+    live = L3monInstance.query.filter(L3monInstance.team_id == team.id, L3monInstance.active_key.isnot(None), L3monInstance.expires_at > moment).all()
+    quota = {"used": len(live), "limit": MAX_TEAM_INSTANCES}
+    mine = next((row for row in live if row.challenge_id == challenge_id), None)
+    if mine is None:
+        return {"state": "stopped", "connection": None, "expires_in": 0, "quota": quota}
+    state = mine.state if mine.state in ("running", "starting", "stopping", "expired", "error") else "error"
+    connection = None
+    if state == "running":
+        connection = {"kind": "http", "url": mine.url} if mine.protocol == "http" else {"kind": "tcp", "command": f"nc {mine.host} {mine.port}"}
+    return {"state": state, "connection": connection, "expires_in": max(0, int((mine.expires_at - moment).total_seconds())), "quota": quota}
+
+
+def programme_detail(programme, data, who):
+    """The facts about one programme that only the database holds, for `programme_view`: what CTFd's own challenge answer carries (the task text, the files with
+    this studio's links, the hints this studio has opened) and the plugin's `l3mon` block. Called only for the programme's own page, for a programme the
+    viewer may see (`find_programme`), so it asks nothing about a withheld one."""
+    import os
+
+    from flask import url_for
+
+    from CTFd.models import Challenges, HintUnlocks, Hints
+    from CTFd.plugins.l3mon_board import panel, viewer
+    from CTFd.plugins.l3mon_core.clock import current_phase
+    from CTFd.utils.dates import ctf_ended
+    from CTFd.utils.security.signing import serialize
+    from CTFd.utils.user import get_current_user
+
+    challenge = Challenges.query.get(programme["id"])
+    team = viewer.current_team()
+    block = panel.block(challenge, programme["solves"], team, current_phase()) or {}
+    user = get_current_user()
+    files = []
+    for f in challenge.files:
+        token = serialize({"user_id": user.id, "team_id": team.id if team else None, "file_id": f.id})
+        files.append({"name": os.path.basename(f.location), "url": url_for("views.files", path=f.location, token=token)})
+    opened = {u.target for u in HintUnlocks.query.filter_by(type="hints", account_id=user.account_id)} if user is not None else set()
+    hints = [
+        {"id": h.id, "cost": int(h.cost or 0), "content": h.content if (h.id in opened or ctf_ended()) else None}
+        for h in Hints.query.filter_by(challenge_id=challenge.id).order_by(Hints.id).all()
+    ]
+    return {
+        "description": challenge.description, "author": block.get("author") or challenge.attribution, "story": "", "sponsor": (block.get("sponsor") or {}).get("name"),
+        "decay": bool(block.get("decay")), "start": block.get("start"), "floor": block.get("floor"), "first_blood_open": block.get("first_blood_open"),
+        "tries_left": block.get("tries_left"), "phase": data["phase"], "score": block.get("score"), "files": files, "hints": hints,
+        "instance": _instance_view(team, challenge.id) if team is not None and block.get("live") else None,
+    }
+
+
 @value("board_page", default=None)
 def board_page():
     """What the board's adapter reads: {board, banner, before, missing}. `missing` is a programme's page for a slug this viewer may not see
     (the view then answers 404, exactly as for a slug that never existed)."""
     from flask import request
 
-    data, _ = _build()
+    data, who = _build()
     state = _state()
     slug = state.get("slug")
     programme = find_programme(data, slug) if slug is not None else None
     missing = slug is not None and programme is None
     state["missing"] = missing
     view = board_view(data, request.args.get("ch"), programme)
-    return {"board": view, "banner": _phase_banner(data["phase"]), "before": data["phase"]["state"] == "before", "missing": missing, "pn": None}
+    pn = None
+    if programme is not None and data["phase"]["state"] != "before":
+        keys = channel_keys(data["channels"])
+        channel = next((c for c in data["channels"] if c["id"] == programme["channel"]), None)
+        if channel is not None:
+            pn = programme_view(programme, f"CH {keys[channel['id']]} · {channel['name']}", {**programme_detail(programme, data, who), "sponsor": (channel.get("sponsor") or {}).get("name")})
+    return {"board": view, "banner": _phase_banner(data["phase"]), "before": data["phase"]["state"] == "before", "missing": missing, "pn": pn}
 
 
 def _lines(who):

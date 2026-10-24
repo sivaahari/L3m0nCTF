@@ -24,7 +24,9 @@ from tests.helpers import destroy_ctfd, login_as_user
 PAGES = {"board": "/board", "challenges": "/challenges", "programme": "/board/extra_0", "notifications": "/notifications"}
 # (cold, warm) ceilings, a little above what each page costs today (measured 2026-10-22 with 8 programmes and 4 studios: board 24 cold, 21 warm; 33 cold with a studio
 # of five players; notifications 6 and 6), so a change that doubles it is noticed
-CEILING = {"board": (36, 24), "challenges": (36, 24), "programme": (36, 24), "notifications": (9, 9)}
+# A programme's own page also reads the task, the files, the hints and what the studio opened of them, the tries left, the studio's score and its instance (round 2: 32 cold,
+# 29 warm with 8 programmes and 4 studios, about 8 more than the board; the same for 4 and 29 studios, 8 and 40 programmes: tested below)
+CEILING = {"board": (36, 24), "challenges": (36, 24), "programme": (46, 34), "notifications": (9, 9)}
 ALLOWED_GROWTH = 2
 # CTFd works out a studio's score member by member (two statements each) whenever its cache is cold, and a studio has at most four players, so a full
 # studio costs at most this much more on a cold request: bounded, and not an N+1 (the same allowance as the board plugin's budget test)

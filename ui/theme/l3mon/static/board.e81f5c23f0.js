@@ -543,11 +543,11 @@ return reply('ok','SIGNAL LOCKED.',pts+reel,{lockInput:true,sound:extra.channel_
 }
 if(d.status==='already_solved')return reply('info','ALREADY ON AIR.','Your studio solved this one. No extra TRP.',{lockInput:true,sound:'ding'});
 if(reason==='processing')return reply('wait','ONE MOMENT.','Another flag from your studio is being checked. Send again in a second.',{retryAfter:2});
+if(reason==='no_tries')return reply('no','NO TRIES LEFT.','Your studio has used every try for this programme.',{lockInput:true,sound:'sad'});
 if(reason==='ratelimited'||(d.status==='ratelimited')){
 const s=(r.error&&r.error.retryAfter)||extra.retry_after||10;
 return reply('wait','PLEASE STAND BY.',`Too many tries. Send again in ${s} s.`,{retryAfter:s,sound:'sad'});
 }
-if(reason==='no_tries')return reply('no','NO TRIES LEFT.','Your studio has used every try for this programme.',{lockInput:true,sound:'sad'});
 if(reason==='ended')return reply('info',"THAT'S A WRAP.",'The broadcast has ended. Submissions are closed.',{lockInput:true});
 if(reason==='paused'||d.status==='paused')return reply('wait','PAUSED.','Submissions are paused for a moment. Your flag was not checked.');
 if(d.status==='incorrect'){
@@ -589,21 +589,77 @@ return out;
 function valueNote(value,start,floor){
 return`${value<start?'Started':'Starts'} at ${start} TRP. Falls as more studios solve it, down to ${floor}.`;
 }
+const CATEGORY_IDS=['web','crypto','forensics','osint','pwn','reverse','hardware','rf','ai','web3','misc'];
+function categoryId(raw){
+if(typeof raw!=='string')return raw;
+const id=raw.trim().toLowerCase();
+return CATEGORY_IDS.includes(id)?id:raw;
+}
+const FILE_TOKEN_SECONDS=3600;
+function fileFromPlatform(address){
+const path=String(address).split('?')[0];
+let name=path.slice(path.lastIndexOf('/')+1);
+try{name=decodeURIComponent(name);}catch{}
+return{name:name||'file',size:null,sha256:'',url:String(address),expires_in:FILE_TOKEN_SECONDS};
+}
+function challengeFromPlatform(data){
+if(!data||typeof data!=='object'||typeof data.description!=='string'||'description_html'in data)return data;
+const l3=data.l3mon||{};
+const files=Array.isArray(data.files)?data.files.filter((f)=>typeof f==='string').map(fileFromPlatform):[];
+return{
+...data,
+category:categoryId(data.category),
+description_html:data.description,
+l3mon:{...l3,story:typeof l3.story==='string'?l3.story:'',files},
+};
+}
+function instancesView(data,cid,phase='live'){
+const list=data&&Array.isArray(data.instances)?data.instances:[];
+const limits=(data&&data.limits)||{};
+const mine=list.find((i)=>i.challenge_id===cid)||null;
+const quota={used:Number(limits.live)||list.length,limit:Number(limits.max)||3};
+const base={quota,renew_in:0,renew_window:0,renewals_left:1,cooldown_in:0,ttl_min:null};
+if(!mine)return{...base,state:'stopped',expires_in:0,connection:null};
+const http=mine.protocol==='http'||(!mine.protocol&&mine.url);
+const connection=http?{kind:'http',url:mine.url}:{kind:'tcp',host:mine.host,port:mine.port,command:`nc ${mine.host} ${mine.port}`};
+const state=['running','starting','stopping','expired','error','stopped'].includes(mine.state)?mine.state:'error';
+return{...base,state,expires_in:Math.max(0,Number(mine.expires_in)||0),connection:state==='running'?connection:null,phase};
+}
+function instanceError(error,status){
+if(!error)return error;
+if(error.code==='no_capacity')return{...error,code:'capacity'};
+if(error.code==='not_live')return{...error,code:'phase_closed',phase:error.phase||(error.extra&&error.extra.phase)};
+if(error.code==='busy'&&(status===503||status===0))return{...error,code:'unavailable'};
+return error;
+}
 function channelKeys(channels){
 const nos=channels.map((c)=>c.no);
 const usable=nos.every((n)=>Number.isInteger(n)&&n>=0&&n<=99)&&new Set(nos).size===nos.length;
 return new Map(channels.map((c)=>[c.id,usable?c.no:c.id]));
 }
 let platformKeys=new Map();
+let slugIds=new Map();
+let names=new Map();
+let onPlatform=false;
 function boardByKey(data){
 if(!data||!Array.isArray(data.channels)||!Array.isArray(data.programmes))return data;
 platformKeys=channelKeys(data.channels);
+onPlatform=data.channels.some((c)=>'no'in c);
+slugIds=new Map(data.programmes.map((p)=>[p.slug,p.id]));
+names=new Map(data.programmes.map((p)=>[p.id,p.name]));
 return{
 ...data,
 channels:data.channels.map((c)=>({...c,id:platformKeys.get(c.id)})),
-programmes:data.programmes.map((p)=>({...p,channel:platformKeys.has(p.channel)?platformKeys.get(p.channel):p.channel})),
+programmes:data.programmes.map((p)=>({...p,category:categoryId(p.category),channel:platformKeys.has(p.channel)?platformKeys.get(p.channel):p.channel})),
 };
 }
+const isPlatform=()=>onPlatform;
+function challengeIdOf(key){
+if(typeof key==='number'||/^[0-9]{1,9}$/.test(String(key)))return Number(key);
+return slugIds.has(key)?slugIds.get(key):null;
+}
+const boardKnown=()=>slugIds.size>0||platformKeys.size>0;
+const programmeName=(id)=>names.get(id)||'Another programme';
 function challengeByKey(data){
 if(!data||!data.l3mon||!platformKeys.has(data.l3mon.channel))return data;
 return{...data,l3mon:{...data.l3mon,channel:platformKeys.get(data.l3mon.channel)}};
@@ -652,6 +708,8 @@ attempt:'/api/v1/challenges/attempt',
 hint:(id)=>`/api/v1/hints/${encodeURIComponent(id)}`,
 unlocks:'/api/v1/unlocks',
 instance:(cid)=>`/api/v1/l3mon/instances/${encodeURIComponent(cid)}`,
+instances:'/api/v1/l3mon/instances',
+instanceRenew:(cid)=>`/api/v1/l3mon/instances/${encodeURIComponent(cid)}/renew`,
 guide:'/api/v1/l3mon/guide',
 guideEpg:'/api/v1/l3mon/guide/epg',
 scoreboard:'/api/v1/l3mon/scoreboard',
@@ -716,18 +774,42 @@ return r;
 };
 const ticks=()=>apiCall('GET',ROUTES.ticks,{retries:1});
 const notifications=(sinceId)=>apiCall('GET',`${ROUTES.notifications}?since_id=${encodeURIComponent(sinceId||0)}`,{retries:1});
-const challenge=async(id,etag)=>{
+const challenge=async(key,etag)=>{
+let id=challengeIdOf(key);
+if(id===null){
+const b=await board();
+if(!b.ok)return b;
+id=challengeIdOf(key);
+}
+if(id===null)return normalise(404,null,{success:false,error:'not_found',message:'No such programme.'});
 const r=await apiCall('GET',ROUTES.challenge(id),{etag});
-if(r.ok&&r.data)r.data=challengeByKey(r.data);
+if(r.ok&&r.data)r.data=challengeByKey(challengeFromPlatform(r.data));
 return r;
 };
 const attempt=(challengeId,submission)=>apiCall('POST',ROUTES.attempt,{body:{challenge_id:challengeId,submission}});
 const hint=(id)=>apiCall('GET',ROUTES.hint(id));
 const unlockHint=(id)=>apiCall('POST',ROUTES.unlocks,{body:{target:id,type:'hints'}});
-const instance=(cid)=>apiCall('GET',ROUTES.instance(cid),{retries:1});
-const startInstance=(cid)=>apiCall('POST',ROUTES.instance(cid));
-const renewInstance=(cid)=>apiCall('PATCH',ROUTES.instance(cid));
-const stopInstance=(cid)=>apiCall('DELETE',ROUTES.instance(cid));
+const wrapInstanceError=(r)=>{if(r.error)r.error=instanceError(r.error,r.status);return r;};
+const instance=async(cid)=>{
+if(!isPlatform())return apiCall('GET',ROUTES.instance(cid),{retries:1});
+const r=await apiCall('GET',ROUTES.instances,{retries:1});
+if(!r.ok)return wrapInstanceError(r);
+return{...r,data:instancesView(r.data,cid)};
+};
+const startInstance=async(cid)=>{
+if(!isPlatform())return apiCall('POST',ROUTES.instance(cid));
+const r=wrapInstanceError(await apiCall('POST',ROUTES.instances,{body:{challenge_id:cid}}));
+if(r.error&&r.error.code==='quota'){
+const list=await apiCall('GET',ROUTES.instances,{retries:1});
+const others=list.ok&&list.data&&Array.isArray(list.data.instances)
+?list.data.instances.filter((i)=>i.challenge_id!==cid).map((i)=>({challenge_id:i.challenge_id,name:programmeName(i.challenge_id),expires_in:i.expires_in}))
+:[];
+r.error={...r.error,extra:{...(r.error.extra||{}),others}};
+}
+return r;
+};
+const renewInstance=async(cid)=>(isPlatform()?wrapInstanceError(await apiCall('POST',ROUTES.instanceRenew(cid))):apiCall('PATCH',ROUTES.instance(cid)));
+const stopInstance=async(cid)=>(isPlatform()?wrapInstanceError(await apiCall('DELETE',ROUTES.instance(cid))):apiCall('DELETE',ROUTES.instance(cid)));
 const guide=(etag)=>apiCall('GET',ROUTES.guide,{etag});
 const guideEpg=(etag)=>apiCall('GET',ROUTES.guideEpg,{etag,html:true});
 const scoreboard=(etag)=>apiCall('GET',ROUTES.scoreboard,{etag});
@@ -1201,6 +1283,11 @@ function safeHtml(html){
 const parsed=new DOMParser().parseFromString(String(html||''),'text/html');
 return cleanChildren(parsed.body,document);
 }
+const CONTACT=/Contact:[^·]*/;
+function reportLine(footText){
+const found=typeof footText==='string'?CONTACT.exec(footText):null;
+return`To report a problem with this programme, write to the crew. ${found?found[0].trim():''}`.trim();
+}
 const FL_NS='l3m0n.v1.';
 const FL_DRAFT_MS=30*60e3;
 const FL_FORMAT=/^L3m0n\{.+\}$/;
@@ -1415,8 +1502,7 @@ setTimeout(()=>el.remove(),600);
 function reportDialog(opener){
 openDialog('Report a problem',(body)=>{
 const foot=document.querySelector('.foot-small');
-const found=foot?/Contact:[^·]*/.exec(foot.textContent):null;
-body.append(mk('p',null,`To report a problem with this programme, write to the crew. ${found?found[0].trim():''}`.trim()));
+body.append(mk('p',null,reportLine(foot?foot.textContent:null)));
 },opener);
 }
 const HN_AD_MS=4000;
@@ -1719,7 +1805,7 @@ inEl.status.textContent='That instance did not start. Try again, or report a pro
 inEl.retry.textContent='Try again';
 inShow(inEl.retry,true);
 }else{
-inEl.status.textContent=`Start your own copy of this programme. It runs for ${inDuration(v.ttl_min)}.`;
+inEl.status.textContent=Number.isFinite(v.ttl_min)?`Start your own copy of this programme. It runs for ${inDuration(v.ttl_min)}.`:'Start your own copy of this programme.';
 inShow(inEl.start,true);
 if(v.cooldown_in>0)inWait(v.cooldown_in,'Start opens again in');
 }
@@ -1785,6 +1871,11 @@ inEl.status.textContent=code==='cooldown'?`PLEASE STAND BY. You can start it aga
 return inWait(s,code==='cooldown'?'Start opens again in':'Try again in');
 }
 if(code==='conflict')return inFetch();
+if(code==='unavailable'){
+inEl.status.textContent='Instances are not available right now. The rest of this programme still works. Try again in a minute.';
+inShow(inEl.start,true);
+return;
+}
 inShow(inEl.start,false);
 inProblem(r,{button:btn});
 }
@@ -2051,7 +2142,9 @@ pnK('difficulty').textContent=diff[1];
 pnK('decay').hidden=!l3.decay;
 pnK('decay').textContent=l3.decay?valueNote(d.value,l3.start,l3.floor):'';
 pnShowSolved(d);
-pnK('story').textContent=l3.story;
+pnK('story').textContent=l3.story||'';
+const storySec=pnK('story').closest('[data-pn-sec]');
+if(storySec)storySec.hidden=!l3.story;
 pnEl.task.replaceChildren(safeHtml(d.description_html));
 pnFiles(entry);
 document.title=`${d.name} | ${l3.channel_name} | Channels${PN_EVENT}`;
@@ -2077,9 +2170,13 @@ pnEl.fileList.replaceChildren(...files.map((f)=>{
 const li=pnEl.fileTpl.content.firstElementChild.cloneNode(true);
 const k=(n)=>$(`[data-k="${n}"]`,li);
 k('name').textContent=f.name;
+const meta=Number.isFinite(f.size)&&typeof f.sha256==='string'&&f.sha256.length>=10;
+k('meta').hidden=!meta;
+if(meta){
 k('size').textContent=pnFmtSize(f.size);
 k('sha').textContent=`${f.sha256.slice(0,6)}…${f.sha256.slice(-4)}`;
 k('sha').title=f.sha256;
+}
 k('which').textContent=` ${f.name}`;
 const a=k('link');
 a.href=f.url;
