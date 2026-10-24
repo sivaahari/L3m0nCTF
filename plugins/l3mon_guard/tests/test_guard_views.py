@@ -7,6 +7,7 @@ from tests.helpers import create_ctfd, destroy_ctfd, gen_team, login_as_user, re
 
 from CTFd.models import Teams, Users, db
 from CTFd.plugins.l3mon_guard.models import Evidence
+from CTFd.plugins.l3mon_guard.policies.team_name import MSG_TAKEN
 
 
 def _register_data(client, name, email, password="password123"):
@@ -95,7 +96,7 @@ def test_team_creation_blocks_impersonation_for_normal_users():
                 data=_team_data(client, "Official Admin Crew"),
             )
             assert r.status_code == 200
-            assert "That team name is reserved." in r.get_data(as_text=True)
+            assert MSG_TAKEN in r.get_data(as_text=True)
             assert Teams.query.filter_by(name="Official Admin Crew").first() is None
     destroy_ctfd(app)
 
@@ -112,5 +113,5 @@ def test_team_creation_blocks_collision():
                 data=_team_data(client, "omega studio"),
             )
             assert r.status_code == 200
-            assert "That team name is already taken." in r.get_data(as_text=True)
+            assert MSG_TAKEN in r.get_data(as_text=True)
     destroy_ctfd(app)
