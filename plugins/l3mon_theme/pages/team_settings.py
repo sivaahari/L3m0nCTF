@@ -19,14 +19,17 @@ from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_guard.policies.disposable import is_disposable_domain
 from CTFd.plugins.l3mon_guard.policies.email_norm import is_email_disguise_used
 from CTFd.plugins.l3mon_guard.policies.team_name import canonical_team_name, validate_team_name
+from CTFd.plugins.l3mon_guard.policies.username import validate_username
 from CTFd.plugins.l3mon_theme.registry import value
 from CTFd.schemas.teams import TeamSchema
 from CTFd.schemas.users import UserSchema
 from CTFd.utils import get_config
+from CTFd.utils.config import can_send_mail
 from CTFd.utils.countries import SELECT_COUNTRIES_LIST, lookup_country_code
-from CTFd.utils.email import check_email_is_blacklisted, check_email_is_whitelisted
+from CTFd.utils.email import check_email_is_blacklisted, check_email_is_whitelisted, verify_email_address
 from CTFd.utils.security.auth import update_user
 from CTFd.utils.user import authed, get_current_team, get_current_user, is_admin
+from CTFd.utils.validators import validate_email
 
 _log = logging.getLogger("l3mon.theme.team_settings")
 
@@ -34,6 +37,8 @@ NOTICES = {
     "team-saved": "Your changes are saved.",
     "captain-moved": "Done. The captain's chair has been handed over.",
     "settings-saved": "Your changes are saved.",
+    "settings-saved-confirm": "Your changes are saved. Open the link we sent to your new address to confirm it.",
+    "settings-saved-nomail": "Your changes are saved, but confirmation mail could not be sent. Please ask the crew to confirm your account.",
 }
 
 FLASH_NOTICE_KEY = "_l3mon_acct_notice"
@@ -157,6 +162,22 @@ def studio_context() -> dict:
     flashed_notice = _take_flash(FLASH_NOTICE_KEY)
     notice_text = NOTICES.get(flashed_notice, "")
 
+    flashed_errors = _take_flash(FLASH_ERROR_KEY, {})
+    flashed_form = _take_flash(FLASH_FORM_KEY, {})
+
+    summary = []
+    err = {"name": None, "country": None, "affiliation": None}
+
+    if flashed_errors:
+        field_anchors = {"name": "#t-name", "country": "#t-country", "affiliation": "#t-aff"}
+        for field, msg in flashed_errors.items():
+            if isinstance(msg, list):
+                msg = msg[0] if msg else "Invalid value."
+            anchor = field_anchors.get(field, "#main")
+            summary.append({"href": anchor, "text": str(msg)})
+            if field in err:
+                err[field] = str(msg)
+
     return {
         "name": team.name,
         "meta": meta_text,
@@ -176,6 +197,9 @@ def studio_context() -> dict:
         "countries": countries,
         "hasNotice": bool(notice_text),
         "notice": notice_text,
+        "hasSummary": len(summary) > 0,
+        "summary": summary,
+        "err": err,
     }
 
 
@@ -187,13 +211,15 @@ def settings_context() -> dict:
         return {}
 
     flashed_notice = _take_flash(FLASH_NOTICE_KEY)
-    saved = (flashed_notice == "settings-saved")
+    saved = bool(flashed_notice)
+    notice_text = NOTICES.get(flashed_notice, "")
 
     flashed_errors = _take_flash(FLASH_ERROR_KEY, {})
     flashed_form = _take_flash(FLASH_FORM_KEY, {})
 
     provider = _get_provider_for_user(user)
     via_provider = bool(provider)
+    is_google = (provider == "Google")
 
     name_val = flashed_form.get("name", user.name)
     email_val = flashed_form.get("email", user.email)
@@ -231,7 +257,9 @@ def settings_context() -> dict:
         "pending": pending,
         "viaProvider": via_provider,
         "provider": provider or "",
+        "isGoogle": is_google,
         "saved": saved,
+        "notice": notice_text,
         "hasSummary": len(summary) > 0,
         "summary": summary,
         "err": err,
@@ -263,16 +291,17 @@ def install(app):
         if team.captain_id != user.id:
             abort(403)
 
-        name = request.form.get("name", "").strip()
+        raw_name = request.form.get("name", "")
         country = request.form.get("country", "").strip()
         affiliation = request.form.get("affiliation", "").strip()
 
         errors = {}
 
         # Validate team name policy (confusables, length, collision, impersonation)
-        clean_name, name_err = validate_team_name(name, is_crew=is_admin(), exclude_team_id=team.id)
+        clean_name, name_err = validate_team_name(raw_name, is_crew=is_admin(), exclude_team_id=team.id)
         if name_err:
             errors["name"] = [name_err]
+            name = raw_name
         else:
             name = clean_name
 
@@ -340,40 +369,76 @@ def install(app):
         if part == "details":
             data = {}
             if "name" in request.form:
-                data["name"] = request.form.get("name", "").strip()
+                raw_name = request.form.get("name", "")
+                if raw_name.strip() != user.name:
+                    clean_name, name_err = validate_username(
+                        raw_name, is_crew=is_admin(), exclude_user_id=user.id
+                    )
+                    if name_err:
+                        errors["name"] = [name_err]
+                    else:
+                        data["name"] = clean_name
 
+            email_changed = False
             if not provider and "email" in request.form:
-                email = request.form.get("email", "").strip()
+                raw_email = request.form.get("email", "")
+                email = raw_email.strip()
                 confirm = request.form.get("confirm", "")
-                data["email"] = email
-                if email and email != user.email:
-                    data["confirm"] = confirm
-                    # Disposable domain check
-                    if is_disposable_domain(email):
+                if email and email.casefold() != user.email.casefold():
+                    email_changed = True
+                    # D1: Check format first with CTFd's own validator and prototype words
+                    if not validate_email(email):
+                        errors["email"] = ["Enter an email address like name@example.com."]
+                    elif is_disposable_domain(email):
                         errors["email"] = ["Disposable email addresses are not allowed."]
-                    # Disguised / duplicate email check
                     elif is_email_disguise_used(email, exclude_user_id=user.id):
                         errors["email"] = ["Email address has already been taken."]
+                    else:
+                        data["email"] = email
+                        data["confirm"] = confirm
 
-            schema_res = UserSchema(view="self", instance=user, partial=True).load(data)
-            if schema_res.errors:
-                for k, v in schema_res.errors.items():
-                    errors.setdefault(k, []).extend(v if isinstance(v, list) else [v])
+            if not errors and data:
+                schema_res = UserSchema(view="self", instance=user, partial=True).load(data)
+                # If name only differed in case, avoid duplicate error from case-insensitive DB
+                if (
+                    "name" in data
+                    and data["name"].casefold() == user.name.casefold()
+                    and schema_res.errors
+                    and "name" in schema_res.errors
+                ):
+                    schema_res.errors.pop("name", None)
+                    user.name = data["name"]
+
+                if schema_res.errors:
+                    for k, v in schema_res.errors.items():
+                        errors.setdefault(k, []).extend(v if isinstance(v, list) else [v])
 
             if errors:
                 db.session.rollback()
                 session[FLASH_ERROR_KEY] = errors
-                session[FLASH_FORM_KEY] = data
+                session[FLASH_FORM_KEY] = {
+                    "name": request.form.get("name", user.name),
+                    "email": request.form.get("email", user.email),
+                }
                 return redirect("/settings", code=303)
 
-            # Check if email changed and needs re-verification
-            if not provider and "email" in data and data["email"] != user.email:
+            # D2: Email change handling
+            if email_changed:
                 if get_config("verify_emails"):
                     user.verified = False
 
             db.session.commit()
             clear_user_session(user_id=user.id)
-            session[FLASH_NOTICE_KEY] = "settings-saved"
+
+            if email_changed and get_config("verify_emails"):
+                if can_send_mail():
+                    verify_email_address(user.email)
+                    session[FLASH_NOTICE_KEY] = "settings-saved-confirm"
+                else:
+                    session[FLASH_NOTICE_KEY] = "settings-saved-nomail"
+            else:
+                session[FLASH_NOTICE_KEY] = "settings-saved"
+
             return redirect("/settings", code=303)
 
         elif part == "password":

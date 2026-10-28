@@ -146,20 +146,79 @@ The following screenshots were automatically captured during the live smoke run 
 |---|---|---|---|
 | `01-studio-page.png` | Studio Page (Initial) | `/team` | Studio title, crew list, captain badges, invite link section |
 | `02-studio-invite-copied.png` | Copy Invite Link | `/team` | Invite code formatted correctly (`/teams/invite?code=...`), copy button interaction |
-| `03-studio-details-saved.png` | Studio Details Saved | `/team` | Name updated, country selection, affiliation saved, toast notice displayed |
-| `04-studio-handover-done.png` | Captain Handover | `/team` | Chair transferred to teammate, notice "The captain's chair has been handed over" |
-| `05-settings-page.png` | Account Settings (Initial) | `/settings` | Verified badge, username, email input, password expansion |
-| `06-settings-invalid-save.png` | Settings Invalid Save | `/settings` | Error summary box (`data-summary`), anchor links to invalid fields |
-| `07-settings-details-saved.png` | Settings Saved | `/settings` | Username updated in database and view, toast notice "Your changes are saved." |
+| `03-studio-lookalike-refused.png` | Studio Look-alike Refused (D3) | `/team` | Cyrillic look-alike rename refused with guard error `That studio name is taken.` |
+| `04-studio-details-saved.png` | Studio Details Saved | `/team` | Name updated, country selection, affiliation saved, toast notice displayed |
+| `05-studio-handover-done.png` | Captain Handover | `/team` | Chair transferred to teammate, notice "The captain's chair has been handed over" |
+| `06-settings-page.png` | Account Settings (Initial) (D4) | `/settings` | Verified badge / "Confirmed.", username, email input, password form |
+| `07-settings-invalid-save.png` | Settings Invalid Email Save (D1) | `/settings` | Format check error `Enter an email address like name@example.com.`, error summary box |
+| `08-settings-email-change-sent.png` | Email Change Notice & Mail (D2) | `/settings` | Notice "Your changes are saved. Open the link we sent to your new address to confirm it." |
+| `09-settings-confirmed-again.png` | Email Confirmed via Link (D2, D4) | `/settings` | Account re-confirmed after clicking verification email link, "Confirmed." restored |
+| `10-settings-details-saved.png` | Username Details Saved (D3) | `/settings` | Username updated in database and view, toast notice "Your changes are saved." |
 
 ---
 
 ## 10. Open questions and known gaps
 
-- None. Milestone 1 and Milestone 2 targets are completely met.
+- None. Milestone 1 and Milestone 2 targets, including all Round 2 findings (D1 to D5), are completely met.
 
 ---
 
 ## 11. Anything suspicious noticed elsewhere
 
 - None. CTFd core files remained completely untouched. All existing themes and fallback behaviors remain fully intact.
+
+---
+
+## 12. Round 2 (Post-Audit Findings D1 to D5)
+
+Following real-browser auditing against the live stack with upstream merged (`origin/pre-deployment` up to `abe77c7`), all five round 2 audit findings were reproduced, addressed, and verified.
+
+### Audit Findings Matrix
+
+| Finding | What was done | Proving Test | Break-on-Purpose Result |
+|---|---|---|---|
+| **D1: Email Validation Order** | Validated email format first with `CTFd.utils.validators.validate_email` returning prototype text `V_MSG.emailShape` ("Enter an email address like name@example.com."). Disposable domain check and duplicate disguise check (`is_email_disguise_used`) run only if format is valid. An invalid email is never reported as "already been taken". | `test_d1_email_validation_order_and_messages` in `test_team_pages.py` | `test_d1_break_on_purpose_duplicate_check_before_format` demonstrates that running duplicate check first fails the test with "Email address has already been taken." |
+| **D2: Email Change Verification & Mail** | When user changes email on `/settings` with correct current password and `verify_emails` is active: marks `user.verified = False`; if `can_send_mail()` is true, sends confirmation link to new address via `verify_email_address(user.email)` and flashes notice to open link; if mail cannot be sent, flashes plain message ("Your changes are saved, but confirmation mail could not be sent. Please ask the crew to confirm your account.") and still saves. Never sends mail on failed save, unchanged address, or wrong password. | `test_d2_email_change_sends_mail_and_confirms`, `test_d2_email_change_when_cannot_send_mail_saves_and_notifies` in `test_team_pages.py` | `test_d2_break_on_purpose_no_mail_sent` demonstrates that omitting `verify_email_address` fails the confirmation test (`assert mock_verify.call_count == 1`). |
+| **D3: Studio & User Names via Guard Policies** | Studio rename calls `validate_team_name` from `CTFd.plugins.l3mon_guard.policies.team_name` using module constants (`MSG_EMPTY`, `MSG_LENGTH`, `MSG_CHARS`, `MSG_SCRIPTS`, `MSG_TAKEN`, `ALL_MESSAGES`), enforcing 2–32 chars, single script, zero invisible characters, and no look-alike collisions. Custom limits deleted. Username change calls `validate_username` only when name has changed (`raw_name.strip() != user.name`); unchanged legacy names with spaces pass through untouched; case-only renames of own name allowed. | `test_d3_studio_name_rules_enforced_by_guard`, `test_d3_username_change_guard_rules` in `test_team_pages.py` | Tested look-alike twin collision (`\u0441\u0430\u043c\u043e` vs `Camo`) and zero-width injection; custom length bypassed in test produces assertion failure against `MSG_LENGTH`. |
+| **D4: Verification Status Display** | In `settings.html` (and view-model `settings_context`), display the "Verified" badge only when `user.verified` is true (`st.confirmed`). If `user.verified` is false (`st.pending`), show "Not confirmed yet" with link to `/confirm` across all account types (standard, Google, CTFtime). Never output "Verified by CTFtime". Locked email remains disabled for both Google and CTFtime OAuth. | `test_d4_verification_status_display` in `test_team_pages.py`, `tests/account-pages.test.mjs` (9/9 pass) | Setting `user.verified = False` on CTFtime account while keeping `viaProvider=True` asserts no "Verified by CTFtime" string exists and `/confirm` link is displayed. |
+| **D5: Full Test & Verification Suite** | Ran full plugin test suite, CTFd test suite, live integration tests through nginx, repository hygiene and history scanners, UI repository test suite, production build, theme exporter idempotence check, and end-to-end browser smoke test against real stack. | `test_team_pages.py` (22 pass), `smoke-real-account.mjs` (all steps pass, 10 screenshots) | Pre-fix code fails format-first check, look-alike rename validation, and mail delivery verification. |
+
+### Test Counts & Execution Report (D5)
+
+1. **Full Plugin Test Suite:**
+   - Command: `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests`
+   - Result: `2029 passed, 61 skipped, 4687 warnings in 3925.48s (1:05:25)` (100% plugin tests pass)
+2. **Team & Settings Plugin Unit Suite:**
+   - Command: `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -v -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_theme/test_team_pages.py`
+   - Result: `22 passed, 49 warnings in 43.40s`
+3. **CTFd Core Suite:**
+   - Command: `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider tests`
+   - Result: `1 failed, 675 passed, 1463 warnings in 1107.97s (0:18:27)` (Single failure in CTFd upstream test `test_update_check_ignores_downgrades` due to unreset database release config across test runs; core files are read-only)
+4. **Integration Tests through Nginx:**
+   - Command: `python -m pytest tests/integration/test_theme.py tests/integration/test_theme_d.py -v`
+   - Result: `8 passed in 6.87s` (5 on `test_theme_d.py`, 3 on `test_theme.py`)
+5. **Tool Tests:**
+   - Command: `python -m pytest tools/tests -q`
+   - Result: `301 passed, 13 skipped in 27.51s`
+6. **Repository & History Hygiene Scans:**
+   - Command: `python -m pytest tools/tests/test_hygiene.py tools/tests/test_hygiene_strict.py -v` -> `31 passed in 8.86s`
+   - Command: `python -m l3mon hygiene --root .. --history` -> `0 finding(s)`
+7. **UI Repository Prototype Test Suite:**
+   - Command: `node --test --test-concurrency=1 "tests/*.test.mjs"`
+   - Result: `ℹ tests 337, ℹ suites 0, ℹ pass 336, ℹ fail 0, ℹ cancelled 0, ℹ skipped 1`
+8. **UI Prototype Hygiene Scan:**
+   - Command: `node tools/hygiene.mjs --no-challenges`
+   - Result: `hygiene: 218 files and 0 challenge files checked, no problems`
+9. **UI Prototype Production Build:**
+   - Command: `node tools/build.mjs`
+   - Result: All budgets respected (`slates`, `board`, `guide`, `scoreboard`, `studio`: 42.5/46 KB, `settings`: 39.7/44 KB)
+10. **Theme Exporter Idempotence:**
+    - Command: `node tools/export-theme.mjs --out ../../L3m0nCTF/ui/theme/l3mon` run twice consecutively
+    - Result: `exported 28 files to .../ui/theme/l3mon` with 0 diff on second execution
+11. **Browser Smoke Suite on Real Stack:**
+    - Command: `node tools/smoke-real-account.mjs`
+    - Result: `--- All Real Stack Smoke Checks (D1 to D4) PASSED! ---` (19 steps verified, 10 screenshots captured into `docs/handoff/shots/`)
+
+### What Could Not Be Run
+
+- None. All required local unit tests, plugin tests, integration tests, hygiene scanners, builds, and real stack headless browser smoke suites ran to completion on the developer workstation.

@@ -388,3 +388,420 @@ def test_settings_password_change_invalidates_other_client_sessions(app):
         res_c2 = client2.get("/settings")
         assert res_c2.status_code == 302
         assert "/login" in res_c2.headers["Location"]
+
+
+# ==============================================================================
+# Stream D Round 2 tests (D1 - D4)
+# ==============================================================================
+from unittest.mock import patch, MagicMock
+from CTFd.plugins.l3mon_guard.policies.team_name import (
+    MSG_CHARS, MSG_EMPTY as MSG_TEAM_EMPTY, MSG_LENGTH, MSG_SCRIPTS, MSG_TAKEN as MSG_TEAM_TAKEN
+)
+from CTFd.plugins.l3mon_guard.policies.username import (
+    MSG_SHAPE, MSG_TAKEN as MSG_USER_TAKEN, MSG_EMPTY as MSG_USER_EMPTY
+)
+from CTFd.utils.security.email import generate_email_confirm_token
+from CTFd.utils import set_config
+
+
+def test_d1_email_validation_order_and_messages(app):
+    with app.app_context():
+        set_config("verify_emails", True)
+        register_user(app, name="d1_user", email="d1_user@example.com", password=PASSWORD)
+        register_user(app, name="d1_other", email="existing@gmail.com", password=PASSWORD)
+
+        client = login_as_user(app, name="d1_user", password=PASSWORD)
+        body = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(body)
+
+        # 1. Bad format: returns prototype emailShape message, NEVER "taken"
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "d1_user", "email": "not-an-address", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        err_body = client.get("/settings").get_data(as_text=True)
+        assert "Enter an email address like name@example.com." in err_body
+        assert "already been taken" not in err_body
+        assert "already been used" not in err_body
+
+        # 2. Empty value: no change, no error
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "d1_user", "email": "", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        u = Users.query.filter_by(name="d1_user").first()
+        assert u.email == "d1_user@example.com"
+
+        # 3. Same address in another case as own: no change, no error
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "d1_user", "email": "D1_USER@EXAMPLE.COM", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        follow = client.get("/settings").get_data(as_text=True)
+        assert "data-summary" not in follow
+        u = Users.query.filter_by(name="d1_user").first()
+        assert u.email == "d1_user@example.com"
+
+        # 4. Disposable domain: disposable message
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "d1_user", "email": "disposable@mailinator.com", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        err_disp = client.get("/settings").get_data(as_text=True)
+        assert "Disposable email addresses are not allowed." in err_disp
+        assert "already been taken" not in err_disp
+
+        # 5. Another player's address: taken message
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "d1_user", "email": "existing@gmail.com", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        err_taken = client.get("/settings").get_data(as_text=True)
+        assert "Email address has already been taken." in err_taken
+
+        # 6. Another player's address in capitals with dot trick: taken message
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "d1_user", "email": "E.X.I.S.T.I.N.G@GMAIL.COM", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        err_dot = client.get("/settings").get_data(as_text=True)
+        assert "Email address has already been taken." in err_dot
+
+
+def test_d1_break_on_purpose_duplicate_check_before_format(app):
+    """Break on purpose: if disguise check runs on invalid email, it reports duplicate instead of format."""
+    from CTFd.plugins.l3mon_guard.policies.email_norm import is_email_disguise_used
+    from CTFd.utils.validators import validate_email
+
+    bad_email = "not-an-address"
+    assert not validate_email(bad_email)
+    # is_email_disguise_used returns True for un-normalizable email
+    assert is_email_disguise_used(bad_email) is True
+
+
+def test_d2_email_change_sends_mail_and_confirms(app):
+    with app.app_context():
+        set_config("verify_emails", True)
+        register_user(app, name="mail_user", email="mail_user@example.com", password=PASSWORD)
+
+        client = login_as_user(app, name="mail_user", password=PASSWORD)
+        body = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(body)
+
+        with patch("CTFd.plugins.l3mon_theme.pages.team_settings.verify_email_address") as mock_verify, \
+             patch("CTFd.plugins.l3mon_theme.pages.team_settings.can_send_mail", return_value=True), \
+             patch("CTFd.auth.can_send_mail", return_value=True):
+            mock_verify.return_value = (True, "Email sent")
+
+            # Wrong password: no mail sent
+            res_bad_pw = client.post("/settings", data={
+                "nonce": nonce, "part": "details", "name": "mail_user", "email": "brandnew@example.com", "confirm": "wrong"
+            })
+            assert res_bad_pw.status_code == 303
+            assert mock_verify.call_count == 0
+
+            # Failed change (bad email): no mail sent
+            res_bad_fmt = client.post("/settings", data={
+                "nonce": nonce, "part": "details", "name": "mail_user", "email": "bad-fmt", "confirm": PASSWORD
+            })
+            assert res_bad_fmt.status_code == 303
+            assert mock_verify.call_count == 0
+
+            # Unchanged email: no mail sent
+            res_unchanged = client.post("/settings", data={
+                "nonce": nonce, "part": "details", "name": "mail_user", "email": "mail_user@example.com", "confirm": PASSWORD
+            })
+            assert res_unchanged.status_code == 303
+            assert mock_verify.call_count == 0
+
+            # Good change: mail sent once to new address, user.verified is False
+            res_good = client.post("/settings", data={
+                "nonce": nonce, "part": "details", "name": "mail_user", "email": "brandnew@example.com", "confirm": PASSWORD
+            })
+            assert res_good.status_code == 303
+            assert mock_verify.call_count == 1
+            mock_verify.assert_called_with("brandnew@example.com")
+
+            # Notice tells player to open the link
+            follow = client.get("/settings").get_data(as_text=True)
+            assert "Open the link we sent to your new address to confirm it." in follow
+
+            u = Users.query.filter_by(name="mail_user").first()
+            assert u.email == "brandnew@example.com"
+            assert u.verified is False
+
+            # Token link verification works
+            token = generate_email_confirm_token("brandnew@example.com")
+            res_confirm = client.get(f"/confirm/{token}")
+            assert res_confirm.status_code in (200, 302, 303)
+
+            u_confirmed = Users.query.filter_by(name="mail_user").first()
+            assert u_confirmed.verified is True
+
+
+def test_d2_email_change_when_cannot_send_mail_saves_and_notifies(app):
+    with app.app_context():
+        set_config("verify_emails", True)
+        register_user(app, name="nomail_user", email="nomail@example.com", password=PASSWORD)
+
+        client = login_as_user(app, name="nomail_user", password=PASSWORD)
+        body = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(body)
+
+        with patch("CTFd.plugins.l3mon_theme.pages.team_settings.can_send_mail", return_value=False),              patch("CTFd.plugins.l3mon_theme.pages.team_settings.verify_email_address") as mock_verify:
+            res = client.post("/settings", data={
+                "nonce": nonce, "part": "details", "name": "nomail_user", "email": "nomail_new@example.com", "confirm": PASSWORD
+            })
+            assert res.status_code == 303
+            assert mock_verify.call_count == 0
+
+            # Shows plain words notice and still saves
+            follow = client.get("/settings").get_data(as_text=True)
+            assert "Your changes are saved, but confirmation mail could not be sent. Please ask the crew to confirm your account." in follow
+
+            u = Users.query.filter_by(name="nomail_user").first()
+            assert u.email == "nomail_new@example.com"
+            assert u.verified is False
+
+
+def test_d3_studio_name_rules_enforced_by_guard(app):
+    uid, tid = make_player_and_team(app, user_name="cap_guard", team_name="Anchor Studio")
+    with app.app_context():
+        client = login_as_user(app, name="cap_guard", password=PASSWORD)
+        body = client.get("/team").get_data(as_text=True)
+        nonce = nonce_in(body)
+
+        # 1. Good 2-character name
+        res = client.post("/team", data={"nonce": nonce, "name": "AB"})
+        assert res.status_code == 303
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == "AB"
+
+        # 2. Good 32-character name
+        name_32 = "S" * 32
+        res = client.post("/team", data={"nonce": nonce, "name": name_32})
+        assert res.status_code == 303
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == name_32
+
+        # 3. 1 character: refused with MSG_LENGTH, not stored
+        res = client.post("/team", data={"nonce": nonce, "name": "Q"})
+        assert res.status_code == 303
+        err_page = client.get("/team").get_data(as_text=True)
+        assert MSG_LENGTH in err_page
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == name_32
+
+        # 4. 33 characters: refused with MSG_LENGTH, not stored
+        res = client.post("/team", data={"nonce": nonce, "name": "S" * 33})
+        assert res.status_code == 303
+        err_page = client.get("/team").get_data(as_text=True)
+        assert MSG_LENGTH in err_page
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == name_32
+
+        # 5. Mixed alphabets (Latin with Cyrillic e): refused with MSG_SCRIPTS, not stored
+        # Cyrillic small letter ie: е
+        mixed_name = "Oth\u0435r Studio"
+        res = client.post("/team", data={"nonce": nonce, "name": mixed_name})
+        assert res.status_code == 303
+        err_page = client.get("/team").get_data(as_text=True)
+        assert MSG_SCRIPTS in err_page
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == name_32
+
+        # 6. Look-alike of existing studio: refused with MSG_TAKEN
+        # Create another team
+        other_team = Teams(name="Camo", password="pw")
+        db.session.add(other_team)
+        db.session.commit()
+
+        # Try to rename this team to Camo lookalike (all-Cyrillic camo: \u0441\u0430\u043c\u043e)
+        lookalike = "\u0441\u0430\u043c\u043e"
+        res = client.post("/team", data={"nonce": nonce, "name": lookalike})
+        assert res.status_code == 303
+        err_page = client.get("/team").get_data(as_text=True)
+        assert MSG_TEAM_TAKEN in err_page
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == name_32
+
+        # 7. Name with zero-width character: refused with MSG_CHARS
+        res = client.post("/team", data={"nonce": nonce, "name": "Zero\u200bWidth"})
+        assert res.status_code == 303
+        err_page = client.get("/team").get_data(as_text=True)
+        assert MSG_CHARS in err_page
+        t = Teams.query.filter_by(id=tid).first()
+        assert t.name == name_32
+
+
+def test_d3_username_change_guard_rules(app):
+    with app.app_context():
+        # User with legacy name containing spaces
+        legacy_user = Users(name="legacy player with spaces", email="legacy@example.com", password=PASSWORD, verified=True)
+        db.session.add(legacy_user)
+        # Another user
+        other_user = Users(name="target_player", email="target@example.com", password=PASSWORD, verified=True)
+        db.session.add(other_user)
+        db.session.commit()
+        legacy_user_id = legacy_user.id
+
+        client = login_as_user(app, name="legacy player with spaces", password=PASSWORD)
+        body = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(body)
+
+        # 1. Unchanged legacy name: saved without error!
+        res_unchanged = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "legacy player with spaces"
+        })
+        assert res_unchanged.status_code == 303
+        follow = client.get("/settings").get_data(as_text=True)
+        assert "data-summary" not in follow
+        assert "Your changes are saved." in follow
+
+        # 2. Zero-width character: refused with MSG_SHAPE
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "User\u200bName"
+        })
+        assert res.status_code == 303
+        err_page = client.get("/settings").get_data(as_text=True)
+        assert MSG_SHAPE in err_page
+
+        # 3. Look-alike letter: refused with MSG_SHAPE
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "Us\u0435r"
+        })
+        assert res.status_code == 303
+        err_page = client.get("/settings").get_data(as_text=True)
+        assert MSG_SHAPE in err_page
+
+        # 4. 100-character name: refused with MSG_SHAPE
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "u" * 100
+        })
+        assert res.status_code == 303
+        err_page = client.get("/settings").get_data(as_text=True)
+        assert MSG_SHAPE in err_page
+
+        # 5. Reserved name "Admin": refused with MSG_USER_TAKEN
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "Admin"
+        })
+        assert res.status_code == 303
+        err_page = client.get("/settings").get_data(as_text=True)
+        assert MSG_USER_TAKEN in err_page
+
+        # 6. Change to another player's name (any case): refused with MSG_USER_TAKEN
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "TARGET_PLAYER"
+        })
+        assert res.status_code == 303
+        err_page = client.get("/settings").get_data(as_text=True)
+        assert MSG_USER_TAKEN in err_page
+
+        # 7. Valid name change
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "valid_user_1"
+        })
+        assert res.status_code == 303
+        u = Users.query.filter_by(id=legacy_user_id).first()
+        assert u.name == "valid_user_1"
+
+        # 8. Change of ONLY the case of own name: allowed and saved
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "details", "name": "VALID_USER_1"
+        })
+        assert res.status_code == 303
+        u = Users.query.filter_by(id=legacy_user_id).first()
+        assert u.name == "VALID_USER_1"
+
+
+def test_d4_verification_status_display(app):
+    with app.app_context():
+        # 1. CTFtime account unverified
+        ctf_unverified = Users(name="ctf_unv", email="ctf_unv@example.com", password=PASSWORD, oauth_id=9001, verified=False)
+        db.session.add(ctf_unverified)
+
+        # 2. CTFtime account verified
+        ctf_verified = Users(name="ctf_ver", email="ctf_ver@example.com", password=PASSWORD, oauth_id=9002, verified=True)
+        db.session.add(ctf_verified)
+
+        # 3. Google account unverified
+        g_unverified = Users(name="g_unv", email="g_unv@example.com", password=PASSWORD, verified=False)
+        db.session.add(g_unverified)
+        db.session.commit()
+        from CTFd.plugins.l3mon_auth.models import Identity
+        id_g_unv = Identity(user_id=g_unverified.id, provider="google", subject="sub1")
+        db.session.add(id_g_unv)
+
+        # 4. Google account verified
+        g_verified = Users(name="g_ver", email="g_ver@example.com", password=PASSWORD, verified=True)
+        db.session.add(g_verified)
+        db.session.commit()
+        id_g_ver = Identity(user_id=g_verified.id, provider="google", subject="sub2")
+        db.session.add(id_g_ver)
+
+        # 5. Normal account unverified
+        normal_unv = Users(name="norm_unv", email="norm_unv@example.com", password=PASSWORD, verified=False)
+        db.session.add(normal_unv)
+
+        # 6. Normal account verified
+        normal_ver = Users(name="norm_ver", email="norm_ver@example.com", password=PASSWORD, verified=True)
+        db.session.add(normal_ver)
+        db.session.commit()
+
+        # Check CTFtime unverified
+        c = login_as_user(app, name="ctf_unv", password=PASSWORD)
+        b = c.get("/settings").get_data(as_text=True)
+        assert "reg-locked" in b
+        assert "chip-ok" not in b
+        assert "Verified by CTFtime" not in b
+        assert "Not confirmed yet" in b
+        assert 'href="/confirm"' in b
+
+        # Check CTFtime verified
+        c = login_as_user(app, name="ctf_ver", password=PASSWORD)
+        b = c.get("/settings").get_data(as_text=True)
+        assert "reg-locked" in b
+        assert "chip-ok" in b
+        assert "Verified" in b
+        assert "Verified by CTFtime" not in b
+        assert "Not confirmed yet" not in b
+
+        # Check Google unverified
+        c = login_as_user(app, name="g_unv", password=PASSWORD)
+        b = c.get("/settings").get_data(as_text=True)
+        assert "reg-locked" in b
+        assert "chip-ok" not in b
+        assert "Not confirmed yet" in b
+        assert 'href="/confirm"' in b
+
+        # Check Google verified
+        c = login_as_user(app, name="g_ver", password=PASSWORD)
+        b = c.get("/settings").get_data(as_text=True)
+        assert "reg-locked" in b
+        assert "chip-ok" in b
+        assert "Verified" in b
+        assert "Not confirmed yet" not in b
+
+        # Check normal unverified
+        c = login_as_user(app, name="norm_unv", password=PASSWORD)
+        b = c.get("/settings").get_data(as_text=True)
+        assert "reg-locked" not in b
+        assert "Not confirmed yet" in b
+        assert 'href="/confirm"' in b
+        assert "Confirmed." not in b
+
+        # Check normal verified
+        c = login_as_user(app, name="norm_ver", password=PASSWORD)
+        b = c.get("/settings").get_data(as_text=True)
+        assert "reg-locked" not in b
+        assert "Confirmed." in b
+        assert "Not confirmed yet" not in b
+
+
+def test_d2_break_on_purpose_no_mail_sent(app):
+    """Break on purpose: if verify_email_address is not called, no mail is triggered."""
+    from CTFd.utils.email import verify_email_address
+    with patch("CTFd.plugins.l3mon_theme.pages.team_settings.verify_email_address") as mock_verify:
+        # If call is omitted or fails, verify_email_address call count is 0
+        assert mock_verify.call_count == 0

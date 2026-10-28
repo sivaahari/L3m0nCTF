@@ -93,6 +93,7 @@
 <main id="main" class="ac-main">
 <section class="ac" aria-labelledby="tm-h" data-account="team">
 {% if tm.hasNotice %}<p class="ac-notice" role="status"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>{{ tm.notice }}</span></p>{% endif %}
+{% if tm.hasSummary %}<div class="summary" role="alert" tabindex="-1" data-summary><p class="summary-h">Fix these to save your changes:</p><ul>{% for item in tm.summary %}<li><a href="{{ item.href }}">{{ item.text }}</a></li>{% endfor %}</ul></div>{% endif %}
 <section class="gd-hero ac-hero" aria-labelledby="tm-h">
 <svg class="lm gd-lm" viewBox="0 -6 128 118" aria-hidden="true"><use href="#mc-body"/><use href="#mc-eyes"/><use href="#mc-smile"/></svg>
 <h1 id="tm-h" class="gd-kicker">Your studio</h1>
@@ -125,10 +126,11 @@
 <h2 id="tm-det-h" class="gd-sh">Studio details</h2>
 <form class="form ac-form" method="post" action="/team" novalidate>
 <input type="hidden" name="nonce" value="{{ csrf }}">
-<div class="field" data-field>
+<div class="field{% if tm.err.name %} has-error{% endif %}" data-field>
 <label class="field-l" for="t-name">Studio name</label>
 <p class="field-h" id="t-name-h">Names are unique and not case-sensitive.</p>
-<input class="input" id="t-name" name="name" type="text" autocomplete="off" spellcheck="false" maxlength="64" value="{{ tm.name }}" aria-describedby="t-name-h">
+{% if tm.err.name %}<p class="field-e" id="t-name-e"><svg class="ico" aria-hidden="true"><use href="#i-warn"/></svg>{{ tm.err.name }}</p>{% endif %}
+<input class="input" id="t-name" name="name" type="text" autocomplete="off" spellcheck="false" maxlength="64" value="{{ tm.name }}" aria-describedby="t-name-h{% if tm.err.name %} t-name-e{% endif %}"{% if tm.err.name %} aria-invalid="true"{% endif %}>
 </div>
 <div class="two ac-two">
 <div class="field" data-field>
