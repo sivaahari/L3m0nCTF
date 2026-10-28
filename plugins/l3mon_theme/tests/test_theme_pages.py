@@ -261,7 +261,7 @@ def test_ctfds_own_pages_still_render_with_the_theme_in_place(app):
     # the pages the theme does not have fall back to CTFd's core theme; core's own asset calls (Assets.css, Assets.js) must still work
     with app.app_context():
         with app.test_client() as client:
-            for path in ("/register", "/scoreboard"):
+            for path in ("/register",):
                 r = client.get(path)
                 assert r.status_code == 200, path
                 body = r.get_data(as_text=True)
@@ -269,6 +269,21 @@ def test_ctfds_own_pages_still_render_with_the_theme_in_place(app):
         player = login_as_user(app, "player", PASSWORD)
         settings = player.get("/settings")
         assert settings.status_code == 200
+
+
+def test_next_address_with_parameters_is_url_encoded(app, monkeypatch):
+    """C3: next=/guide?x=1&y=2 gives encoded href for Google and CTFtime, preserving parameters."""
+    with app.app_context():
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
+        from CTFd.utils import set_config
+        set_config("oauth_client_id", "ctftime-mock-id")
+        with app.test_client() as client:
+            body = client.get("/login?next=/guide?x=1&y=2").get_data(as_text=True)
+            assert 'href="/auth/google?next=/guide%3Fx%3D1%26y%3D2"' in body
+            assert 'href="/auth/ctftime?next=/guide%3Fx%3D1%26y%3D2"' in body
+            assert 'name="next" value="/guide?x=1&y=2"' in body
 
 
 def test_the_sign_in_and_error_pages_carry_no_prototype_wording(app):

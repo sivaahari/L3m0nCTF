@@ -15,6 +15,7 @@ import logging
 from flask import abort, jsonify, render_template, request, Response
 
 from CTFd.models import Teams, db
+from CTFd.plugins.l3mon_core.signup_rules import enforced
 from CTFd.plugins.l3mon_core.text import plain_text
 from CTFd.plugins.l3mon_guard.crew_api import bp as admin_bp, page_bp as admin_page_bp
 from CTFd.plugins.l3mon_guard.evidence import record
@@ -55,12 +56,13 @@ def _wrap_register(orig_view):
                 return render_template("register.html", errors=[err], name=name, email=email)
 
             # 1b. Password policy check
-            raw_password = request.form.get("password", "")
-            name = request.form.get("name", "").strip()
-            raw_email = request.form.get("email", "").strip()
-            pw_ok, pw_err = validate_password(raw_password, username=name, email=raw_email)
-            if not pw_ok:
-                return render_template("register.html", errors=[pw_err], name=name, email=raw_email)
+            if enforced():
+                raw_password = (request.form.get("password") or "").strip()
+                name = request.form.get("name", "").strip()
+                raw_email = request.form.get("email", "").strip()
+                pw_ok, pw_err = validate_password(raw_password, username=name, email=raw_email)
+                if not pw_ok:
+                    return render_template("register.html", errors=[pw_err], name=name, email=raw_email)
 
             # 2. Disposable email check
             raw_email = request.form.get("email", "").strip()
@@ -142,8 +144,8 @@ def _wrap_reset_password(orig_view):
                 return render_template("reset_password.html", errors=[err], mode=mode)
 
             # Password policy check on new password submission
-            if "password" in request.form:
-                raw_password = request.form.get("password", "")
+            if "password" in request.form and enforced():
+                raw_password = (request.form.get("password") or "").strip()
                 token_data = kwargs.get("data")
                 username = ""
                 user_email = ""
@@ -153,7 +155,14 @@ def _wrap_reset_password(orig_view):
                     cached_email = cache.get(f"reset_password_{token_data}")
                     if cached_email:
                         user_email = cached_email
-                        u = Users.query.filter_by(email=cached_email).first()
+                    else:
+                        try:
+                            from CTFd.utils.security.signing import unserialize
+                            user_email = unserialize(token_data, max_age=1800)
+                        except Exception:
+                            pass
+                    if user_email:
+                        u = Users.query.filter_by(email=user_email).first()
                         if u:
                             username = u.name
                 pw_ok, pw_err = validate_password(raw_password, username=username, email=user_email)
@@ -172,13 +181,22 @@ def _wrap_user_api_patch(orig_view):
         if request.method in ("PATCH", "POST"):
             data = request.get_json(silent=True)
             if isinstance(data, dict) and "password" in data:
-                from CTFd.utils.user import get_current_user
-                user = get_current_user()
-                username = user.name if user else ""
-                email = user.email if user else ""
-                pw_ok, pw_err = validate_password(data["password"], username=username, email=email)
-                if not pw_ok:
-                    return jsonify({"success": False, "errors": {"password": [pw_err]}}), 400
+                if enforced():
+                    from CTFd.utils.user import get_current_user
+                    user = get_current_user()
+                    username = user.name if user else ""
+                    email = user.email if user else ""
+                    target_user_id = kwargs.get("user_id")
+                    if target_user_id is not None and (not user or user.id != target_user_id):
+                        from CTFd.models import Users
+                        u = Users.query.filter_by(id=target_user_id).first()
+                        if u:
+                            username = u.name
+                            email = u.email
+                    raw_pw = (str(data["password"]) if data["password"] is not None else "").strip()
+                    pw_ok, pw_err = validate_password(raw_pw, username=username, email=email)
+                    if not pw_ok:
+                        return jsonify({"success": False, "errors": {"password": [pw_err]}}), 400
         return orig_view(*args, **kwargs)
 
     return wrapped
@@ -303,7 +321,8 @@ def load(app):
         if endpoint in app.view_functions:
             app.view_functions[endpoint] = _wrap_team_api_patch(app.view_functions[endpoint])
 
-    for ep in ("api.users_user_private", "api.users_user_me", "api.users_user_detail"):
+    # CTFd's own endpoint names: PATCH /api/v1/users/me (api.users_user_private) and PATCH /api/v1/users/<id> (api.users_user_public).
+    for ep in ("api.users_user_private", "api.users_user_public"):
         if ep in app.view_functions:
             app.view_functions[ep] = _wrap_user_api_patch(app.view_functions[ep])
 

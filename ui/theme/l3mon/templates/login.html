@@ -10,16 +10,16 @@
 {% set ctftime_on = l3.ctftime_on %}
 {% set cap = l3.captcha %}
 {% set captcha = {'sitekey': cap.sitekey or none} %}
-{% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ safe_next if safe_next else '') %}
+{% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ (safe_next|urlencode) if safe_next else '') %}
 {% set google_on = l3.google_on %}
-{% set google_href = '/auth/google' ~ ('?next=' ~ safe_next if safe_next else '') %}
+{% set google_href = '/auth/google' ~ ('?next=' ~ (safe_next|urlencode) if safe_next else '') %}
 {% set login = {
   'alert': {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none,
   'summary': [],
   'hasSummary': false,
   'errors': {'name': none, 'password': none},
   'name': request.form.get('name', ''),
-  'next': next_to,
+  'next': safe_next,
   'remember': false,
   'showRemember': false,
   'human': true if (cap.sitekey and cap.login) else false,
