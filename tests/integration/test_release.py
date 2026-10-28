@@ -244,7 +244,7 @@ def test_05_a_programme_pulled_back_leaves_every_list_and_its_flag_records_nothi
     status, before = admin("GET", f"/api/v1/submissions?challenge_id={world.ids.first}")
     change({"kind": "programme", "id": world.programme["quokka"], "mode": "withhold"}, reason="found a leak")
     assert visible_names(world.session) == {SECOND["name"]}
-    for path in (f"/api/v1/teams/{world.team_id}/solves", f"/api/v1/users/{world.user_id}/solves", "/api/v1/teams/me/solves", "/api/v1/users/me/solves", f"/teams/{world.team_id}", "/team"):
+    for path in (f"/api/v1/teams/{world.team_id}/solves", f"/api/v1/users/{world.user_id}/solves", "/api/v1/teams/me/solves", "/api/v1/users/me/solves", "/team"):  # (/teams/<id> is closed to players: test_board.py test_08)
         status, body = get_json(world.session, path)
         assert status == 200
         assert FIRST["name"] not in (json.dumps(body) if not isinstance(body, str) else body), path

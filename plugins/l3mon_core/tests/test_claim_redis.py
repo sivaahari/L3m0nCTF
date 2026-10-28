@@ -73,6 +73,14 @@ def test_a_flag_left_without_a_lifetime_by_a_lost_expire_is_taken_over_once_it_i
     assert 0 < client.ttl(PREFIX + KEY) <= 30, "and it has a lifetime again"
 
 
+def test_a_lifetime_written_as_a_fraction_is_accepted_by_redis(real):
+    """`claim(key, 10.0)` reached Redis as `EXPIRE key 10.0`, which Redis answers with "value is not an integer or out of range"."""
+    client, _ = real
+    assert claim_module.claim(KEY, 10.0) is True
+    assert 0 < client.ttl(PREFIX + KEY) <= 10
+    assert claim_module.claim(KEY, 10.0) is False
+
+
 def test_a_flag_that_expires_by_itself_is_free_again(real):
     client, _ = real
     assert claim_module.claim(KEY, 1) is True
