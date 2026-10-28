@@ -292,7 +292,10 @@ def programme_view(programme, channel, detail):
 
 STATE = "l3mon.theme.board"  # the key in this request's environ: what the request built, kept for the request only (flask.g outlives a request when a test, or a
 #                              caller, holds one application context, and stale board data would then be served to the next request)
+CHALLENGES = "/challenges"
+BOARD = "/board"
 NOTIFICATIONS = "/notifications"
+HOOKS = {"redirect_challenges": True}
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
 
 
@@ -512,6 +515,26 @@ def _board_view(slug=None):
     return page
 
 
+def _redirect_challenges():
+    """Before CTFd's own challenges listing: for our theme, GET and HEAD /challenges from any signed-in account redirects 302 to /board.
+    A visitor keeps CTFd's own answer (the sign-in redirect with next=/challenges).
+    Only that address and only those methods; costs nothing on other paths.
+    """
+    from flask import redirect, request
+
+    if not HOOKS.get("redirect_challenges") or request.path != CHALLENGES or request.method not in ("GET", "HEAD"):
+        return None
+    from CTFd.utils import get_config
+
+    if get_config("ctf_theme") != "l3mon":
+        return None
+    from CTFd.utils.user import authed
+
+    if not authed():
+        return None
+    return redirect(BOARD, code=302)
+
+
 def _serve_notifications():
     """Before the guard of l3mon_board/notices.py: the notifications page for a player who may read the news."""
     from flask import abort, redirect, render_template, request, url_for
@@ -562,3 +585,8 @@ def install(app):
         hooks = app.before_request_funcs.setdefault(None, [])
         at = hooks.index(notices.guard) if notices.guard in hooks else len(hooks)
         hooks.insert(at, _serve_notifications)  # just before the guard that closes the stock page, so CTFd's own request hooks still run first
+    if "l3mon_theme_challenges_redirect" not in app.extensions:
+        app.extensions["l3mon_theme_challenges_redirect"] = True
+        hooks = app.before_request_funcs.setdefault(None, [])
+        at = hooks.index(notices.guard) if notices.guard in hooks else len(hooks)
+        hooks.insert(at, _redirect_challenges)

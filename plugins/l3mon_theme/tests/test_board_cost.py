@@ -39,8 +39,8 @@ def measure(client, path):
     for _ in range(3):
         clear_standings()
         clear_challenges()
-        first, cold = statements_of(lambda: client.get(path))
-        second, warm = statements_of(lambda: client.get(path))
+        first, cold = statements_of(lambda: client.get(path, follow_redirects=True))
+        second, warm = statements_of(lambda: client.get(path, follow_redirects=True))
         assert first.status_code == 200 and second.status_code == 200, (path, first.status_code, second.status_code)
         colds.append(len(cold))
         warms.append(len(warm))
@@ -128,7 +128,7 @@ def counted():
 @pytest.mark.parametrize("path", ["/board", "/challenges", "/board/extra_0", "/board?ch=2"])
 def test_a_board_request_builds_the_board_once(counted, path):
     counted.calls.clear()
-    assert counted.player.get(path).status_code == 200
+    assert counted.player.get(path, follow_redirects=True).status_code == 200
     assert len(counted.calls) == 1, f"{path} built the board {len(counted.calls)} times"
 
 
@@ -152,6 +152,23 @@ def test_the_notifications_hook_costs_a_request_that_is_not_ours_nothing(counted
     with counted.app.test_request_context("/notifications", method="POST"):
         result, seen = statements_of(page._serve_notifications)
     assert result is None and seen == [], "only a GET or a HEAD of exactly /notifications is ours"
+
+
+def test_the_challenges_redirect_hook_costs_a_request_that_is_not_ours_nothing(counted):
+    from CTFd.plugins.l3mon_theme.pages import board as page
+
+    with counted.app.test_request_context("/api/v1/challenges"):
+        result, seen = statements_of(page._redirect_challenges)
+    assert result is None and seen == []
+    with counted.app.test_request_context("/challenges", method="POST"):
+        result, seen = statements_of(page._redirect_challenges)
+    assert result is None and seen == [], "only a GET or a HEAD of exactly /challenges is ours"
+    with counted.app.test_request_context("/challenges/1"):
+        result, seen = statements_of(page._redirect_challenges)
+    assert result is None and seen == []
+    with counted.app.test_request_context("/notifications"):
+        result, seen = statements_of(page._redirect_challenges)
+    assert result is None and seen == []
 
 
 def test_a_value_is_read_only_when_a_template_asks_for_it(counted):

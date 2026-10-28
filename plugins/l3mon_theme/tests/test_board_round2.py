@@ -152,7 +152,7 @@ def test_the_first_small_print_of_the_footer_is_the_contact_line(play, path):
     """src/js/report.js reads `.foot-small` (the first one) and the text from "Contact:" up to a middle dot. Until the crew has set an address
     the line is "Contact: announced soon"; if the footer changes, the report box would silently lose its contact, so this fails first."""
     with clock(T_LIVE):
-        html = text(play.alice.get(path))
+        html = text(play.alice.get(path, follow_redirects=True))
     assert first_small_print(html) == "Contact: announced soon"
     assert re.search(r"Contact:[^·]*", first_small_print(html)).group(0).strip() == "Contact: announced soon"
     assert "·" not in first_small_print(html), "the real platform's footer never carries the prototype tools' status text"

@@ -206,3 +206,30 @@ Not broken on purpose (they are browser-only): that the panel asks CTFd by numbe
 ## R7. Screenshots (outside the repositories)
 
 `D:\CTF_Sanjai\work\_shots\round2\`: `board-desktop`, `panel-desktop`, `hint-ad-desktop`, `flag-wrong-desktop`, `flag-right-desktop`, `report-desktop`, `bell-desktop`, `instance-unavailable-desktop`, `noscript-solved-desktop`, `noscript-unsolved-desktop` (1440 and 1100 px wide), `board-phone`, `panel-phone`, `notifications-phone` (390 px), `notifications-desktop`.
+
+
+## Round 3
+
+Written 28 October 2026 for stream A, round 3 (`FIX-PROMPT-A.md`).
+
+### Findings table (A1 to A5)
+
+| Finding | What was done | Test proving it | Break-on-purpose result |
+|---|---|---|---|
+| **A1. `/challenges` redirects signed-in users to `/board`** | Added `_redirect_challenges()` `before_request` hook in `plugins/l3mon_theme/pages/board.py`: `GET` and `HEAD` on `/challenges` for any signed-in account (`authed()`) returns `302` to `/board` under `l3mon` theme. Visitors keep CTFd's login redirect with `next=/challenges`. Subpaths (`/challenges/...`), `POST` and other methods, and the API are untouched. Hook cost on other paths is 0 statements. None of our theme pages link to `/challenges` (all link to `/board`). | `plugins/l3mon_theme/tests/test_board_round3.py` (19 passed), `test_board_pages.py` (29 passed), `test_board_cost.py` (2 passed). | With `page.HOOKS["redirect_challenges"] = False`, `test_before_the_start_the_board_shows_its_own_not_on_air_page_and_the_stock_address_keeps_ctfds_gate` fails with HTTP `403` ("CTFd's own address keeps CTFd's gate"), proving redirect happens before CTFd's 403. |
+| **A2. `test_guide.py::test_04` expects studio's own page** | Updated `tests/integration/test_guide.py::test_04_the_bell_carries_a_private_line_to_its_studio_alone_and_the_stock_door_is_closed` to assert HTTP `200` with `PRIVATE in text` for a player of that studio, and HTTP `200` with `PRIVATE not in text` for a player of another studio. Also updated `tests/integration/test_theme_a.py::test_02_the_challenge_address_redirects_a_signed_in_player_to_the_board`. | `tests/integration/test_guide.py` (lines 118-121) and `tests/integration/test_theme_a.py`. | Inverting the assertion to expect `404` or expecting `PRIVATE` in `text_other` immediately fails the test. |
+| **A3. Run results and open items** | Ran all local test suites: UI suite (370 passed, 1 skipped), UI build & budgets (passed within limits), exporter idempotency (identical twice, 29 files), prototype smoke (5113/5113 passed), full plugin suite in Docker (902 passed, 0 failed), CTFd suite in Docker (675 passed, 1 upstream failed), UI and public hygiene scans (0 findings). Full host integration suite & instancer overlay deferred to PR CI / lead. | `node --test` (370 pass), `node tools/build.mjs`, `node tools/export-theme.mjs`, `node tools/smoke.mjs` (5113/5113 pass), `run-ctfd-tests.sh` on `/l3mon_tests` (902 pass, 0 fail), both hygiene scans (0 findings). | Breaking budgets or test assertions causes immediate failures in respective suites. |
+| **A4. Items for owner and lead** | Recorded for lead/owner: (1) One sentence for owner: The panel hides "In the story" when `l3mon.story` is empty (SP7); the owner must confirm this is acceptable for now. (2) `contract.js` one line moved (R4) is ready for lead to merge. (3) `platform-ui/docs/contract-a-channels.md` (lines 36-51) documents exact lines for Stream C to adopt `l3.crawl` and specifies studio private lines are never in the crawl. | Verified `platform-ui/docs/contract-a-channels.md` lines 36-51. | N/A (documentation / lead action). |
+| **A5. Real-board browser run after merge** | Re-run `node tools/smoke-real-board.mjs` once lead merges all four branches (A, B, C, D) and send output. | Standby for lead merge. | N/A (deferred until post-merge). |
+
+### Summary of checks and counts
+
+- **UI whole test suite (`node --test`)**: `tests 371`, `suites 0`, `pass 370`, `fail 0`, `skipped 1` (179.5s).
+- **UI build and budgets (`node tools/build.mjs`)**: All 21 pages and slates within limits (board: 63.1 of 66 KB, total 87.7 of 96 KB).
+- **Theme exporter twice (`node tools/export-theme.mjs`)**: Exported 29 files, byte-for-byte identical on both runs and 100% clean with working tree.
+- **Prototype smoke suite (`node tools/smoke.mjs`)**: 5,113 / 5,113 checks passed across all scenarios.
+- **Theme and plugin suite in Docker (`tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests`)**: `902 passed, 923 warnings in 390.40s (0:06:30)`, 0 failed.
+- **CTFd's own suite in Docker (`tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -n 2 -p no:randomly tests`)**: `675 passed, 1 failed, 1468 warnings in 354.33s (0:05:54)`. (Single failure is upstream `test_update_check_ignores_downgrades` where safe mode skips plugin loading).
+- **UI hygiene scan (`node tools/hygiene.mjs --no-challenges`)**: 247 files checked, 0 problems.
+- **Public repo hygiene scan (`python -m l3mon hygiene --root .. --history`)**: 0 findings.
+- **Integration files**: `tests/integration/test_guide.py::test_04` and `tests/integration/test_theme_a.py` updated and verified. The remainder of the host integration suite (`test_hardening`, `test_instances`, `test_ops_*`, `test_production_*`, `test_release`, `test_restore_drill`, `test_ops_backup`) and real-stack run with instancer overlay ON require port 8080 and fixture image builds; they will be validated in the PR CI against `pre-deployment`.

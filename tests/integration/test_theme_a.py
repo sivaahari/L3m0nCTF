@@ -47,10 +47,12 @@ def test_01_a_player_gets_the_themes_board_through_nginx(world):
     assert headers.get("Cache-Control", "").lower().find("public") < 0, "a page about one studio is never public"
 
 
-def test_02_the_challenge_address_draws_the_same_board(world):
+def test_02_the_challenge_address_redirects_a_signed_in_player_to_the_board(world):
+    status, headers, _ = page(world.players[0], "/challenges")
+    assert status == 302 and headers["Location"].endswith("/board")
     _, _, a = page(world.players[0], "/board")
-    status, _, b = page(world.players[0], "/challenges")
-    assert status == 200 and re.sub(r"\s+", " ", a) == re.sub(r"\s+", " ", b)
+    status_b, _, b = page(world.players[0], headers["Location"])
+    assert status_b == 200 and re.sub(r"\s+", " ", a) == re.sub(r"\s+", " ", b)
 
 
 def test_03_the_files_the_board_names_are_served(world):

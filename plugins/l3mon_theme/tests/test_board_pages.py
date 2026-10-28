@@ -7,11 +7,13 @@ a solve first). Run through tools/run-ctfd-tests.sh (see docs/deploy/theme-slice
 """
 import html as htmllib
 import re
+from unittest import mock
 
 import pytest
 
 from CTFd.models import Users, db
 from CTFd.utils import set_config
+from CTFd.plugins.l3mon_theme.pages import board as page
 from theme_a_world import (  # noqa: F401  (the fixture is used by name)
     PASSWORD, T_END, T_LIVE, T_START, clock, main_of, on_air, play, register_user, statements_of, text, withhold,
 )
@@ -36,7 +38,7 @@ def forbidden_words(html):
 @pytest.mark.parametrize("path", BOARD_PATHS)
 def test_a_player_gets_the_themes_board_with_the_first_channel_tuned(play, path):
     with clock(T_LIVE):
-        r = play.alice.get(path)
+        r = play.alice.get(path, follow_redirects=True)
         html = text(r)
     assert r.status_code == 200
     assert 'data-board' in html and 'id="board-h"' in html and "Channels" in html
@@ -51,7 +53,7 @@ def test_a_player_gets_the_themes_board_with_the_first_channel_tuned(play, path)
 
 def test_the_board_names_the_bundles_of_the_theme_and_the_sessions_token(play):
     with clock(T_LIVE):
-        html = text(play.alice.get("/challenges"))
+        html = text(play.alice.get("/challenges", follow_redirects=True))
         with play.alice.session_transaction() as sess:
             nonce = sess["nonce"]
     assert f'<meta name="csrf-token" content="{nonce}">' in html
@@ -62,7 +64,7 @@ def test_the_board_names_the_bundles_of_the_theme_and_the_sessions_token(play):
 
 def test_the_board_and_the_challenge_address_draw_the_same_page(play):
     with clock(T_LIVE):
-        a, b = text(play.alice.get("/challenges")), text(play.alice.get("/board"))
+        a, b = text(play.alice.get("/challenges", follow_redirects=True)), text(play.alice.get("/board"))
     assert main_of(a) == main_of(b)
     assert re.sub(r"\s+", " ", a) == re.sub(r"\s+", " ", b)
 
@@ -169,7 +171,14 @@ def test_a_player_without_a_studio_is_sent_to_make_one(play):
     with clock(T_LIVE):
         register_user(play.app, name="loner", email="loner@example.com", password=PASSWORD)
         loner = login_as_user(play.app, "loner", PASSWORD)
-        gates = [seen(loner.get(p)) for p in ("/challenges", "/board", "/board/lantern_walk", "/board/nothing_like_it")]
+        # /challenges sends a signed-in player to /board, which sends them to /team
+        r_ch = loner.get("/challenges")
+        assert r_ch.status_code == 302 and r_ch.headers["Location"].endswith("/board")
+        r_board_from_ch = loner.get(r_ch.headers["Location"])
+        assert r_board_from_ch.status_code == 302 and "/team" in r_board_from_ch.headers["Location"]
+
+        # /board and deep links send them directly to /team
+        gates = [seen(loner.get(p)) for p in ("/board", "/board/lantern_walk", "/board/nothing_like_it")]
     assert all(status == 302 and location.startswith("/team") for status, location in gates), gates
 
 
@@ -179,7 +188,13 @@ def test_an_unverified_account_is_sent_to_confirm_its_address(play):
         user = Users.query.filter_by(name="bob").first()
         user.verified = False
         db.session.commit()
-        gates = [seen(play.bob.get(p)) for p in ("/challenges", "/board", "/board/lantern_walk")]
+        # /challenges sends a signed-in player to /board, which sends them to /confirm
+        r_ch = play.bob.get("/challenges")
+        assert r_ch.status_code == 302 and r_ch.headers["Location"].endswith("/board")
+        r_board_from_ch = play.bob.get(r_ch.headers["Location"])
+        assert r_board_from_ch.status_code == 302 and "confirm" in r_board_from_ch.headers["Location"]
+
+        gates = [seen(play.bob.get(p)) for p in ("/board", "/board/lantern_walk")]
     assert all(status == 302 and "confirm" in location for status, location in gates), gates
     with clock(T_LIVE):  # the other studio's player is verified
         assert play.alice.get("/board").status_code in (200, 302)
@@ -207,7 +222,9 @@ def test_before_the_start_the_board_shows_its_own_not_on_air_page_and_the_stock_
                 assert re.search(r"It starts at \d\d:\d\d IST on \d{1,2} [A-Z][a-z]+ \d{4}\.", html)
                 assert "lantern_walk" not in html and "Lantern Walk" not in html
         forbidden_words(text(play.alice.get("/board")))
-        assert play.alice.get("/challenges").status_code == 403, "CTFd's own address keeps CTFd's gate"
+        assert play.alice.get("/challenges").status_code == 302 and play.alice.get("/challenges").headers["Location"].endswith("/board")
+        with mock.patch.dict(page.HOOKS, {"redirect_challenges": False}):
+            assert play.alice.get("/challenges").status_code == 403, "CTFd's own address keeps CTFd's gate"
         assert seen(play.app.test_client().get("/board"))[0] == 302, "a visitor is still sent to sign in"
         register_user(play.app, name="loner", email="loner@example.com", password=PASSWORD)
         loner = login_as_user(play.app, "loner", PASSWORD)
@@ -252,10 +269,17 @@ def test_the_gates_of_the_three_addresses_agree_in_every_state(play):
             for who, client in clients.items():
                 one = seen(client.get("/challenges"))
                 if name == "before":
+                    if who != "visitor":
+                        assert one == (302, "/board"), (name, who, "signed-in account on /challenges redirects 302 to /board")
                     continue  # the board shows its own page before the start (tested above); CTFd's address keeps its 403
+                if who != "visitor":
+                    assert one == (302, "/board"), (name, who, "signed-in account on /challenges redirects 302 to /board")
+                    followed = seen(client.get("/challenges", follow_redirects=True))
+                    assert followed == seen(client.get("/board")), (name, who, "/challenges followed agrees with /board")
+                    continue
                 assert seen(client.get("/board")) == one, (name, who, "/board")
                 assert seen(client.get("/board/lantern_walk"))[0] in (one[0], 404), (name, who, "/board/<slug>")
-                if one[0] != 200 and name != "before":
+                if one[0] != 200:
                     assert seen(client.get("/board/lantern_walk")) == one, (name, who, "/board/<slug>")
 
 

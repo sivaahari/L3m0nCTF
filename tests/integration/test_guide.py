@@ -116,7 +116,9 @@ def test_04_the_bell_carries_a_private_line_to_its_studio_alone_and_the_stock_do
     _, _, other_guide = ask(world.players[1], GUIDE)
     assert PRIVATE not in json.dumps(other_guide)
     status, _, text = raw(world.players[0], "/notifications")
-    assert status == 404, "CTFd's own page lists every notification; it is closed to players"
+    assert status == 200 and PRIVATE in text, "the notifications page carries the studio's own private line"
+    status_other, _, text_other = raw(world.players[1], "/notifications")
+    assert status_other == 200 and PRIVATE not in text_other, "another studio does not see the private line"
     for odd in ("1", "+1", "1.0", "1x"):
         status, _, text = raw(world.players[0], f"{BELL}/{odd}")
         assert status == 404 and "boardplayer" not in text and "team_id" not in text, odd
