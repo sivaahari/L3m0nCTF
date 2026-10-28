@@ -24,6 +24,18 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 # a path such as C:/folder (a Windows shell) would be read by GNU tar as "host:path" without this
 tar_help="$(tar --help 2>&1 || true)"; tar_local=(); if [[ "$tar_help" == *--force-local* ]]; then tar_local=(--force-local); fi
 tarf() { tar "${tar_local[@]}" "$@"; }
+# an HMAC-SHA256 over the ciphertext with a key derived from the passphrase (PBKDF2); the passphrase goes in on stdin, never on a command line
+py=""; for candidate in python3 python; do if "$candidate" -c "import hashlib, hmac" >/dev/null 2>&1; then py="$candidate"; break; fi; done   # a Windows shell may hold a store shortcut that only looks like python3
+state_mac() {
+  "$py" -c '
+import hashlib, hmac, sys
+key = hashlib.pbkdf2_hmac("sha256", sys.stdin.buffer.read(), b"l3mon-state-mac-v1", 200000)
+mac = hmac.new(key, digestmod="sha256")
+with open(sys.argv[1], "rb") as f:
+    for chunk in iter(lambda: f.read(1 << 20), b""):
+        mac.update(chunk)
+print(mac.hexdigest())' "$1"
+}
 etc="${L3MON_ETC:-/etc/l3mon}"
 out="$root/backups"
 encrypt=0
@@ -69,7 +81,7 @@ fi
 
 echo "2/6 The story volume ..."
 story_files="$(compose exec -T ctfd sh -c 'ls -A /var/story 2>/dev/null | wc -l' | tr -d '[:space:]' || true)"
-story_files="${story_files:-0}"
+[[ "$story_files" =~ ^[0-9]{1,9}$ ]] || story_files=0   # a number or nothing: [[ -gt ]] would evaluate anything else as an expression
 if [[ "$story_files" -gt 0 ]]; then
   compose exec -T ctfd sh -c 'cd /var/story && exec tar -cf - .' | gzip -9 > "$state/story.tar.gz"
 fi
@@ -126,13 +138,18 @@ if [[ "$encrypt" -eq 1 ]]; then
     read -rsp "Again: " pass2 || { rm -f "$plain"; echo "Could not read the passphrase again. Nothing was written." >&2; exit 1; }; echo
   fi
   [[ -n "$pass1" && "$pass1" == "$pass2" ]] || { rm -f "$plain"; echo "The two passphrases differ (or are empty). Nothing was written." >&2; exit 1; }
+  [[ -n "$py" ]] || { rm -f "$plain"; echo "python3 is needed to authenticate the encrypted file. Nothing was written." >&2; exit 1; }
   final="$plain.enc"
   printf '%s' "$pass1" | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass stdin -in "$plain" -out "$final"
   # prove that it opens before the plain copy goes
   back="$(printf '%s' "$pass1" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass stdin -in "$final" | sha256sum | cut -d' ' -f1)"
   want="$(sha256sum "$plain" | cut -d' ' -f1)"
-  unset pass1 pass2
   [[ "$back" == "$want" ]] || { rm -f "$final"; echo "The encrypted copy does not open back into the original. The plain file is kept: $plain" >&2; exit 1; }
+  # the file's last line is an HMAC over the ciphertext (key derived from the passphrase): tools/import-state.sh checks it before it decrypts anything,
+  # so a changed file is refused and cannot steer the decryption
+  mac="$(printf '%s' "$pass1" | state_mac "$final")"
+  printf '\nL3MON-MAC-%s\n' "$mac" >> "$final"
+  unset pass1 pass2
   chmod 600 "$final"
   if command -v shred >/dev/null 2>&1; then shred -u "$plain"; else rm -f "$plain"; fi
 fi

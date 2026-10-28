@@ -22,6 +22,19 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 # a path such as C:/folder (a Windows shell) would be read by GNU tar as "host:path" without this
 tar_help="$(tar --help 2>&1 || true)"; tar_local=(); if [[ "$tar_help" == *--force-local* ]]; then tar_local=(--force-local); fi
 tarf() { tar "${tar_local[@]}" "$@"; }
+# the file's authenticity: an HMAC-SHA256 over the ciphertext, with a key derived from the passphrase (PBKDF2), kept as the file's last line. The passphrase
+# goes in on stdin, never on a command line.
+py=""; for candidate in python3 python; do if "$candidate" -c "import hashlib, hmac" >/dev/null 2>&1; then py="$candidate"; break; fi; done   # a Windows shell may hold a store shortcut that only looks like python3
+state_mac() {
+  "$py" -c '
+import hashlib, hmac, sys
+key = hashlib.pbkdf2_hmac("sha256", sys.stdin.buffer.read(), b"l3mon-state-mac-v1", 200000)
+mac = hmac.new(key, digestmod="sha256")
+with open(sys.argv[1], "rb") as f:
+    for chunk in iter(lambda: f.read(1 << 20), b""):
+        mac.update(chunk)
+print(mac.hexdigest())' "$1"
+}
 etc="${L3MON_ETC:-/etc/l3mon}"
 sudo_cmd="${L3MON_SUDO-sudo}"
 tls_group="${L3MON_TLS_GROUP-101}"
@@ -57,14 +70,33 @@ if [[ "$file" == *.enc ]]; then
   if [[ -n "${L3MON_STATE_PASSPHRASE_FILE:-}" ]]; then pass="$(cat "$L3MON_STATE_PASSPHRASE_FILE")"
   else read -rsp "Passphrase of the file (not shown): " pass || { echo "Could not read a passphrase: run this from a terminal, or set L3MON_STATE_PASSPHRASE_FILE." >&2; exit 1; }; echo; fi
   plain="$work/state.tar"
-  if ! printf '%s' "$pass" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass stdin -in "$file" -out "$plain" 2>/dev/null; then
+  [[ -n "$py" ]] || { echo "python3 is needed to check an encrypted file." >&2; exit 1; }
+  # the last line is the HMAC (76 bytes: a line break, "L3MON-MAC-", 64 hex digits, a line break); it is checked BEFORE anything is decrypted
+  trailer="$(tail -c 76 "$file" | tr -d '\n')"
+  if [[ ! "$trailer" =~ ^L3MON-MAC-[0-9a-f]{64}$ ]]; then
+    unset pass; echo "The file did not open: it has no authentication line, so it is damaged or not a file made by tools/export-state.sh. Nothing was changed." >&2; exit 1
+  fi
+  head -c -76 "$file" > "$work/cipher.bin"
+  if [[ "$(printf '%s' "$pass" | state_mac "$work/cipher.bin")" != "${trailer#L3MON-MAC-}" ]]; then
+    unset pass; echo "The file did not open: the passphrase is wrong, or the file was changed. Nothing was changed." >&2; exit 1
+  fi
+  if ! printf '%s' "$pass" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass stdin -in "$work/cipher.bin" -out "$plain" 2>/dev/null; then
     unset pass; echo "The file did not open: the passphrase is wrong or the file is damaged. Nothing was changed." >&2; exit 1
   fi
   unset pass
+else
+  echo "Note: this file is not encrypted, so nothing proves who made it. Use only a file you made yourself and kept private." >&2
 fi
-members="$(tarf -tf "$plain")"   # read whole first: a pipe into `grep -q` would end tar early and, with pipefail, hide the match
+# Only plain files and folders are allowed in it (no link, no device), and no name may point outside its own folder: the checksums inside prove the
+# file is whole, not that it is ours, so what it holds is never trusted beyond that. Read the lists whole first: a pipe into `grep -q` would end tar
+# early and, with pipefail, hide the match.
+members="$(tarf -tf "$plain")"
+kinds="$(tarf -tvf "$plain")"
 if grep -Eq '(^/|(^|/)\.\.(/|$))' <<< "$members"; then
   echo "The file lists a path that points outside its own folder. It is refused; nothing was changed." >&2; exit 1
+fi
+if grep -Eqv '^[-d]' <<< "$kinds"; then
+  echo "The file holds something that is not a plain file or folder (a link or a device). It is refused; nothing was changed." >&2; exit 1
 fi
 tarf -xf "$plain" -C "$work" --no-same-owner
 state="$work/state"
@@ -72,8 +104,12 @@ state="$work/state"
 if ! ( cd "$state" && sha256sum -c MANIFEST.sha256 --quiet ) >/dev/null 2>&1; then
   echo "A checksum inside the file does not match: the file is damaged or was changed. Nothing was changed." >&2; exit 1
 fi
-env_value() { grep -m1 "^$1=" "$state/STATE.env" | cut -d= -f2-; }
+# STATE.env is data, never code: it is read line by line (not sourced), only printable characters are kept, and every value is checked before it is used
+env_value() { grep -m1 "^$1=" "$state/STATE.env" | cut -d= -f2- | tr -cd '[:print:]' || true; }
 want_commit="$(env_value COMMIT)"
+if [[ ! "$want_commit" =~ ^([0-9a-f]{40}|unknown)$ ]]; then
+  echo "The summary inside the file has no valid commit. Nothing was changed." >&2; exit 1
+fi
 
 if [[ "$mode" == "place" ]]; then
   have_commit="$(git -C "$root" rev-parse HEAD 2>/dev/null || echo none)"
@@ -145,7 +181,8 @@ echo "Replacing the database and the uploaded files ..."
 "$root/tools/restore.sh" "$state/backup" --force
 
 story_files="$(env_value STORY_FILES)"
-if [[ "${story_files:-0}" -gt 0 && -f "$state/story.tar.gz" ]]; then
+[[ "$story_files" =~ ^[0-9]{1,9}$ ]] || story_files=0   # a number or nothing: [[ -gt ]] would evaluate anything else as an expression
+if [[ "$story_files" -gt 0 && -f "$state/story.tar.gz" ]]; then
   echo "Refilling the story volume ($story_files entries) ..."
   volume="$(docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-l3mon}" --filter "label=com.docker.compose.volume=story" | sed -n 1p)"
   [[ -n "$volume" ]] || { echo "No story volume found." >&2; exit 1; }

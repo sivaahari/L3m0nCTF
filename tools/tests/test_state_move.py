@@ -372,3 +372,103 @@ def test_restore_without_a_database_backup_is_refused(old, new):
     export(old, "--skip-backup")
     r = sh("tools/import-state.sh", "restore", str(saved_file(old)), cwd=new["repo"], env=new["env"])
     assert r.returncode != 0 and "skip-backup" in r.stderr
+
+
+# --- a file is never trusted beyond its checksums: found by the automated security review of the first version ---------------------------------------------
+
+
+def rebuilt(old: dict, tmp_path: Path, edit) -> Path:
+    """A plain state file made from the real one with `edit(state_dir)` applied and the manifest recomputed, as someone who can write the file would."""
+    export(old)
+    work = tmp_path / "rebuilt"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir()
+    with tarfile.open(saved_file(old)) as tar:
+        tar.extractall(work, filter="data") if sys.version_info >= (3, 12) else tar.extractall(work)
+    state = work / "state"
+    edit(state)
+    import hashlib
+    lines = []
+    for path in sorted(p for p in state.rglob("*") if p.is_file() and p.name != "MANIFEST.sha256"):
+        lines.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  ./{path.relative_to(state).as_posix()}")
+    (state / "MANIFEST.sha256").write_bytes(("\n".join(lines) + "\n").encode())  # bytes: a Windows text write would end every line with CR LF
+    out = tmp_path / "rebuilt.tar"
+    with tarfile.open(out, "w") as tar:
+        tar.add(state, arcname="state")
+    return out
+
+
+def set_env_line(key: str, value: str):
+    def edit(state: Path):
+        text = (state / "STATE.env").read_text().splitlines()
+        (state / "STATE.env").write_bytes(("\n".join(f"{key}={value}" if line.startswith(key + "=") else line for line in text) + "\n").encode())
+    return edit
+
+
+def test_a_value_in_the_summary_is_never_run_as_code(old, new, tmp_path):
+    """`[[ x -gt 0 ]]` evaluates an array subscript such as a[$(command)]: a crafted STORY_FILES would have run the command."""
+    marker = tmp_path / "PWNED"
+    evil = rebuilt(old, tmp_path, set_env_line("STORY_FILES", f"a[$(touch {marker.as_posix()})]"))
+    assert place(new, evil).returncode == 0
+    r = sh("tools/import-state.sh", "restore", str(evil), cwd=new["repo"], env=new["env"])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not marker.exists(), "the value was evaluated as a command"
+    assert not Path(str(new["log"]) + ".story").exists(), "an unreadable count means no story is refilled"
+
+
+def test_a_summary_without_a_real_commit_is_refused(old, new, tmp_path):
+    evil = rebuilt(old, tmp_path, set_env_line("COMMIT", "$(touch nothing)"))
+    r = place(new, evil)
+    assert r.returncode != 0 and "no valid commit" in r.stderr
+    assert not (new["repo"] / ".secrets").exists()
+
+
+def test_a_link_inside_the_file_is_refused(old, new, tmp_path):
+    def add_link(state: Path):
+        (state / "repo" / "etc-link").symlink_to("/etc")
+    if WINDOWS:
+        pytest.skip("a Windows file system cannot make the link")
+    evil = rebuilt(old, tmp_path, add_link)
+    r = place(new, evil)
+    assert r.returncode != 0 and "link or a device" in r.stderr
+    assert not (new["repo"] / ".secrets").exists()
+
+
+def test_a_changed_byte_in_an_encrypted_file_is_refused_before_anything_is_decrypted(old, new, tmp_path):
+    pass_file = tmp_path / "pass.txt"
+    pass_file.write_text(PASSPHRASE)
+    assert export(old, "--encrypt", env={"L3MON_STATE_PASSPHRASE_FILE": pass_file.as_posix()}).returncode == 0
+    enc = saved_file(old, ".tar.enc")
+    data = bytearray(enc.read_bytes())
+    assert data[-76:].startswith(b"\nL3MON-MAC-") and data[-1:] == b"\n", "the last line is the authentication line"
+    data[200] ^= 0x01
+    bad = tmp_path / "changed.tar.enc"
+    bad.write_bytes(bytes(data))
+    r = place(new, bad, env={"L3MON_STATE_PASSPHRASE_FILE": pass_file.as_posix()})
+    assert r.returncode != 0 and "was changed" in r.stderr
+    assert not (new["repo"] / ".secrets").exists()
+
+
+def test_an_encrypted_file_without_its_authentication_line_is_refused(old, new, tmp_path):
+    pass_file = tmp_path / "pass.txt"
+    pass_file.write_text(PASSPHRASE)
+    export(old, "--encrypt", env={"L3MON_STATE_PASSPHRASE_FILE": pass_file.as_posix()})
+    cut = tmp_path / "cut.tar.enc"
+    cut.write_bytes(saved_file(old, ".tar.enc").read_bytes()[:-76])
+    r = place(new, cut, env={"L3MON_STATE_PASSPHRASE_FILE": pass_file.as_posix()})
+    assert r.returncode != 0 and "no authentication line" in r.stderr
+
+
+def test_a_plain_file_is_accepted_with_a_warning_that_nothing_proves_who_made_it(saved, new):
+    r = place(new, saved)
+    assert r.returncode == 0 and "not encrypted" in r.stderr
+
+
+def test_a_story_count_that_is_not_a_number_is_never_run_as_code_when_saving(old, tmp_path):
+    marker = tmp_path / "PWNED2"
+    r = export(old, env={"FAKE_STORY_COUNT": f"a[$(touch {marker.as_posix()})]"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not marker.exists()
+    with tarfile.open(saved_file(old)) as tar:
+        assert b"STORY_FILES=0" in tar.extractfile("state/STATE.env").read()
+        assert "state/story.tar.gz" not in tar.getnames()

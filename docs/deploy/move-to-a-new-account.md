@@ -31,7 +31,7 @@ cd ~/L3m0nCTF && chmod +x tools/export-state.sh tools/import-state.sh
 tools/export-state.sh --encrypt
 ```
 
-It asks for a passphrase twice (not shown): **choose one and keep it in your password manager; without it the file cannot be opened.** It saves the database and the uploaded files (through `tools/backup.sh`), the story volume, the secrets, the settings that are not in git, `/etc/l3mon`, and which release is running, writes **one** file `backups/l3mon-state-<host>-<time>.tar.enc` (AES-256) next to a `.sha256`, and prints no secret. Then, from your computer:
+It asks for a passphrase twice (not shown): **choose one and keep it in your password manager; without it the file cannot be opened.** It saves the database and the uploaded files (through `tools/backup.sh`), the story volume, the secrets, the settings that are not in git, `/etc/l3mon`, and which release is running, writes **one** file `backups/l3mon-state-<host>-<time>.tar.enc` (AES-256, with an authentication line at its end that the new machine checks before it decrypts anything, so a file that was changed on the way is refused) next to a `.sha256`, and prints no secret. Always use `--encrypt` for a real move; a plain file proves nothing about who made it. Then, from your computer:
 
 ```bash
 gcloud compute scp l3mon-app:/home/<your-vm-user>/L3m0nCTF/backups/<the-file-name-it-printed>.tar.enc ./ --zone asia-south1-a --tunnel-through-iap
