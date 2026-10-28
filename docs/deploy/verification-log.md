@@ -404,3 +404,20 @@ Local results after the round: tool tests 63 passed (2 skipped on Windows); inte
 **Known, and fixed in the next release:** `/favicon.svg` and the channel pictures (`/art/<name>`) are not served by this tag (`GET /favicon.svg` is 404), so the sign-in page's tab icon is missing; the routes arrived in `6153e35`. The human check (the widget for sign-up, reset and failed sign-ins) arrived in `d7328a1` and stays off until the Turnstile keys are set. The older VM `l3mon-preview` mentioned in the 19 October entry has since been deleted.
 
 **Open (unchanged):** the admin list still holds the temporary entry; no mail service, so nobody can finish registering; the Cloudflare rules and Access (hosting guide 3.7 and 3.8) are the owner's.
+
+## 2026-10-22: CTFd's stock team and player pages closed (not yet released)
+
+**What changed:** `plugins/l3mon_board/stock_pages.py` answers 404 to a visitor and to every player for `/teams`, `/teams/<id>`, `/users`, `/users/<id>` and `/user` (the crew keeps them), the way `notices.py` closes `/notifications`. It denies by default (everything under `/users/` and `/user/`, and everything under `/teams/` except `/teams/new`, `/teams/join` and `/teams/invite`), so no spelling of an id is trusted. The owner decided this on 22 October. `/team` and `/settings` stay open. The API is untouched.
+
+**Evidence (build machine, image built from the working tree):**
+
+| Check | Result |
+|---|---|
+| New tests `plugins/l3mon_board/tests/test_stock_pages.py` | 53 passed (closed for every viewer and for the player's own pages, every spelling CTFd's router reads as an id, trailing and doubled slashes, the crew keeps them, the way into a studio stays open, the guard asks who is asking only for its own paths, a real off switch) |
+| Break on purpose | a guard that recognised only `[1-9][0-9]*` let `/teams/02` through and the spelling test failed; restored |
+| Whole plugin suite on the fresh image | **1912 passed, 60 skipped** |
+| CTFd's own suite on the same image | 675 passed, 1 failed: `tests/utils/test_updates.py::test_update_check_ignores_downgrades`. It fails the same way on the live `release-2026-10-22` image (CTFd's real update server now answers with release 3.8.9, which the test does not expect), so it is not caused by this change |
+| Integration suite on the three-overlay stack (`INSTANCER_DEV=1`) | **150 passed, 9 skipped** (includes `test_board.py::test_08`: a player and a visitor get 404 through nginx for the five pages, `/team` is 200) |
+| Tool tests, scan | 302 passed, 12 skipped; `python -m l3mon hygiene --root .. --history` 0 findings |
+
+Two older doors tests read these pages as a player (`l3mon_release/tests/test_doors.py`, `tests/integration/test_release.py`); they now read only the API and `/team`, and the crew test still reads `/teams/<id>`. Goes live with the next release tag.

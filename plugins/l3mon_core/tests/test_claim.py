@@ -37,6 +37,22 @@ def test_it_is_given_for_the_time_asked_and_no_longer(app):
     assert spy.call_args.kwargs["timeout"] == 7 and spy.call_args.args[0] == KEY
 
 
+@pytest.mark.parametrize("asked, given", [(10.0, 10), (1.5, 2), (0.2, 1), (7, 7)])
+def test_the_cache_is_given_whole_seconds_whatever_the_caller_asked(app, asked, given):
+    """Redis refuses `EXPIRE key 10.0` ("value is not an integer or out of range"): the e-mail normalisation backfill asked for 10.0 and was refused on
+    every sign-up (found by the lead's audit of the integrated platform, 25 October 2026)."""
+    with mock.patch.object(cache, "add", wraps=cache.add) as spy:
+        assert claim(KEY, asked) is True
+    assert spy.call_args.kwargs["timeout"] == given and isinstance(spy.call_args.kwargs["timeout"], int)
+
+
+def test_taking_over_an_old_flag_also_gives_whole_seconds(app):
+    cache.set(KEY, time.time() - 3600, timeout=0)
+    with mock.patch.object(cache, "set", wraps=cache.set) as spy:
+        assert claim(KEY, 10.0) is True
+    assert spy.call_args.kwargs["timeout"] == 10 and isinstance(spy.call_args.kwargs["timeout"], int)
+
+
 def test_a_flag_that_expired_between_the_look_and_the_take_is_taken_by_the_next_try(app):
     """The cache said it was held, then it was gone: the caller asks once more instead of giving up for a whole period."""
     cache.set(KEY, time.time(), timeout=30)
