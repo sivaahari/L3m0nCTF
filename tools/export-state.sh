@@ -132,7 +132,7 @@ chmod 600 "$plain"
 final="$plain"
 if [[ "$encrypt" -eq 1 ]]; then
   if [[ -n "${L3MON_STATE_PASSPHRASE_FILE:-}" ]]; then
-    pass1="$(cat "$L3MON_STATE_PASSPHRASE_FILE")"; pass2="$pass1"   # for a run with nobody at the keyboard: a file only you can read, never the passphrase on the command line
+    pass1="$(tr -d '\r\n' < "$L3MON_STATE_PASSPHRASE_FILE")"; pass2="$pass1"   # for a run with nobody at the keyboard: a file only you can read, never the passphrase on the command line
   else
     read -rsp "Passphrase for the file (not shown): " pass1 || { rm -f "$plain"; echo "Could not read a passphrase: run this from a terminal, or set L3MON_STATE_PASSPHRASE_FILE. Nothing was written." >&2; exit 1; }; echo
     read -rsp "Again: " pass2 || { rm -f "$plain"; echo "Could not read the passphrase again. Nothing was written." >&2; exit 1; }; echo

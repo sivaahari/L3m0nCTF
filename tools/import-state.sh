@@ -67,7 +67,7 @@ trap cleanup EXIT
 # 1. open the file (decrypt when it ends in .enc), refuse anything that would write outside the work folder
 plain="$file"
 if [[ "$file" == *.enc ]]; then
-  if [[ -n "${L3MON_STATE_PASSPHRASE_FILE:-}" ]]; then pass="$(cat "$L3MON_STATE_PASSPHRASE_FILE")"
+  if [[ -n "${L3MON_STATE_PASSPHRASE_FILE:-}" ]]; then pass="$(tr -d '\r\n' < "$L3MON_STATE_PASSPHRASE_FILE")"
   else read -rsp "Passphrase of the file (not shown): " pass || { echo "Could not read a passphrase: run this from a terminal, or set L3MON_STATE_PASSPHRASE_FILE." >&2; exit 1; }; echo; fi
   plain="$work/state.tar"
   [[ -n "$py" ]] || { echo "python3 is needed to check an encrypted file." >&2; exit 1; }

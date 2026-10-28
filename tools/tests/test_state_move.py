@@ -472,3 +472,14 @@ def test_a_story_count_that_is_not_a_number_is_never_run_as_code_when_saving(old
     with tarfile.open(saved_file(old)) as tar:
         assert b"STORY_FILES=0" in tar.extractfile("state/STATE.env").read()
         assert "state/story.tar.gz" not in tar.getnames()
+
+
+def test_a_passphrase_file_means_the_same_with_or_without_windows_line_ends(old, new, tmp_path):
+    """A passphrase file written on Windows ends with CR LF; the same file read on Linux must give the same passphrase (found when a real save would not open)."""
+    crlf = tmp_path / "crlf.txt"
+    crlf.write_bytes(PASSPHRASE.encode() + b"\r\n")
+    lf = tmp_path / "lf.txt"
+    lf.write_bytes(PASSPHRASE.encode() + b"\n")
+    assert export(old, "--encrypt", env={"L3MON_STATE_PASSPHRASE_FILE": crlf.as_posix()}).returncode == 0
+    r = place(new, saved_file(old, ".tar.enc"), env={"L3MON_STATE_PASSPHRASE_FILE": lf.as_posix()})
+    assert r.returncode == 0, r.stdout + r.stderr
