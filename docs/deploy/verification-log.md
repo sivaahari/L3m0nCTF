@@ -421,3 +421,19 @@ Local results after the round: tool tests 63 passed (2 skipped on Windows); inte
 | Tool tests, scan | 302 passed, 12 skipped; `python -m l3mon hygiene --root .. --history` 0 findings |
 
 Two older doors tests read these pages as a player (`l3mon_release/tests/test_doors.py`, `tests/integration/test_release.py`); they now read only the API and `/team`, and the crew test still reads `/teams/<id>`. Goes live with the next release tag.
+
+## 2026-10-28: the move kit (save the platform and bring it up on another machine), not run on any real machine yet
+
+**What was built:** `tools/export-state.sh` (run on the machine that runs the platform: saves the database and uploaded files through `tools/backup.sh`, the story volume, the secrets, the settings that are not in git, `/etc/l3mon` with the TLS files, and which release is running, into one file, optionally encrypted with a passphrase) and `tools/import-state.sh` (`place` puts the secrets and settings back on a new machine at the same release; `restore` puts the data back once the platform is up). The guide is `move-to-a-new-account.md`. Why now: the Google account that pays for the project has a payment problem, and the platform has to be brought up through another account exactly as it is.
+
+**Evidence (development computer, the live release `release-2026-10-22`):**
+
+| Check | Result |
+|---|---|
+| Tests of the two scripts, `tools/tests/test_state_move.py` | 21 passed on Linux (20 and 1 skipped on Windows: the file-mode test); what is saved, secrets byte-identical, nothing secret printed, a platform that is not running refused, a damaged file, a foreign file and a path leaving the folder refused, a different commit refused, nothing overwritten without `--force`, wrong passphrase refused with nothing written, the restore called with `--force` and the story refilled |
+| Break on purpose | 8 deliberate breaks of the scripts (checksum check, commit check, overwrite guard, path check, the `--force` of the restore, the secrets copy, the local-changes patch, the story copy): each caught by at least one test |
+| Rehearsal with Docker | an old platform (users, a studio with two members, a page, an uploaded file, a story folder in a named volume) saved with `--encrypt`; its containers, volumes and folder destroyed; a new machine made from a clean clone at the same tag, `place`, `compose up`, `restore`: same users, studio, members, page, uploaded file (same SHA-256), story files (same SHA-256) and all 16 secrets (same fingerprints); the new platform answered `/login` 200 and `/readyz` 200 |
+| Lint | shellcheck (the version CI uses, warnings and errors) clean on both scripts, which are now in the CI list; actionlint clean |
+| Tool tests, whole folder | 322 passed, 13 skipped; hygiene 0 findings |
+
+**Not done, said plainly:** it has not been run on the real VM or in a real second Google project; the Google project creation and the Cloudflare switch are the owner's steps and are described, not rehearsed. A real VM has a Debian shell, so the file-mode test (which Windows cannot run) was run on Ubuntu under WSL and passed.

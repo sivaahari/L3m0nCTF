@@ -623,6 +623,8 @@ After the event: take the final backup (`tools/backup.sh`), copy the database ba
 
 ## 10. If something goes wrong
 
+*If the whole Google project has to be left (billing, a change of account), do not rebuild by hand: save the machine first and bring it up elsewhere with [move-to-a-new-account.md](move-to-a-new-account.md).*
+
 | What you see | Usual cause | What to do |
 |---|---|---|
 | Cloudflare **521** | The VM is off, nginx is down, or the firewall blocks Cloudflare | Start the VM; `tools/compose.sh ps`; compare the firewall rule with Cloudflare's list (2.5) |

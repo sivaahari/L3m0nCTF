@@ -74,7 +74,7 @@ jobs:
         run: >
           docker run --rm -v "$PWD:/mnt" -w /mnt "$SHELLCHECK_IMAGE" --severity=warning -x
           docker/ctfd/l3mon-entrypoint.sh docker/ctfd/l3mon-env.sh docker/ctfd/l3mon-run.sh
-          tools/backup.sh tools/compose.sh tools/restore.sh tools/run-ctfd-tests.sh tools/verify-image.sh
+          tools/backup.sh tools/compose.sh tools/restore.sh tools/run-ctfd-tests.sh tools/verify-image.sh tools/export-state.sh tools/import-state.sh
       - name: Generate settings and secrets (throwaway, for this run only)
         working-directory: tools
         run: |
