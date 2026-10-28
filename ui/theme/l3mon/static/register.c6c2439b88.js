@@ -972,6 +972,8 @@ affLong:'Affiliations are at most 64 characters.',
 ctftime:'That does not look like a CTFtime team page or number.',
 inviteEmpty:'Enter the invite code from your captain.',
 inviteShape:'Invite codes look like ABCD-1234.',
+inviteLinkEmpty:'Enter the invite link from your captain.',
+inviteLinkShape:'Paste the invite link your captain sent you.',
 inviteUnknown:'That invite code does not match any studio.',
 inviteFull:'That studio is full (4 of 4).',
 rules:'Tick the box to accept the rules.',
@@ -1061,28 +1063,30 @@ const id=m?Number(m[1]):0;
 if(!(id>0))return{value,id:null,error:V_MSG.ctftime};
 return{value,id,error:null};
 }
-function vInvite(v){
+function vInvite(v,{linkMode=false}={}){
 const raw=String(v??'').trim();
-if(!raw)return{value:raw,error:V_MSG.inviteEmpty};
-if(/\s/.test(raw))return{value:raw,error:V_MSG.inviteShape};
+const emptyMsg=linkMode?V_MSG.inviteLinkEmpty:V_MSG.inviteEmpty;
+const shapeMsg=linkMode?V_MSG.inviteLinkShape:V_MSG.inviteShape;
+if(!raw)return{value:raw,error:emptyMsg};
+if(/\s/.test(raw))return{value:raw,error:shapeMsg};
 let token=raw;
 if(raw.includes('?')||raw.startsWith('http://')||raw.startsWith('https://')||raw.startsWith('/')){
 try{
 const url=new URL(raw,'http://localhost');
 if(url.pathname.replace(/\/+$/,'')!=='/teams/invite'){
-return{value:raw,error:V_MSG.inviteShape};
+return{value:raw,error:shapeMsg};
 }
 const code=url.searchParams.get('code');
 if(!code){
-return{value:raw,error:V_MSG.inviteShape};
+return{value:raw,error:shapeMsg};
 }
 token=code.trim();
 }catch{
-return{value:raw,error:V_MSG.inviteShape};
+return{value:raw,error:shapeMsg};
 }
 }
-if(/\s/.test(token)||token.length<4||token.length>256){
-return{value:raw,error:V_MSG.inviteShape};
+if(/\s/.test(token)||token.length<8||token.length>256){
+return{value:raw,error:shapeMsg};
 }
 return{value:token,error:null};
 }
@@ -1325,10 +1329,12 @@ pvName.textContent=name.value.trim()||'Your studio';
 paint();
 check();
 });
+const isLink=Boolean(form.querySelector('[data-invite-link]')||$('#f-invite-h',form)?.textContent.includes('invite link'));
+const checkInvite=()=>vInvite(invite.value,{linkMode:isLink}).error;
 country.addEventListener('change',meta);
 aff.addEventListener('input',meta);
 ct.addEventListener('input',()=>{const v=vCtftime(ct.value);ctPv.textContent=v.id?`Team ${v.id}`:'';});
-invite.addEventListener('blur',()=>{const v=vInvite(invite.value);if(!v.error)invite.value=v.value;});
+invite.addEventListener('blur',()=>{const v=vInvite(invite.value,{linkMode:isLink});if(!v.error)invite.value=v.value;});
 const shuffleBtn=$('[data-shuffle]');
 if(shuffleBtn)shuffleBtn.addEventListener('click',()=>{
 shuffle=(shuffle+1)%56;
@@ -1345,7 +1351,7 @@ liveForm(form,[
 [country,()=>(country.value?null:V_MSG.country)],
 [aff,()=>vAffiliation(aff.value).error],
 [ct,()=>vCtftime(ct.value).error],
-[invite,()=>vInvite(invite.value).error],
+[invite,checkInvite],
 ],{pending:'Saving…',onSubmit:(ok)=>{face.set(ok?'wow':'sad');if(!ok)face.play('shake');}});
 }
 function initGoLive(form){

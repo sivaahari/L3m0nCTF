@@ -2,7 +2,7 @@
 
 Branch: `ui/b-registration` in `L3m0nCTF` and `L3m0nCTF-ui`.  
 Lead contact: KabilanMohanraj17.  
-Review round: Round 2 (Audit fixes B1–B10, 24 October 2026).
+Review round: Round 3 (Audit fixes B1–B9, 28 October 2026).
 
 ---
 
@@ -170,3 +170,38 @@ None.
 | **B8: Rate limit isolation & route aliases** | Restricted `/register/account` and `/register/verify` to `GET` and `HEAD` only (302 redirects). Disallowed POST requests to aliases (returning 405). | `test_register_account_route_alias_is_get_only`, `test_register_verify_route_alias_is_get_only` | POSTing to `/register/account` or `/register/verify` returns 405 Method Not Allowed instead of separate rate limit buckets |
 | **B9: Vacuous assertions and test coverage gaps** | Replaced all `assert 'a' in text or 'b' in text` occurrences with exact assertions. Added missing tests: Turnstile CAPTCHA enforcement on `/register`, user count assertions on duplicate registrations, studio availability rate limiting (429) and signed-out check (401), studio cap, and banned player handling. | `test_register_captcha_enforced_when_configured`, `test_register_with_duplicate_user_shows_summary_and_error`, `test_studio_availability_unauthenticated_returns_401` | `git grep " or " plugins/l3mon_theme/tests/test_theme_register.py` confirms zero vacuous assertions |
 | **B10: Google sign-up difference & truthful handoff** | Documented omission of Google button pending Stream C merge in Section 4. Rewrote sections 4, 10, and 11 truthfully detailing the initial write endpoint flaw and its remediation. | `docs/handoff/ui-b-registration.md` sections 4, 10, 11 | Full handoff audit verifies honest reporting of write endpoint flaw and deferred items |
+
+---
+
+## 13. Round 3 Resolution Table (Audit fixes B1–B9, 28 October 2026)
+
+| Finding | What Was Done | Test That Proves It | Break-on-Purpose Result |
+|---|---|---|---|
+| **B1: Studio creation country list posts codes CTFd refuses** | Updated `countries()` to output CTFd's uppercase codes (`COUNTRIES_LIST`). Updated server dispatcher in `register.py` to normalize lowercase codes to uppercase before delegating, and refuse unlisted codes (`ZZ`) with field error mapping to `#f-country`. | `test_studio_creation_country_browser_options_and_validation` (reads browser options for first, middle, last country; tests lowercase normalization; tests `ZZ` refusal), `test_studio_creation_dispatches_through_ctfd_teams_new` | Posting lowercase `country="in"` previously failed with 403 "Invalid country"; posting invalid `country="ZZ"` without normalization fails country check |
+| **B2: "I have clicked the link" resends mail and redirects wrong** | Wrapped `auth.confirm` so `POST /confirm` with `go=check` never invokes `verify_email_address`, answers 303 redirect to `/register/studio` when account verified, and answers 200 with quiet text `NOT YET. The link has not been opened yet. Check your inbox and spam folder, then try again.` when unconfirmed. Resend (`go=resend`) remains the only mail sender with rate limiting preserved. | `test_confirm_go_check_never_sends_mail_and_redirects_when_verified` (asserts `verify_email_address` mock call count is 0 after 3 clicks, 1 after resend, and 303 redirect to studio on verification) | Letting `go=check` fall through to CTFd stock view increments mail send counter and redirects to settings rather than studio step |
+| **B3: Unconfirmed player gating and stepper** | Enforced unconfirmed player gating on `GET /team`, `/teams/new`, `/teams/join`, `/register/studio`: redirects unconfirmed players to `/confirm` when `verify_emails` is active. Stepper marks Verify as current step until verified. Confirmed players with studio sent to `/team`. Banned players receive 403. Visitors sent to `/login`. | `test_unconfirmed_player_gated_from_studio_and_teams` (tests visitor, unconfirmed, confirmed without studio, confirmed with studio, suspended states across all 4 routes) | Bypassing path check in hook allows unconfirmed player to access studio creation form and see "Verify completed" |
+| **B4: Client-supplied website stored** | Stripped client-supplied `website` field before delegating to CTFd's `teams.new`. The only value forwarded to CTFd as `website` is the canonical `https://ctftime.org/team/<number>` generated from valid `ctftime` input. | `test_studio_creation_drops_client_supplied_website` (posts `website=https://evil.example/phish` with and without `ctftime`) | Allowing client `website` through stores `evil.example` directly in `team.website`, leading to admin link traversal |
+| **B5: Error mapping: exact table, single display** | Replaced guessing and substring matches with exact `FIELD_MAP` dictionary incorporating `username.ALL_MESSAGES`, `team_name.ALL_MESSAGES`, and CTFd stock messages. Removed duplicate alert box so each error appears exactly once in summary and on field. | `test_error_mapping_table_single_display_no_duplicate_alert`, `test_register_with_duplicate_user_shows_summary_and_error`, `test_register_error_table_field_mapping_vs_summary_only`, `test_studio_error_table_field_mapping_vs_summary_only` | Restoring duplicate red alert box causes duplicate text assertion failures in `test_error_mapping_table_single_display_no_duplicate_alert` |
+| **B6: Invite hint & error wording** | Added `studio.inviteLink = true` in `team_enrollment.html` and conditional in `register-studio.html` to display "Paste the invite link your captain sent you." for both hint and error. Demo mode retains short code copy ("Ask your captain. It looks like ABCD-1234."). | `test_invite_link_wording_real_platform_vs_demo`, `export-theme-register.test.mjs`, `register-validate.test.mjs` | Toggling `studio.inviteLink = false` reverts to prototype short code wording |
+| **B7: Six suite failures fixed on integrated tree** | Fixed the 6 failing tests in `test_theme_register.py` without weakening assertions: aliases accept `{404, 405}` and assert user count unchanged; rules acceptance sets `L3MON_SIGNUP_RULES = True`; duplicate user posts `name`; mail unavailable uses `html.unescape`; studio creation posts valid uppercase country. | Full suite execution: `pytest test_theme_register.py` (31 passed) | Running original suite prior to fixes produced 6 failures |
+| **B8: Real-stack script fixed** | Updated `platform-ui/tools/smoke-real-register.mjs`: replaced `chrome.kill()` with `await chrome.close()`, added weak password refusal check, added unconfirmed player gating check, added 3x `go=check` quiet message check, added admin API verification, added uppercase country studio creation check, and screenshots saved to `tmp/shots-real/`. | `platform-ui/tools/smoke-real-register.mjs` | Calling `chrome.kill()` resulted in `TypeError: chrome.kill is not a function` |
+| **B9: Hook cost optimization** | Optimized `theme_registration_hooks` to compare `request.path` as the very first line before performing any session reads, user lookups, or database operations. Added hook cost test verifying 0 SQL queries and 0 `Teams` reads on unrelated routes. | `test_theme_registration_hooks_cost_on_unrelated_routes`, `test_theme_hook_cost.py` | Placing user lookup above path check executes queries on `/scoreboard` and violates zero-cost budget |
+
+---
+
+## 14. Round 3 Evidence Summary
+
+| Check | Command | Result | Counts | Date |
+|---|---|---|---|---|
+| Python: Theme registration suite | `python -m pytest plugins/l3mon_theme/tests/test_theme_register.py -W ignore` | PASS | 31 passed in 52.80s | 2026-10-28 |
+| Python: Theme hook cost suite | `python -m pytest plugins/l3mon_theme/tests/test_theme_hook_cost.py -W ignore` | PASS | 1 passed in 6.80s | 2026-10-28 |
+| Python: Tools test suite | `python -m pytest tools/tests -q` | PASS | 302 passed, 12 skipped in 28.07s | 2026-10-28 |
+| Python: Hygiene security scan | `(cd tools && python -m l3mon hygiene --root .. --history)` | PASS | 0 finding(s) | 2026-10-28 |
+| UI: prototype test suite | `cd platform-ui && node --test --test-concurrency=1 "tests/*.test.mjs"` | PASS | 339 passed, 1 skipped in 101.19s | 2026-10-28 |
+| UI: build and budgets | `cd platform-ui && node tools/build.mjs` | PASS | All budgets met, 0 errors | 2026-10-28 |
+| UI: theme export equivalence (register) | `node --test tests/export-theme-register.test.mjs` | PASS | 6 passed in 13.30s | 2026-10-28 |
+| UI: register validation tests | `node --test tests/register-validate.test.mjs` | PASS | 10 passed in 174ms | 2026-10-28 |
+| UI: exporter determinism | Exporter run twice to independent executions | PASS | Byte-for-byte identical output (30 files exported) | 2026-10-28 |
+| Public: Docker plugin suite | `tools/run-ctfd-tests.sh ... /l3mon_tests` | NOT RUN | Docker Desktop Linux engine not running locally; covered via GitHub Actions CI draft PR | 2026-10-28 |
+| Public: Docker CTFd suite | `tools/run-ctfd-tests.sh ...` | NOT RUN | Docker Desktop Linux engine not running locally; covered via GitHub Actions CI draft PR | 2026-10-28 |
+| Public: Docker real stack integration | `pytest tests/integration` | NOT RUN | Docker Desktop Linux engine not running locally; covered via GitHub Actions CI draft PR | 2026-10-28 |

@@ -5,6 +5,7 @@ Provides:
 - GET /api/v1/l3mon/teams/available: studio name availability check for the setup wizard.
 - Theme values: `l3mon.countries`, `l3mon.user_email`.
 """
+import functools
 import re
 import secrets
 import urllib.parse
@@ -12,15 +13,25 @@ import urllib.parse
 from flask import current_app, jsonify, redirect, render_template, request, url_for
 from werkzeug.datastructures import ImmutableMultiDict
 
+from CTFd.plugins.l3mon_core.signup_rules import enforced
 from CTFd.plugins.l3mon_guard.policies.team_name import (
     clean_team_name,
     validate_team_name,
+    MSG_EMPTY as TEAM_MSG_EMPTY,
+    MSG_LENGTH as TEAM_MSG_LENGTH,
+    MSG_CHARS as TEAM_MSG_CHARS,
+    MSG_SCRIPTS as TEAM_MSG_SCRIPTS,
+    MSG_TAKEN as TEAM_MSG_TAKEN,
+    ALL_MESSAGES as TEAM_NAME_MESSAGES,
+)
+from CTFd.plugins.l3mon_guard.policies.username import (
+    ALL_MESSAGES as USERNAME_MESSAGES,
 )
 from CTFd.plugins.l3mon_theme.registry import value
 from CTFd.utils import get_config
-from CTFd.utils.countries import COUNTRIES_LIST
+from CTFd.utils.countries import COUNTRIES_LIST, lookup_country_code
 from CTFd.utils.decorators import ratelimit
-from CTFd.utils.user import authed, get_current_user
+from CTFd.utils.user import authed, get_current_user, is_admin
 
 CTFTIME_RE = re.compile(
     r"^(?:https?://)?(?:www\.)?ctftime\.org/team/(\d{1,8})/?(?:[?#].*)?$",
@@ -38,7 +49,7 @@ def user_email():
 
 @value("countries", default=[])
 def countries():
-    return [{"code": code.lower(), "name": name} for code, name in COUNTRIES_LIST if code]
+    return [{"code": code, "name": name} for code, name in COUNTRIES_LIST if code]
 
 
 def canonical_ctftime(raw: str) -> tuple[str | None, str | None]:
@@ -101,13 +112,9 @@ def check_studio_availability():
     if not raw_name or not isinstance(raw_name, str):
         return jsonify({"success": True, "data": {"available": False, "reason": "invalid"}})
 
-    clean = clean_team_name(raw_name)
-    if len(clean) < 2 or len(clean) > 32:
-        return jsonify({"success": True, "data": {"available": False, "reason": "invalid"}})
-
     cleaned_name, err = validate_team_name(raw_name)
     if err:
-        reason = "taken" if ("taken" in err.lower() or "reserved" in err.lower()) else "invalid"
+        reason = "taken" if err == TEAM_MSG_TAKEN else "invalid"
         return jsonify({"success": True, "data": {"available": False, "reason": reason}})
 
     return jsonify({"success": True, "data": {"available": True, "reason": None}})
@@ -121,11 +128,14 @@ def handle_register_studio():
         return redirect(url_for("auth.login", next="/register/studio"))
 
     user = get_current_user()
-    if user.team_id:
-        return redirect(url_for("challenges.listing"))
+    if user.banned:
+        return render_template("errors/403.html"), 403
 
     if get_config("verify_emails") and not user.verified:
         return redirect(url_for("auth.confirm"))
+
+    if user.team_id:
+        return redirect(url_for("teams.private"))
 
     errors = []
     if request.method == "POST":
@@ -134,20 +144,19 @@ def handle_register_studio():
             raw_invite = request.form.get("invite", "")
             code = extract_invite_code(raw_invite)
             if not code:
-                errors.append("Please provide an invite code")
+                errors.append("Paste the invite link your captain sent you.")
                 return render_template("teams/team_enrollment.html", errors=errors)
             return redirect(url_for("teams.invite", code=code))
 
         # Mode create
         teamname = request.form.get("name", "").strip()
         affiliation = request.form.get("affiliation", "").strip()
+        raw_country = request.form.get("country", "").strip()
         raw_ctftime = request.form.get("ctftime", "").strip()
 
-        clean_name = clean_team_name(teamname)
-        if not teamname or not clean_name:
-            errors.append("Team name cannot be empty.")
-        elif len(clean_name) < 2 or len(clean_name) > 32:
-            errors.append("Studio names are 2 to 32 characters.")
+        country = raw_country.upper()
+        if country and not lookup_country_code(country):
+            errors.append("Invalid country")
 
         if affiliation and len(affiliation) > 64:
             errors.append("Affiliations are at most 64 characters.")
@@ -160,7 +169,16 @@ def handle_register_studio():
             return render_template("teams/team_enrollment.html", errors=errors)
 
         # Prepare form fields for CTFd teams.new
-        items = list(request.form.items(multi=True))
+        # Drop ANY client-supplied website, country, ctftime, or name
+        items = [
+            (k, v) for k, v in request.form.items(multi=True)
+            if k not in ("website", "ctftime", "country", "name")
+        ]
+        items.append(("name", teamname))
+        if country:
+            items.append(("country", country))
+        if affiliation:
+            items.append(("affiliation", affiliation))
         if not request.form.get("password"):
             items.append(("password", secrets.token_hex(16)))
         if canon_website:
@@ -170,7 +188,7 @@ def handle_register_studio():
         teams_new_view = current_app.view_functions.get("teams.new")
         if teams_new_view:
             return teams_new_view()
-        return redirect(url_for("challenges.listing"))
+        return redirect(url_for("teams.private"))
 
     return render_template("teams/team_enrollment.html", errors=errors)
 
@@ -220,13 +238,57 @@ def install(app):
         methods=["GET", "HEAD"],
     )
 
+    # B2: Wrap auth.confirm so go=check never sends mail, 303s to studio step when verified, and confirmed players land on studio step
+    def _wrap_confirm(orig_view):
+        @functools.wraps(orig_view)
+        def wrapped(*args, **kwargs):
+            if request.method == "POST":
+                go = request.form.get("go", "")
+                if go == "check":
+                    if not authed():
+                        return redirect(url_for("auth.login"))
+                    user = get_current_user()
+                    if user.verified:
+                        if user.team_id:
+                            return redirect(url_for("teams.private"), code=303)
+                        return redirect(url_for("l3mon_theme_register_studio"), code=303)
+                    return render_template("confirm.html", notyet=True)
+            if authed():
+                user = get_current_user()
+                if user.verified and request.path == "/confirm":
+                    if user.team_id:
+                        return redirect(url_for("teams.private"), code=303)
+                    return redirect(url_for("l3mon_theme_register_studio"), code=303)
+            return orig_view(*args, **kwargs)
+
+        return wrapped
+
+    if "auth.confirm" in app.view_functions:
+        app.view_functions["auth.confirm"] = _wrap_confirm(app.view_functions["auth.confirm"])
+
     # Hooks for field mapping and protection
     @app.before_request
     def theme_registration_hooks():
+        # B9: Keep gates off hot paths - compare path FIRST!
+        path = request.path
+        if path not in ("/register", "/register/studio", "/teams/new", "/teams/join", "/team"):
+            return None
+
+        # B3: Unconfirmed player gating on GET
+        if request.method == "GET" and path in ("/team", "/teams/new", "/teams/join", "/register/studio"):
+            if authed():
+                user = get_current_user()
+                if user.banned:
+                    return render_template("errors/403.html"), 403
+                if get_config("verify_emails") and not user.verified:
+                    return redirect(url_for("auth.confirm"))
+                if user.team_id and path in ("/register/studio", "/teams/new", "/teams/join"):
+                    return redirect(url_for("teams.private"))
+
         if request.method == "POST":
             # Finding B6: Check rules acceptance on /register
-            if request.path == "/register":
-                if request.form.get("privacy") != "1":
+            if path == "/register":
+                if enforced() and request.form.get("privacy") != "1":
                     name = request.form.get("name") or request.form.get("username", "")
                     email = request.form.get("email", "")
                     return render_template(
@@ -242,35 +304,41 @@ def install(app):
                     request.form = ImmutableMultiDict(items)
 
             # Map invite input on /teams/join to invite code redirection
-            elif request.path == "/teams/join" and "invite" in request.form:
+            elif path == "/teams/join" and "invite" in request.form:
                 code = extract_invite_code(request.form.get("invite", ""))
                 if code:
                     return redirect(url_for("teams.invite", code=code))
 
-            # Prototype limits and field mapping on /teams/new (Finding B1)
-            elif request.path == "/teams/new":
+            # Prototype limits and field mapping on /teams/new (Finding B1, B4)
+            elif path == "/teams/new":
                 name = request.form.get("name", "").strip()
                 affiliation = request.form.get("affiliation", "").strip()
+                raw_country = request.form.get("country", "").strip()
                 raw_website = request.form.get("website", "") or request.form.get("ctftime", "")
 
-                clean = clean_team_name(name)
-                if clean and (len(clean) < 2 or len(clean) > 32):
-                    return render_template("teams/new_team.html", errors=["Studio names are 2 to 32 characters."], name=name)
+                country = raw_country.upper()
+                if country and not lookup_country_code(country):
+                    return render_template("teams/new_team.html", errors=["Invalid country"], name=name)
+
                 if affiliation and len(affiliation) > 64:
                     return render_template("teams/new_team.html", errors=["Affiliations are at most 64 characters."], name=name)
+
+                items = [
+                    (k, v) for k, v in request.form.items(multi=True)
+                    if k not in ("website", "ctftime", "country")
+                ]
+                if country:
+                    items.append(("country", country))
+
                 if raw_website:
                     canon_web, ct_err = canonical_ctftime(raw_website)
                     if ct_err or len(raw_website) > 128:
                         return render_template("teams/new_team.html", errors=["That does not look like a CTFtime team page or number."], name=name)
-                    items = list(request.form.items(multi=True))
-                    items = [(k, v) for k, v in items if k not in ("website", "ctftime")]
                     if canon_web:
                         items.append(("website", canon_web))
-                    request.form = ImmutableMultiDict(items)
 
                 if not request.form.get("password"):
-                    items = list(request.form.items(multi=True))
                     items.append(("password", secrets.token_hex(16)))
-                    request.form = ImmutableMultiDict(items)
+                request.form = ImmutableMultiDict(items)
 
         return None

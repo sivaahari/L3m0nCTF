@@ -22,19 +22,32 @@
 {% set is_join = (req_mode == 'join') %}
 
 {% set FIELD_MAP = {
-  'Team name cannot be empty.': 'name',
-  'That team name is already taken.': 'name',
-  'That team name is reserved.': 'name',
-  'Team name must be between 1 and 64 characters.': 'name',
+  'Choose a studio name.': 'name',
   'Studio names are 2 to 32 characters.': 'name',
+  'Use letters, numbers, spaces and punctuation only.': 'name',
+  'Do not mix letters from different alphabets in one name.': 'name',
+  'That studio name is taken.': 'name',
+  'That team name is already taken': 'name',
+  'That team name is already taken.': 'name',
   'That team name is invalid': 'name',
+  'That team name is reserved.': 'name',
+  'Team name cannot be empty.': 'name',
+  'Team name must be between 1 and 64 characters.': 'name',
   'Invalid country': 'country',
+  'Choose a country.': 'country',
   'Please provide a shorter affiliation': 'affiliation',
   'Affiliations are at most 64 characters.': 'affiliation',
+  'Websites must be a proper URL starting with http or https': 'ctftime',
   'Please provide a valid website': 'ctftime',
   'That does not look like a CTFtime team page or number.': 'ctftime',
+  'Paste the invite link your captain sent you.': 'invite',
+  'Invite codes look like ABCD-1234.': 'invite',
+  'Enter the invite link from your captain.': 'invite',
+  'Enter the invite code from your captain.': 'invite',
+  'Ask your captain. It looks like ABCD-1234.': 'invite',
   'Please provide an invite code': 'invite',
-  'That invite code does not match any studio.': 'invite'
+  'That invite code does not match any studio.': 'invite',
+  'That information is incorrect': 'invite'
 } %}
 
 {% set summary = [] %}
@@ -61,9 +74,7 @@
   {% endif %}
 {% endfor %}
 
-{% set alert = {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else (
-  {'kind': 'info', 'lead': '', 'text': infs|join(' '), 'focus': false, 'icon': 'i-info'} if infs else none
-) %}
+{% set alert = {'kind': 'info', 'lead': '', 'text': infs|join(' '), 'focus': false, 'icon': 'i-info'} if infs else none %}
 
 {% set page = {
   'title': 'Set up your studio | Setup | ' ~ event_name,
@@ -96,7 +107,7 @@
   'dev': none,
 } %}
 
-{% set sel_c = request.form.get('country', '')|lower %}
+{% set sel_c = (request.form.get('country', '') or '').upper() %}
 {% set c_list = [] %}
 {% for c in l3.countries %}
   {% set _ = c_list.append({'code': c.code, 'name': c.name, 'sel': 'selected' if c.code == sel_c else ''}) %}
@@ -112,6 +123,7 @@
   'affiliation': studio_aff,
   'ctftime': request.form.get('ctftime', ''),
   'invite': request.form.get('invite', '') or request.args.get('code', ''),
+  'inviteLink': true,
   'shuffle': request.form.get('mascot', '0'),
   'countries': c_list,
   'ctPreview': '',

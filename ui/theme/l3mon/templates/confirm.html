@@ -70,7 +70,15 @@
 
 {% else %}
   {% set user_email = l3.user_email or '' %}
-  {% set alert = {'kind': 'ok', 'lead': 'SENT.', 'text': infs|join(' '), 'focus': false, 'icon': 'i-check'} if infs else ({'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else none) %}
+  {% if notyet %}
+    {% set alert = {'kind': 'info', 'lead': 'NOT YET.', 'text': 'The link has not been opened yet. Check your inbox and spam folder, then try again.', 'focus': false, 'icon': 'i-info'} %}
+  {% elif infs %}
+    {% set alert = {'kind': 'ok', 'lead': 'SENT.', 'text': infs|join(' '), 'focus': false, 'icon': 'i-check'} %}
+  {% elif errs %}
+    {% set alert = {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} %}
+  {% else %}
+    {% set alert = none %}
+  {% endif %}
 
   {% set page = {
     'title': 'Check your email | Setup | ' ~ event_name,
