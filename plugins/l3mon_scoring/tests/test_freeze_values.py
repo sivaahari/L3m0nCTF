@@ -251,7 +251,7 @@ def test_revoke_and_restore_during_the_freeze_keep_every_value_still_and_the_lif
 def test_a_fixed_challenge_is_never_touched_by_any_of_this(app):
     fix_id = fixed("fix", value=100, flag="F").id
     begin_the_freeze()
-    assert attempt(team_client(app, "p", "t"), fix_id, "F") == "correct"
+    assert attempt(team_client(app, "p", "tm"), fix_id, "F") == "correct"
     assert stored_value(fix_id) == 100
 
 

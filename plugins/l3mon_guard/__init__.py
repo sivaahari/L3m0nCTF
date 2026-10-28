@@ -192,8 +192,14 @@ def _wrap_team_new(orig_view):
             name = request.form.get("name", "").strip()
             clean_name, err = validate_team_name(name, is_crew=is_admin())
             if err:
-                record("name_policy_blocked", detail=f"name={name[:50]}; err={err}")
+                # ascii(): the crew reads this evidence, and a name made of look-alike or direction-changing characters must show what it really is
+                record("name_policy_blocked", detail=f"name={ascii(name[:50])}; err={err}")
                 return render_template("teams/new_team.html", errors=[err], name=name)
+            if clean_name != request.form.get("name"):
+                # CTFd stores what the form says: write the name that was checked back into it, so the stored name is exactly the checked one
+                form = request.form.copy()
+                form["name"] = clean_name
+                request.form = form
 
         return orig_view(*args, **kwargs)
 
@@ -209,10 +215,22 @@ def _wrap_team_api_patch(orig_view):
                 from CTFd.utils.user import is_admin
                 name = str(data["name"]).strip()
                 target_team_id = kwargs.get("team_id")
+                if target_team_id is None:  # PATCH /teams/me: the asker's own studio may keep its own name
+                    from CTFd.utils.user import get_current_team
+                    own = get_current_team()
+                    target_team_id = own.id if own else None
+                if target_team_id is not None:
+                    from CTFd.models import Teams
+                    current = Teams.query.filter_by(id=target_team_id).first()
+                    if current is not None and current.name == data["name"]:
+                        return orig_view(*args, **kwargs)  # a name that is not being changed is not judged again (a studio made before a rule may hold a name it refuses)
                 clean_name, err = validate_team_name(name, is_crew=is_admin(), exclude_team_id=target_team_id)
                 if err:
-                    record("name_policy_blocked", detail=f"name={name[:50]}; err={err}")
+                    record("name_policy_blocked", detail=f"name={ascii(name[:50])}; err={err}")
                     return jsonify({"success": False, "errors": {"name": [err]}}), 400
+                if clean_name != data["name"]:
+                    data["name"] = clean_name  # the dictionary CTFd's own view reads next: what is stored is exactly what was checked
+                    request._cached_json = (data, data)  # both readings (silent or not) answer with this very dictionary
 
         return orig_view(*args, **kwargs)
 
@@ -279,10 +297,11 @@ def load(app):
 
     if "teams.new" in app.view_functions:
         app.view_functions["teams.new"] = _wrap_team_new(app.view_functions["teams.new"])
-    if "api.teams_team" in app.view_functions:
-        app.view_functions["api.teams_team"] = _wrap_team_api_patch(app.view_functions["api.teams_team"])
-    if "api.teams_team_me" in app.view_functions:
-        app.view_functions["api.teams_team_me"] = _wrap_team_api_patch(app.view_functions["api.teams_team_me"])
+    # CTFd's own endpoint names: PATCH /api/v1/teams/<id> (the crew) and PATCH /api/v1/teams/me (a captain renames the studio). The names `api.teams_team` and
+    # `api.teams_team_me` that stood here do not exist, so for a long time neither route met the name policy (found by the lead's audit of 25 October 2026).
+    for endpoint in ("api.teams_team_public", "api.teams_team_private"):
+        if endpoint in app.view_functions:
+            app.view_functions[endpoint] = _wrap_team_api_patch(app.view_functions[endpoint])
 
     for ep in ("api.users_user_private", "api.users_user_me", "api.users_user_detail"):
         if ep in app.view_functions:
