@@ -181,6 +181,33 @@ def test_a_good_address_change_still_works_and_the_same_address_is_not_judged_ag
         assert Users.query.filter_by(name="realname").one().email == "moved@example.org"
 
 
+def test_a_visitor_gets_ctfds_own_answer_and_no_verdict_on_a_name_or_an_address(app):
+    """The rules judge only a request CTFd would let through: a visitor must not be able to ask the API whether an address is in use (or a name taken)."""
+    with app.app_context():
+        _make_user("first", "some.one@gmail.com")
+        with app.test_client() as client:
+            client.get("/register")  # a session and its token, as a browser has
+            for body in ({"email": "someone@gmail.com"}, {"email": "x@mailinator.com"}, {"name": "first"}, {"name": "xy"}):
+                response = client.patch("/api/v1/users/me", json=body)
+                assert response.status_code in (401, 403), (body, response.status_code, response.get_data(as_text=True)[:200])
+                text = response.get_data(as_text=True)
+                assert USED not in text and DISPOSABLE not in text and MSG_TAKEN not in text and MSG_SHAPE not in text
+
+
+def test_a_player_cannot_use_the_crews_call_to_probe_an_address_or_a_name(app):
+    with app.app_context():
+        _make_user("first", "some.one@gmail.com")
+        other = _make_user("other", "other@example.com")
+        _make_user("asker", "asker@example.com")
+        with login_as_user(app, name="asker", password=PASSWORD) as client:
+            for body in ({"email": "someone@gmail.com"}, {"email": "x@mailinator.com"}, {"name": "first"}, {"name": "xy"}):
+                response = client.patch(f"/api/v1/users/{other}", json=body)
+                assert response.status_code == 403, (body, response.status_code, response.get_data(as_text=True)[:200])
+                text = response.get_data(as_text=True)
+                assert USED not in text and DISPOSABLE not in text and MSG_TAKEN not in text and MSG_SHAPE not in text
+        assert db.session.get(Users, other).email == "other@example.com"
+
+
 def test_with_the_switch_off_the_api_keeps_ctfds_own_behaviour(app):
     app.config["L3MON_SIGNUP_RULES"] = False
     with app.app_context():

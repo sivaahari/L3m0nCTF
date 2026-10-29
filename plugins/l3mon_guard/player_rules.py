@@ -59,11 +59,16 @@ def wrap_user_api_patch(orig_view):
     @functools.wraps(orig_view)
     def wrapped(*args, **kwargs):
         if request.method == "PATCH" and enforced():
+            from CTFd.utils.user import authed, is_admin
+
+            user_id = kwargs.get("user_id")
+            if not authed() or (user_id is not None and not is_admin()):
+                # CTFd's own decorators answer first (sign in; `/users/<id>` is for the crew): a verdict on a name or an address, given before
+                # that, would let a visitor ask the API whether an address is in use
+                return orig_view(*args, **kwargs)
             data = request.get_json(silent=True)
             if isinstance(data, dict) and ("name" in data or "email" in data):
-                from CTFd.utils.user import is_admin
-
-                target = _target_user(kwargs.get("user_id"))
+                target = _target_user(user_id)
                 target_id = target.id if target is not None else None
 
                 if "name" in data and not isinstance(data["name"], str):
