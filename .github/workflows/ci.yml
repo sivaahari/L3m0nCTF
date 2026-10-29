@@ -134,6 +134,18 @@ jobs:
               --ignorefile /rules/accepted-advisories.txt --skip-files usr/local/bin/gosu --exit-code 1 --no-progress
           done
 
+  plugin-suite:
+    # Our own plugins' tests (about 3,000), on four workers. They shared one job with CTFd's suite on a single worker, which needed more than the 40 minutes
+    # that job was given: it was cancelled on every push, so no pull request ever got a result (the teammates who cannot run Docker rely on this one).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Build
+        run: docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
+      - name: Our plugins' tests
+        run: tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -n 4 -p no:randomly -p no:cacheprovider /l3mon_tests
+
   ctfd-suite:
     # CTFd's own 676 tests, run on OUR image: proof that the upgraded libraries break nothing.
     runs-on: ubuntu-24.04
@@ -142,8 +154,6 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Build
         run: docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
-      - name: Our plugin's tests
-        run: tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -p no:randomly -p no:cacheprovider /l3mon_tests
       - name: CTFd's whole suite
         run: tools/run-ctfd-tests.sh l3mon/ctfd:dev
 
