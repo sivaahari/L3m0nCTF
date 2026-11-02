@@ -229,6 +229,10 @@ def load(app):
     from CTFd.plugins.l3mon_guard.policies.email_norm import register_email_norm_listeners
     register_email_norm_listeners()
 
+    # 1c. The username and e-mail rules in front of the sign-up form and the player API (the pages check them in the browser; a script posts straight past that)
+    from CTFd.plugins.l3mon_guard import player_rules
+    player_rules.install(app)
+
     # 2. Blueprints
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_page_bp)
