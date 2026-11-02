@@ -52,7 +52,7 @@ def test_the_route_table_names_pages_that_answer_today(app):
             assert client.get(path).status_code in (200, 302, 403), f"{name} ({path}) must be a page that exists"
     routes["channels"] = "/changed"
     with app.test_request_context("/"):
-        assert values.Values(app).routes["channels"] == "/challenges", "a page cannot change the shared table by changing what it was given"
+        assert values.Values(app).routes["channels"] == "/board", "a page cannot change the shared table by changing what it was given"
 
 
 def test_the_sign_in_footer_links_to_the_website_and_names_no_prototype(app):
@@ -69,9 +69,9 @@ def test_the_error_pages_lead_to_pages_that_exist(app):
     with app.test_client() as client:
         body = client.get("/there-is-no-such-page").get_data(as_text=True)
     hrefs = re.findall(r'href="([^"]+)"', body)
-    assert "/challenges" in hrefs and "/guide" in hrefs and "https://l3m0nctf.xyz/rules/" in hrefs
-    offending = [h for h in hrefs if h in ("/board", "/rules", "/privacy")]
-    assert not offending, f"links to pages that do not exist yet: {offending}; all links: {[h for h in hrefs if not h.startswith('#')]}"
+    assert "/board" in hrefs and "/guide" in hrefs and "https://l3m0nctf.xyz/rules/" in hrefs
+    offending = [h for h in hrefs if h in ("/challenges", "/rules", "/privacy")]  # /challenges only redirects to /board; the platform host has no Rules or Privacy page
+    assert not offending, f"links to addresses that are not the page itself: {offending}; all links: {[h for h in hrefs if not h.startswith('#')]}"
 
 
 def test_the_prototype_addresses_are_answered_by_their_own_pages_and_no_alias_stands_in_front_of_them(app):
