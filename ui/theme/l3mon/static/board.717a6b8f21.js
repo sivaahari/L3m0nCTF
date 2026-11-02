@@ -697,8 +697,8 @@ timer=setTimeout(tick,1000-(Date.now()%1000)+5);
 return()=>{stopped=true;clearTimeout(timer);document.removeEventListener('visibilitychange',onVis);};
 }
 const ROUTES={
-session:'/api/v1/l3mon/session',
-resend:'/api/v1/l3mon/auth/resend',
+session:'/api/v1/users/me',
+resend:'/confirm',
 teamAvailable:'/api/v1/l3mon/teams/available',
 board:'/api/v1/l3mon/board',
 ticks:'/api/v1/l3mon/ticks',
@@ -764,8 +764,14 @@ return normalise(0,null,e&&e.name==='AbortError'?'timeout':'offline');
 clearTimeout(timer);
 }
 }
-const session=(o)=>apiCall('GET',ROUTES.session,o);
-const resendVerification=()=>apiCall('POST',ROUTES.resend,{body:{}});
+const session=async(o)=>{
+const r=await apiCall('GET',ROUTES.session,o);
+if(r.ok&&r.data&&!r.data.user&&typeof r.data.verified==='boolean'){
+r.data={...r.data,user:r.data};
+}
+return r;
+};
+const resendVerification=async()=>apiCall('POST',ROUTES.resend,{body:{},html:true});
 const teamAvailable=(name)=>apiCall('GET',`${ROUTES.teamAvailable}?name=${encodeURIComponent(name)}`,{retries:1});
 const board=async(etag,o={})=>{
 const r=await apiCall('GET',ROUTES.board,{...o,etag});
