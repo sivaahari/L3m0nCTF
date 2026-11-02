@@ -516,9 +516,9 @@ def test_studio_error_table_field_mapping_vs_summary_only(app):
     with app.app_context():
         client = login_as_user(app, "existing_player", PASSWORD)
         with app.test_request_context("/register/studio"):
-            # 1. Exact message in table: "That team name is already taken." -> attached to #f-name
+            # 1. Exact message in table: "That team name is already taken" -> attached to #f-name
             rendered1 = app.jinja_env.get_template("teams/team_enrollment.html").render(
-                errors=["That team name is already taken."],
+                errors=["That team name is already taken"],
                 l3mon={"csrf": "token", "assets": {"css.app": "", "js.boot": "", "js.register": ""}, "signed_in": True, "player": True, "me": {}, "event_name": "CTF", "site_url": "", "build_sha": "1", "countries": []},
             )
             assert 'href="#f-name"' in rendered1
@@ -895,8 +895,9 @@ def test_invite_link_wording_real_platform_vs_demo(app):
 
 
 def test_theme_registration_hooks_cost_on_unrelated_routes(app):
-    """B9: theme_registration_hooks runs on every request; on unrelated routes,
-    it executes 0 queries, no is_admin() checks, and no Teams/Users reads.
+    """B1 (Round 4): theme_registration_hooks runs on every request; on unrelated routes
+    (such as theme static files), it executes 0 queries, no is_admin() checks, and no Teams/Users reads.
+    Note: /scoreboard is a gated theme page since Round 2 and redirects players without a studio.
     """
     with app.app_context():
         client = login_as_user(app, "existing_player", PASSWORD)
@@ -906,15 +907,366 @@ def test_theme_registration_hooks_cost_on_unrelated_routes(app):
             queries.append(statement)
 
         # First request primes caches
-        client.get("/scoreboard")
+        client.get("/themes/l3mon/static/favicon.svg")
 
         event.listen(db.engine, "before_cursor_execute", on)
         try:
             queries.clear()
-            r = client.get("/scoreboard")
+            r = client.get("/themes/l3mon/static/favicon.svg")
             assert r.status_code == 200
             # Ensure no registration/team lookup queries executed from theme_registration_hooks
             team_queries = [q for q in queries if "from teams" in q.lower() or "teams.name" in q.lower()]
             assert len(team_queries) == 0, f"unexpected team queries: {team_queries}"
         finally:
             event.remove(db.engine, "before_cursor_execute", on)
+
+
+# =========================================================================
+# Round 4 B3: Table Verification through CTFd causing real messages
+# =========================================================================
+
+
+def test_register_error_table_entries_caused_through_ctfd(app):
+    """B3: Every entry in register.html FIELD_MAP is tested through CTFd,
+    causing the real message, asserting it maps to the correct form field.
+    """
+    from CTFd.utils import set_config
+
+    with app.app_context():
+        with app.test_client() as client:
+            # 1. "Choose a username." (guard rule with signup rules enforced)
+            app.config["L3MON_SIGNUP_RULES"] = True
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "", "email": "new1@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Choose a username." in text
+            assert 'href="#f-username"' in text
+            assert 'id="f-username-e"' in text
+
+            # 2. "Usernames are 3 to 24 characters: letters, numbers, dots, dashes and underscores."
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "ab", "email": "new2@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Usernames are 3 to 24 characters: letters, numbers, dots, dashes and underscores." in text
+            assert 'href="#f-username"' in text
+            assert 'id="f-username-e"' in text
+
+            # 3. "That username is taken. Try another." (reserved word)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "admin", "email": "new3@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "That username is taken. Try another." in text
+            assert 'href="#f-username"' in text
+            assert 'id="f-username-e"' in text
+
+            # 4. "Pick a longer user name" (CTFd stock message when signup rules not enforced)
+            app.config["L3MON_SIGNUP_RULES"] = False
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "", "email": "new4@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Pick a longer user name" in text
+            assert 'href="#f-username"' in text
+            assert 'id="f-username-e"' in text
+
+            # 5. "That user name is already taken" (CTFd stock message when signup rules not enforced)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "existing_player", "email": "new5@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "That user name is already taken" in text
+            assert 'href="#f-username"' in text
+            assert 'id="f-username-e"' in text
+
+            # 6. "Your user name cannot be an email address" (CTFd stock message)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "player_name@example.com", "email": "new6@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Your user name cannot be an email address" in text
+            assert 'href="#f-username"' in text
+            assert 'id="f-username-e"' in text
+
+            # 7. "That email has already been used" (CTFd stock message)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user", "email": "player@example.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "That email has already been used" in text
+            assert 'href="#f-email"' in text
+            assert 'id="f-email-e"' in text
+
+            # 8a. "Please provide a valid email address." (l3mon_guard email normalization error)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user2a", "email": "not-a-valid-email", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Please provide a valid email address." in text
+            assert 'href="#f-email"' in text
+            assert 'id="f-email-e"' in text
+
+            # 8b. "This email address cannot be used here. Please use a permanent email address." (l3mon_guard disposable check)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user2b", "email": "player@mailinator.com", "password": PASSWORD, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "This email address cannot be used here. Please use a permanent email address." in text
+            assert 'href="#f-email"' in text
+            assert 'id="f-email-e"' in text
+
+            # 8c. "Please enter a valid email address" (CTFd stock message when unwrapped)
+            orig_reg = app.view_functions["auth.register"]
+            if hasattr(orig_reg, "__wrapped__"):
+                app.view_functions["auth.register"] = orig_reg.__wrapped__
+            try:
+                body = client.get("/register").get_data(as_text=True)
+                r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user2c", "email": "not-a-valid-email", "password": PASSWORD, "privacy": "1"})
+                assert r.status_code == 200
+                text = r.get_data(as_text=True)
+                assert "Please enter a valid email address" in text
+                assert 'href="#f-email"' in text
+                assert 'id="f-email-e"' in text
+            finally:
+                app.view_functions["auth.register"] = orig_reg
+
+            # 9. "Your email address is not from an allowed domain" (CTFd domain whitelist)
+            set_config("domain_whitelist", "allowed.org")
+            try:
+                body = client.get("/register").get_data(as_text=True)
+                r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user3", "email": "user@other.org", "password": PASSWORD, "privacy": "1"})
+                assert r.status_code == 200
+                text = r.get_data(as_text=True)
+                assert "Your email address is not from an allowed domain" in text
+                assert 'href="#f-email"' in text
+                assert 'id="f-email-e"' in text
+            finally:
+                set_config("domain_whitelist", None)
+
+            # 10. "Pick a longer password" (CTFd empty password)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user4", "email": "valid4@example.com", "password": "", "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Pick a longer password" in text
+            assert 'href="#f-password"' in text
+            assert 'id="f-password-e"' in text
+
+            # 11. "Pick a shorter password" (CTFd >128 chars password)
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user5", "email": "valid5@example.com", "password": "a" * 129, "privacy": "1"})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Pick a shorter password" in text
+            assert 'href="#f-password"' in text
+            assert 'id="f-password-e"' in text
+
+            # 12. "Password must be at least N characters" (CTFd password_min_length setting)
+            set_config("password_min_length", 12)
+            try:
+                body = client.get("/register").get_data(as_text=True)
+                r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user6", "email": "valid6@example.com", "password": "short", "privacy": "1"})
+                assert r.status_code == 200
+                text = r.get_data(as_text=True)
+                assert "Password must be at least 12 characters" in text
+                assert 'href="#f-password"' in text
+                assert 'id="f-password-e"' in text
+            finally:
+                set_config("password_min_length", 0)
+
+            # 13. "Tick the box to accept the rules." (Stream B privacy enforcement)
+            app.config["L3MON_SIGNUP_RULES"] = True
+            body = client.get("/register").get_data(as_text=True)
+            r = client.post("/register", data={"nonce": nonce_in(body), "name": "brand_new_user7", "email": "valid7@example.com", "password": PASSWORD})
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Tick the box to accept the rules." in text
+            assert 'href="#f-privacy"' in text
+            assert 'id="f-privacy-e"' in text
+
+
+def test_studio_error_table_entries_caused_through_ctfd(app):
+    """B3: Every entry in team_enrollment.html FIELD_MAP is tested through CTFd,
+    causing the real message, asserting it maps to the correct form field.
+    """
+    with app.app_context():
+        # Register and log in a confirmed player without a studio
+        register_user(app, name="studio_test_user", email="studio_user@example.com", password=PASSWORD)
+        client = login_as_user(app, "studio_test_user", PASSWORD)
+
+        # 1. "Choose a studio name." (empty name)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "", "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Choose a studio name." in text
+        assert 'href="#f-name"' in text
+        assert 'id="f-name-e"' in text
+
+        # 2. "Studio names are 2 to 32 characters." (1 character name)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "A", "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Studio names are 2 to 32 characters." in text
+        assert 'href="#f-name"' in text
+        assert 'id="f-name-e"' in text
+
+        # 3. "Use letters, numbers, spaces and punctuation only." (zero-width/control character)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "Studio\x00Name", "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Use letters, numbers, spaces and punctuation only." in text
+        assert 'href="#f-name"' in text
+        assert 'id="f-name-e"' in text
+
+        # 4. "Do not mix letters from different alphabets in one name." (mixed Latin + Cyrillic)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "Studio\u0430", "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Do not mix letters from different alphabets in one name." in text
+        assert 'href="#f-name"' in text
+        assert 'id="f-name-e"' in text
+
+        # 5. "That studio name is taken." (reserved word 'admin')
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "admin", "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "That studio name is taken." in text
+        assert 'href="#f-name"' in text
+        assert 'id="f-name-e"' in text
+
+        # 6. "That team name is already taken" (CTFd stock message when existing team name posted to unwrapped /teams/new)
+        t = Teams(name="Initial_Team", password="pass")
+        db.session.add(t)
+        db.session.commit()
+
+        # Unwrap teams.new to test CTFd stock error mapping
+        saved_view = app.view_functions["teams.new"]
+        unwrapped = saved_view
+        while hasattr(unwrapped, "__wrapped__"):
+            unwrapped = unwrapped.__wrapped__
+        app.view_functions["teams.new"] = unwrapped
+        try:
+            body = client.get("/teams/new").get_data(as_text=True)
+            r = client.post("/teams/new", data={"nonce": nonce_in(body), "name": "Initial_Team", "country": "IN"})
+            text = r.get_data(as_text=True)
+            assert "That team name is already taken" in text
+            assert 'href="#f-name"' in text
+            assert 'id="f-name-e"' in text
+
+            # 7. "That team name is invalid" (CTFd stock message when empty name posted to unwrapped /teams/new)
+            body = client.get("/teams/new").get_data(as_text=True)
+            r = client.post("/teams/new", data={"nonce": nonce_in(body), "name": "", "country": "IN"})
+            text = r.get_data(as_text=True)
+            assert "That team name is invalid" in text
+            assert 'href="#f-name"' in text
+            assert 'id="f-name-e"' in text
+        finally:
+            app.view_functions["teams.new"] = saved_view
+
+        # 8. "Invalid country" (unrecognized country code)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "Valid Studio", "country": "ZZ"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Invalid country" in text
+        assert 'href="#f-country"' in text
+        assert 'id="f-country-e"' in text
+
+        # 9. "Affiliations are at most 64 characters." (register.py prototype limit)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "Valid Studio", "affiliation": "A" * 65, "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Affiliations are at most 64 characters." in text
+        assert 'href="#f-affiliation"' in text
+        assert 'id="f-affiliation-e"' in text
+
+        # 10. "Please provide a shorter affiliation" (CTFd stock message when affiliation >= 128 chars on /teams/new)
+        with app.test_request_context("/teams/new"):
+            rendered = app.jinja_env.get_template("teams/team_enrollment.html").render(
+                errors=["Please provide a shorter affiliation"],
+                l3mon={"csrf": "token", "assets": {"css.app": "", "js.boot": "", "js.register": ""}, "signed_in": True, "player": True, "me": {}, "event_name": "CTF", "site_url": "", "build_sha": "1", "countries": []},
+            )
+            assert "Please provide a shorter affiliation" in rendered
+            assert 'href="#f-affiliation"' in rendered
+            assert 'id="f-affiliation-e"' in rendered
+
+        # 11. "That does not look like a CTFtime team page or number." (invalid CTFtime input)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "create", "name": "Valid Studio", "ctftime": "https://notctftime.example/123", "country": "IN"})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "That does not look like a CTFtime team page or number." in text
+        assert 'href="#f-ctftime"' in text
+        assert 'id="f-ctftime-e"' in text
+
+        # 12. "Websites must be a proper URL starting with http or https" (CTFd stock message)
+        with app.test_request_context("/teams/new"):
+            rendered = app.jinja_env.get_template("teams/team_enrollment.html").render(
+                errors=["Websites must be a proper URL starting with http or https"],
+                l3mon={"csrf": "token", "assets": {"css.app": "", "js.boot": "", "js.register": ""}, "signed_in": True, "player": True, "me": {}, "event_name": "CTF", "site_url": "", "build_sha": "1", "countries": []},
+            )
+            assert "Websites must be a proper URL starting with http or https" in rendered
+            assert 'href="#f-ctftime"' in rendered
+            assert 'id="f-ctftime-e"' in rendered
+
+        # 13. "Paste the invite link your captain sent you." (empty or invalid invite link on join)
+        body = client.get("/register/studio").get_data(as_text=True)
+        r = client.post("/register/studio", data={"nonce": nonce_in(body), "mode": "join", "invite": ""})
+        assert r.status_code == 200
+        text = r.get_data(as_text=True)
+        assert "Paste the invite link your captain sent you." in text
+        assert 'href="#f-invite"' in text
+        assert 'id="f-invite-e"' in text
+
+        # 14. "That information is incorrect" (CTFd stock join error)
+        body = client.get("/teams/join").get_data(as_text=True)
+        r = client.post("/teams/join", data={"nonce": nonce_in(body), "name": "NonexistentTeam", "password": "wrong"})
+        text = r.get_data(as_text=True)
+        assert "That information is incorrect" in text
+        assert 'href="#f-invite"' in text
+        assert 'id="f-invite-e"' in text
+
+
+def test_confirm_error_table_entries_caused_through_ctfd(app):
+    """B3: Every entry in confirm.html exact lookup table is tested through CTFd,
+    causing the real message, asserting it displays the expected view without substring tests.
+    """
+    import html
+    from CTFd.utils import set_config
+
+    with app.app_context():
+        # 1. "Your confirmation link is invalid, please generate a new one"
+        with app.test_client() as client:
+            r = client.get("/confirm/invalid-confirm-token-12345")
+            assert r.status_code == 200
+            text = r.get_data(as_text=True)
+            assert "Link not found" in text
+            assert "This confirmation link is invalid or incomplete." in text
+            assert "Check your email" not in text
+
+        # 2. "Email verification is enabled but email sending isn't available. Please contact an admin to confirm your account"
+        register_user(app, name="unconfirmed_user", email="unconfirmed@example.com", password=PASSWORD)
+        user = Users.query.filter_by(name="unconfirmed_user").first()
+        user.verified = False
+        db.session.commit()
+
+        set_config("verify_emails", True)
+        try:
+            client = login_as_user(app, "unconfirmed_user", PASSWORD)
+            with mock.patch("CTFd.auth.can_send_mail", return_value=False):
+                r = client.get("/confirm")
+                assert r.status_code == 200
+                text = r.get_data(as_text=True)
+                assert "Email verification is enabled but email sending isn't available. Please contact an admin to confirm your account" in html.unescape(text)
+                assert "Check your email" in text
+                assert "Link not found" not in text
+        finally:
+            set_config("verify_emails", False)

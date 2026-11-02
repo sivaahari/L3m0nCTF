@@ -33,10 +33,110 @@ from CTFd.utils.countries import COUNTRIES_LIST, lookup_country_code
 from CTFd.utils.decorators import ratelimit
 from CTFd.utils.user import authed, get_current_user, is_admin
 
+try:
+    from CTFd.plugins.l3mon_guard.policies.password import (
+        V_MSG_PASS_COMMON,
+        V_MSG_PASS_EMAIL,
+        V_MSG_PASS_EMPTY,
+        V_MSG_PASS_LONG,
+        V_MSG_PASS_SHORT,
+        V_MSG_PASS_USER,
+    )
+    PASSWORD_MESSAGES = (
+        V_MSG_PASS_EMPTY,
+        V_MSG_PASS_SHORT,
+        V_MSG_PASS_LONG,
+        V_MSG_PASS_COMMON,
+        V_MSG_PASS_USER,
+        V_MSG_PASS_EMAIL,
+    )
+except ImportError:
+    V_MSG_PASS_EMPTY = "Choose a password."
+    V_MSG_PASS_SHORT = "Use at least 12 characters."
+    V_MSG_PASS_LONG = "Use at most 128 characters."
+    V_MSG_PASS_COMMON = "That password is too common. Try a short sentence."
+    V_MSG_PASS_USER = "Do not use your username in your password."
+    V_MSG_PASS_EMAIL = "Do not use your email address in your password."
+    PASSWORD_MESSAGES = (
+        V_MSG_PASS_EMPTY,
+        V_MSG_PASS_SHORT,
+        V_MSG_PASS_LONG,
+        V_MSG_PASS_COMMON,
+        V_MSG_PASS_USER,
+        V_MSG_PASS_EMAIL,
+    )
+
+EMAIL_MESSAGES = (
+    "Email address is required.",
+    "Email address contains invalid control characters.",
+    "Please provide a valid email address.",
+    "This email address cannot be used here. Please use a permanent email address.",
+)
+
 CTFTIME_RE = re.compile(
     r"^(?:https?://)?(?:www\.)?ctftime\.org/team/(\d{1,8})/?(?:[?#].*)?$",
     re.IGNORECASE,
 )
+
+
+@value("field_messages", default={})
+def field_messages():
+    """Mapping of exact error sentences to target form field IDs (B3).
+    Imports constants from l3mon_guard policies (username, team_name, password, email)
+    and CTFd source so that changes in policy constants automatically reflect in templates.
+    """
+    mapping = {}
+
+    # Username policy (guard)
+    for msg in USERNAME_MESSAGES:
+        mapping[msg] = "username"
+
+    # Team name policy (guard)
+    for msg in TEAM_NAME_MESSAGES:
+        mapping[msg] = "name"
+
+    # Email normalization & disposable policies (guard)
+    for msg in EMAIL_MESSAGES:
+        mapping[msg] = "email"
+
+    # Password policy (guard)
+    for msg in PASSWORD_MESSAGES:
+        mapping[msg] = "password"
+
+    # Rules acceptance (Stream B registration hook)
+    mapping["Tick the box to accept the rules."] = "privacy"
+
+    # CTFd native auth.register messages
+    mapping["That user name is already taken"] = "username"
+    mapping["Your user name cannot be an email address"] = "username"
+    mapping["Pick a longer user name"] = "username"
+    mapping["That email has already been used"] = "email"
+    mapping["Please enter a valid email address"] = "email"
+    mapping["Your email address is not from an allowed domain"] = "email"
+    mapping["Pick a longer password"] = "password"
+    mapping["Pick a shorter password"] = "password"
+
+    # CTFd native teams.py & register.py studio messages
+    mapping["That team name is already taken"] = "name"
+    mapping["That team name is invalid"] = "name"
+    mapping["Invalid country"] = "country"
+    mapping["Please provide a shorter affiliation"] = "affiliation"
+    mapping["Affiliations are at most 64 characters."] = "affiliation"
+    mapping["Websites must be a proper URL starting with http or https"] = "ctftime"
+    mapping["That does not look like a CTFtime team page or number."] = "ctftime"
+    mapping["Paste the invite link your captain sent you."] = "invite"
+    mapping["That information is incorrect"] = "invite"
+
+    return mapping
+
+
+@value("confirm_errors", default={})
+def confirm_errors():
+    """Exact error messages CTFd auth.py gives on /confirm mapped to page kind (B3)."""
+    return {
+        "Your confirmation link is invalid, please generate a new one": "link",
+        "Email verification is enabled but email sending isn't available. Please contact an admin to confirm your account": "mail",
+    }
 
 
 @value("user_email", default="")

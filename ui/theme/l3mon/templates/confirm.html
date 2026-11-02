@@ -20,14 +20,23 @@
 {% set news = [] %}
 {% set dev = none %}
 
+{% set CONFIRM_ERROR_KINDS = l3.confirm_errors if (l3 and l3.confirm_errors) else {
+  'Your confirmation link is invalid, please generate a new one': 'link',
+  "Email verification is enabled but email sending isn't available. Please contact an admin to confirm your account": 'mail',
+} %}
+
 {% set is_mail_error = false %}
+{% set has_invalid_link_error = false %}
 {% for err in errs %}
-  {% if "email sending isn't available" in err or "Email verification is enabled but email sending isn't available" in err %}
+  {% set kind = CONFIRM_ERROR_KINDS.get(err) %}
+  {% if kind == 'mail' %}
     {% set is_mail_error = true %}
+  {% elif kind == 'link' %}
+    {% set has_invalid_link_error = true %}
   {% endif %}
 {% endfor %}
 
-{% set is_link_result = ((request.view_args and request.view_args.get('data')) or (errs and 'confirmation link is invalid' in errs[0]|lower)) and not is_mail_error %}
+{% set is_link_result = ((request.view_args and request.view_args.get('data')) or has_invalid_link_error) and not is_mail_error %}
 
 {% if is_link_result %}
   {% set l_state = 'invalid' %}

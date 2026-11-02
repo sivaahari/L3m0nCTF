@@ -21,32 +21,20 @@
 {% set req_mode = forced_mode if forced_mode is defined else (request.form.get('mode') or request.args.get('mode') or 'create') %}
 {% set is_join = (req_mode == 'join') %}
 
-{% set FIELD_MAP = {
+{% set FIELD_MAP = l3.field_messages if (l3 and l3.field_messages) else {
   'Choose a studio name.': 'name',
   'Studio names are 2 to 32 characters.': 'name',
   'Use letters, numbers, spaces and punctuation only.': 'name',
   'Do not mix letters from different alphabets in one name.': 'name',
   'That studio name is taken.': 'name',
   'That team name is already taken': 'name',
-  'That team name is already taken.': 'name',
   'That team name is invalid': 'name',
-  'That team name is reserved.': 'name',
-  'Team name cannot be empty.': 'name',
-  'Team name must be between 1 and 64 characters.': 'name',
   'Invalid country': 'country',
-  'Choose a country.': 'country',
   'Please provide a shorter affiliation': 'affiliation',
   'Affiliations are at most 64 characters.': 'affiliation',
   'Websites must be a proper URL starting with http or https': 'ctftime',
-  'Please provide a valid website': 'ctftime',
   'That does not look like a CTFtime team page or number.': 'ctftime',
   'Paste the invite link your captain sent you.': 'invite',
-  'Invite codes look like ABCD-1234.': 'invite',
-  'Enter the invite link from your captain.': 'invite',
-  'Enter the invite code from your captain.': 'invite',
-  'Ask your captain. It looks like ABCD-1234.': 'invite',
-  'Please provide an invite code': 'invite',
-  'That invite code does not match any studio.': 'invite',
   'That information is incorrect': 'invite'
 } %}
 

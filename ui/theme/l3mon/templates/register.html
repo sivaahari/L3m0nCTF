@@ -12,44 +12,35 @@
 {% set captcha = {'sitekey': cap.sitekey or none} %}
 {% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
 
-{% set FIELD_MAP = {
+{% set FIELD_MAP = l3.field_messages if (l3 and l3.field_messages) else {
   'That user name is already taken': 'username',
-  'User name has already been taken': 'username',
   'Your user name cannot be an email address': 'username',
   'Pick a longer user name': 'username',
-  'Your username is too long': 'username',
-  'User names cannot contain slashes': 'username',
-  'Please provide a valid user name': 'username',
   'Choose a username.': 'username',
   'Usernames are 3 to 24 characters: letters, numbers, dots, dashes and underscores.': 'username',
   'That username is taken. Try another.': 'username',
   'That email has already been used': 'email',
   'Please enter a valid email address': 'email',
-  'Please provide a valid email address': 'email',
+  'Please provide a valid email address.': 'email',
   'Your email address is not from an allowed domain': 'email',
-  'Your email domain is not permitted by this server': 'email',
   'This email address cannot be used here. Please use a permanent email address.': 'email',
   'Email address is required.': 'email',
   'Email address contains invalid control characters.': 'email',
-  "Email address must contain an '@' symbol.": 'email',
-  'Email domain cannot be empty.': 'email',
-  'Email local part cannot be empty.': 'email',
-  'Email domain contains invalid characters.': 'email',
   'Pick a longer password': 'password',
   'Pick a shorter password': 'password',
-  'Password must be at least 12 characters': 'password',
-  'Password must be at least 8 characters': 'password',
-  'Your password is too long': 'password',
   'Choose a password.': 'password',
+  'Use at least 12 characters.': 'password',
   'Use at most 128 characters.': 'password',
+  'That password is too common. Try a short sentence.': 'password',
+  'Do not use your username in your password.': 'password',
   'Do not use your email address in your password.': 'password',
-  'Tick the box to accept the rules.': 'privacy',
-  'Tick the box to confirm you have read the privacy notice.': 'privacy'
+  'Tick the box to accept the rules.': 'privacy'
 } %}
 {% set summary = [] %}
 {% set ns = namespace(u_err=none, e_err=none, p_err=none, pr_err=none) %}
 {% for err in errs %}
   {% set target = FIELD_MAP.get(err) %}
+  {# Password must be at least N characters has a dynamic number from config; startswith is kept per B3 #}
   {% if not target and err.startswith('Password must be at least') %}
     {% set target = 'password' %}
   {% endif %}
