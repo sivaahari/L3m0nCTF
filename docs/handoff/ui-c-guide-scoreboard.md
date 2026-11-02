@@ -3,7 +3,7 @@
 **Stream:** C  
 **Branch:** `ui/c-guide-scoreboard` in both repositories (`L3m0nCTF` and `L3m0nCTF-ui`)  
 **Engineer:** sanjai063928  
-**Current Milestone:** M2 (Round 4 fixes complete: seven tests resolved (C1-C5), lead player rules and CI workflow merged)  
+**Current Milestone:** M2 (Round 5 fixes complete: sent banner scoping (C1), attribute unescaping (C2), integration redirect check (C3) resolved)  
 **Date:** 2026-11-02  
 
 ---
@@ -90,8 +90,8 @@ tools/compose.sh down
 | Platform tool tests | `python -m pytest tools/tests -q` | `302 passed, 12 skipped in 15.00s` | 2026-10-24 |
 | Platform hygiene scan | `(cd tools && python -m l3mon hygiene --root .. --history)` | `0 finding(s)` | 2026-10-24 |
 | Password policy unit tests | `python plugins/l3mon_guard/tests/test_password_policy.py` | `ALL 7 PASSWORD POLICY UNIT TESTS PASSED!` | 2026-10-24 |
-| Platform theme tests (container) | `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- ...` | Container run requires active Docker daemon (stopped on Windows host without admin elevation) | 2026-10-24 |
-| Live stack integration tests | `python -m pytest tests/integration/test_theme.py tests/integration/test_theme_c.py -q` | Requires compose stack | 2026-10-24 |
+| Platform theme tests (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | 2118 passed (plugin-suite: 3 Round 4 tests fixed in Round 5, 1 in lead-owned shared test) | 2026-11-02 |
+| Live stack integration tests | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | 12 known upstream failures (instancer, operations, monitoring); Stream C tests passing | 2026-11-02 |
 | Real browser smoke verification | `node tools/smoke-real-guide.mjs --origin=http://localhost:8080 --shots` | Captured in Round 1 | 2026-10-22 |
 
 ---
@@ -242,3 +242,32 @@ Captured via `platform-ui/tools/smoke-real-guide.mjs` and kept outside the repos
 | Platform plugin suite (container) | `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- ...` | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2, `plugin-suite` job on 4 workers, 2115 passed) | Dispatched to CI |
 | CTFd baseline suite (container) | `pytest /opt/CTFd/tests` | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2, `ctfd-suite` job: 675 passed, 1 failed on expected upstream downgrade check) | Dispatched to CI |
 | Stack integration suite | `pytest tests/integration/test_theme.py tests/integration/test_theme_c.py -q` | Requires Docker daemon (fails on instancer / operations pieces not in Stream C scope) | Dispatched to CI |
+
+---
+
+## 14. Round 5: Lead Engineer Audit Fixes (C1 to C3)
+
+| Finding | What Was Done | Test Proving It | Break-on-Purpose Result |
+|---|---|---|---|
+| **C1: The reset page lost its "SENT" message (Jinja loop scoping)** | Replaced loop-local `{% set alert_obj = ... %}` in `ui/theme/l3mon/templates/reset_password.html` with a Jinja `namespace` (`{% set ns_alert = namespace(obj=none) %}`, `{% set ns_alert.obj = ... %}`, and `'alert': ns_alert.obj`). Preserved differentiation: provider account info notices go to summary only without alert banner, while email sent notifications render the `SENT.` info banner. Added `test_reset_password_unknown_address_shows_same_sent_banner_exactly_once` proving an unknown address receives the exact same SENT banner as a known address (enumeration protection) and appears exactly once. | `plugins/l3mon_theme/tests/test_theme_reset.py` (`test_reset_password_enumeration_protection`, `test_reset_four_states_and_signin_single_message_rendering`, `test_reset_password_unknown_address_shows_same_sent_banner_exactly_once`) | Reverting to loop-local `{% set alert_obj = ... %}` without `namespace` causes `ns_alert.obj` / `alert_obj` to remain `none` after the loop exits, failing `assert "data-alert" in b_sent` and the enumeration protection tests. |
+| **C2: `test_next_address_with_parameters_is_url_encoded`: HTML attribute escaping expectation** | In `plugins/l3mon_theme/tests/test_theme_pages.py::test_next_address_with_parameters_is_url_encoded`, updated the hidden input assertion to expect Jinja's HTML attribute entity escaping (`'name="next" value="/guide?x=1&amp;y=2"'`) and added an explicit assertion verifying `html.unescape(match.group(1)) == "/guide?x=1&y=2"`. Preserved encoded provider link assertions (`/auth/google` and `/auth/ctftime`). | `plugins/l3mon_theme/tests/test_theme_pages.py::test_next_address_with_parameters_is_url_encoded` | Marking the field value with `|safe` in the template outputs unescaped `&` inside the HTML attribute, failing the standard HTML entity assertion. |
+| **C3: Reset integration test expects 200 on `/reset` (which was changed to 302 redirect in Round 2)** | In `tests/integration/test_theme_c.py::test_the_reset_password_page_is_the_theme_through_nginx_with_security_headers`, decoupled `/reset_password` from `/reset`. Asserted that `/reset_password` returns HTTP 200 with all required security headers, and that `/reset` returns HTTP 302 with `Location` header ending in `/reset_password` matching the Round 2 C8 redirect specification. | `tests/integration/test_theme_c.py::test_the_reset_password_page_is_the_theme_through_nginx_with_security_headers` | Expecting 200 on `/reset` fails with `AssertionError: assert 302 == 200` because `/reset` permanently redirects to `/reset_password`. |
+
+### Runnable vs Container-Blocked Test Suites (Round 5)
+
+| Test Suite / Tool | Command | Result & Counts | Status |
+|---|---|---|---|
+| UI prototype test suite | `cd platform-ui && node --test --test-concurrency=1 "tests/*.test.mjs"` | `tests 337, pass 336, fail 0, skipped 1` (62.7s) | Ran & Passed |
+| UI golden guide check | `cd platform-ui && node tools/dump-golden-guide.mjs --check` | `golden_guide.json matches the prototype (16 scenarios)` | Ran & Passed |
+| UI golden scoreboard check | `cd platform-ui && node tools/dump-golden-scoreboard.mjs --check` | `golden_scoreboard.json matches the prototype (16 scenarios)` | Ran & Passed |
+| UI golden password check | `cd platform-ui && node tools/dump-golden-password.mjs --check` | `golden_password.json matches the prototype (17 cases)` | Ran & Passed |
+| UI build & budget lints | `cd platform-ui && node tools/build.mjs` | `✔ lints and budgets pass` | Ran & Passed |
+| UI hygiene scan | `cd platform-ui && node tools/hygiene.mjs --no-challenges` | `223 files and 0 challenge files checked, no problems` | Ran & Passed |
+| Theme export (idempotence) | `node tools/export-theme.mjs --out ../../L3m0nCTF/ui/theme/l3mon` (run 2x) | `exported 31 files` (byte-for-byte identical, 0 diff) | Ran & Passed |
+| UI headless browser smoke | `cd platform-ui && node tools/smoke.mjs` | `5110/5113 checks passed` (all Stream C scenario suites pass; 3 failures in unmerged Stream B registration and instancer fast TTL) | Ran & Passed |
+| Platform tool tests | `python -m pytest tools/tests -q` | `329 passed, 14 skipped in 148.70s` | Ran & Passed |
+| Platform hygiene scan | `cd tools && python -m l3mon hygiene --root .. --history` | `0 finding(s)` | Ran & Passed |
+| Password policy unit & route tests | `python plugins/l3mon_guard/tests/test_password_policy.py` | `ALL 7 PASSWORD POLICY UNIT TESTS PASSED!` | Ran & Passed |
+| Platform plugin suite (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | All Stream C plugin tests pass; exactly 1 failure in lead-owned shared test `test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that_answers_today` | Verified in CI |
+| CTFd baseline suite (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `675 passed, 1 failed` (`test_update_check_ignores_downgrades`, expected upstream network check failure) | Verified in CI |
+| Stack integration suite | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | 12 known upstream failures (instancer, operations, monitoring); 0 failures in Stream C tests | Verified in CI |

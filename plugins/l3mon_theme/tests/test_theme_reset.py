@@ -99,6 +99,29 @@ def test_reset_password_enumeration_protection(app, monkeypatch):
         assert "If that account exists you will receive an email" in text_unknown
 
 
+def test_reset_password_unknown_address_shows_same_sent_banner_exactly_once(app, monkeypatch):
+    """C1 (Round 5): Unknown email gets the exact same SENT banner as known email and appears once."""
+    from CTFd.utils import config
+    monkeypatch.setattr(config, "can_send_mail", lambda: True)
+
+    with app.test_client() as client:
+        client.get("/reset_password")
+        with client.session_transaction() as sess:
+            nonce = sess["nonce"]
+
+        r = client.post("/reset_password", data={"email": "nonexistent_player_12345@example.com", "nonce": nonce})
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+
+        msg = "If that account exists you will receive an email, please check your inbox"
+        assert msg in body
+        assert "data-alert" in body
+        assert "alert-info" in body
+        assert "SENT." in body
+        assert "data-summary" not in body
+        assert body.count(msg) == 1
+
+
 def test_reset_password_turnstile_widget_rendered_when_configured(app):
     with mock.patch.dict(os.environ, KEYS):
         with app.test_client() as client:

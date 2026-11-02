@@ -80,12 +80,16 @@ def test_the_guide_page_redirects_signed_out_visitor_through_nginx():
 
 
 def test_the_reset_password_page_is_the_theme_through_nginx_with_security_headers():
-    for path in ("/reset_password", "/reset"):
-        status, headers, body = get(path)
-        assert status == 200, f"Expected 200 on {path}"
-        assert ('name="email"' in body or 'f-email' in body or "pg-register" in body)
-        for name in SECURITY_HEADERS:
-            assert len(values(headers, name)) == 1, f"{name} is sent once on {path}"
+    status, headers, body = get("/reset_password")
+    assert status == 200, "Expected 200 on /reset_password"
+    assert ('name="email"' in body or 'f-email' in body or "pg-register" in body)
+    for name in SECURITY_HEADERS:
+        assert len(values(headers, name)) == 1, f"{name} is sent once on /reset_password"
+
+    status_r, headers_r, _ = get("/reset")
+    assert status_r == 302, "Expected 302 on /reset"
+    loc = header_value(headers_r, "Location") or ""
+    assert loc.endswith("/reset_password"), f"Expected Location ending with /reset_password, got {loc!r}"
 
 
 def test_the_reset_password_page_names_static_files_that_nginx_serves():

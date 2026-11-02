@@ -7,6 +7,7 @@ Each error page is provoked for real where CTFd can be made to produce that stat
 that aborts with 429 (CTFd's own sign-in limit answers with JSON, not the error page), and a 500 through a route that raises; those
 two routes exist only in these tests, added to the test app's routing table.
 """
+import html
 import re
 import urllib.parse
 
@@ -286,7 +287,10 @@ def test_next_address_with_parameters_is_url_encoded(app, monkeypatch):
             body = client.get("/login?" + urllib.parse.urlencode({"next": "/guide?x=1&y=2"})).get_data(as_text=True)
             assert 'href="/auth/google?next=/guide%3Fx%3D1%26y%3D2"' in body
             assert 'href="/auth/ctftime?next=/guide%3Fx%3D1%26y%3D2"' in body
-            assert 'name="next" value="/guide?x=1&y=2"' in body
+            assert 'name="next" value="/guide?x=1&amp;y=2"' in body
+            match = re.search(r'name="next"\s+value="([^"]*)"', body)
+            assert match is not None
+            assert html.unescape(match.group(1)) == "/guide?x=1&y=2"
 
 
 def test_the_sign_in_and_error_pages_carry_no_prototype_wording(app):
