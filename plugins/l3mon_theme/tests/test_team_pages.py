@@ -822,15 +822,19 @@ def test_d2_break_on_purpose_no_mail_sent(app):
 
 def test_round4_d1_password_validation_rules(app):
     """D1: Test password policy enforcement on POST /settings (part=password)."""
-    app.config["L3MON_SIGNUP_RULES"] = True
     with app.app_context():
         user_name = "r4_pw_player"
         email = "r4_distinct_mail@example.com"
-        register_user(app, name=user_name, email=email, password=PASSWORD)
+        user = Users(name=user_name, email=email, password=PASSWORD, verified=True)
+        db.session.add(user)
+        db.session.commit()
+
+        app.config["L3MON_SIGNUP_RULES"] = True
 
         client = login_as_user(app, name=user_name, password=PASSWORD)
         b = client.get("/settings").get_data(as_text=True)
         nonce = nonce_in(b)
+        assert "data-pw open" not in b
 
         # 1. Short password: "abc"
         res = client.post("/settings", data={
@@ -839,6 +843,7 @@ def test_round4_d1_password_validation_rules(app):
         assert res.status_code == 303
         b_err = client.get("/settings").get_data(as_text=True)
         assert V_MSG_PASS_SHORT in b_err
+        assert "data-pw open" in b_err
 
         # 2. Eleven spaces and "ab1" (11 spaces + 3 chars = 14 raw, 3 stripped -> refused)
         res = client.post("/settings", data={
@@ -894,10 +899,13 @@ def test_round4_d1_password_validation_rules(app):
 
 def test_round4_d1_break_on_purpose_password_rule_disabled(app):
     """D1 Break-on-purpose: when signup rules are disabled, POST /settings accepts 'abc'."""
-    app.config["L3MON_SIGNUP_RULES"] = False
     with app.app_context():
         user_name = "bop_pw_player"
-        register_user(app, name=user_name, email="bop_pw@example.com", password=PASSWORD)
+        user = Users(name=user_name, email="bop_pw@example.com", password=PASSWORD, verified=True)
+        db.session.add(user)
+        db.session.commit()
+
+        app.config["L3MON_SIGNUP_RULES"] = False
 
         client = login_as_user(app, name=user_name, password=PASSWORD)
         b = client.get("/settings").get_data(as_text=True)
