@@ -82,9 +82,11 @@ def test_04_a_programme_has_its_own_page_and_a_held_back_one_is_missing_like_an_
 
 
 def test_05_a_visitor_is_sent_to_sign_in(world):
-    for path in ("/board", "/challenges", "/board/heron_ledger", "/notifications"):
+    for path in ("/board", "/board/heron_ledger", "/notifications"):
         status, headers, _ = t.request(path)
         assert status == 302 and t.header_values(headers, "Location")[0].startswith("/login"), (path, status)
+    status, headers, _ = t.request("/challenges")  # CTFd's address sends everybody to the board, whose gate asks a visitor to sign in (next=/board)
+    assert status == 302 and t.header_values(headers, "Location")[0].endswith("/board"), status
 
 
 def test_06_the_bells_page_and_the_bells_feed(world):
