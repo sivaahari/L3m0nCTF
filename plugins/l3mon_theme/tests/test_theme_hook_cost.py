@@ -15,14 +15,20 @@ from tests.helpers import create_ctfd, destroy_ctfd, login_as_user, register_use
 REPEATS = 5
 PASSWORD = "a-long-test-password"  # made up, for the throwaway test app only
 
+# The theme's own pages: gated or provided by our theme
+THEME_PAGES = {
+    "the sign-in page, a visitor": ("/login", "visitor", 0, 200),
+    "the scoreboard, a visitor": ("/scoreboard", "visitor", 0, 302),
+}
+
 # name -> (path, who, how many statements more than stock CTFd are allowed)
-REQUESTS = {
+# Other pages (not the theme's own): must cost nothing extra and preserve stock CTFd answer
+OTHER_REQUESTS = {
     "a path nobody serves, a visitor": ("/themes/core/static/css/nothing-here.css", "visitor", 0),
-    "the sign-in page, a visitor": ("/login", "visitor", 0),
     "the settings page, a player": ("/settings", "player", 0),
-    "the scoreboard, a visitor": ("/scoreboard", "visitor", 0),
     "the stock challenge list, a player": ("/api/v1/challenges", "player", 0),
 }
+REQUESTS = OTHER_REQUESTS
 
 
 def statements(fn):
@@ -42,7 +48,8 @@ def statements(fn):
 def cost_of_each(visitor, player):
     """-> {name: (status, the fewest statements in REPEATS tries)}."""
     out = {}
-    for name, (path, who, _) in REQUESTS.items():
+    all_reqs = {**OTHER_REQUESTS, **{k: (p, w, a) for k, (p, w, a, _) in THEME_PAGES.items()}}
+    for name, (path, who, _) in all_reqs.items():
         client = player if who == "player" else visitor
 
         def ask(client=client, path=path):
@@ -71,6 +78,8 @@ def measure(ours):
 def test_the_theme_costs_a_request_that_is_not_its_page_nothing():
     stock = measure(ours=False)
     ours = measure(ours=True)
-    for name, (_, _, allowed) in REQUESTS.items():
+    for name, (_, _, allowed) in OTHER_REQUESTS.items():
         assert ours[name][0] == stock[name][0], f"{name}: the answer changed ({stock[name][0]} stock, {ours[name][0]} ours)"
         assert ours[name][1] <= stock[name][1] + allowed, f"{name}: {ours[name][1]} statements against {stock[name][1]} for stock CTFd (at most {allowed} more)"
+    for name, (_, _, allowed, expected_status) in THEME_PAGES.items():
+        assert ours[name][0] == expected_status, f"{name}: expected status {expected_status}, got {ours[name][0]}"

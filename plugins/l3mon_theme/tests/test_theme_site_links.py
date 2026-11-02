@@ -69,8 +69,8 @@ def test_the_error_pages_lead_to_pages_that_exist(app):
     with app.test_client() as client:
         body = client.get("/there-is-no-such-page").get_data(as_text=True)
     hrefs = re.findall(r'href="([^"]+)"', body)
-    assert "/challenges" in hrefs and "https://l3m0nctf.xyz/rules/" in hrefs
-    offending = [h for h in hrefs if h in ("/board", "/guide", "/rules", "/privacy")]
+    assert "/challenges" in hrefs and "/guide" in hrefs and "https://l3m0nctf.xyz/rules/" in hrefs
+    offending = [h for h in hrefs if h in ("/board", "/rules", "/privacy")]
     assert not offending, f"links to pages that do not exist yet: {offending}; all links: {[h for h in hrefs if not h.startswith('#')]}"
 
 

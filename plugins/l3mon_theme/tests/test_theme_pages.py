@@ -7,7 +7,9 @@ Each error page is provoked for real where CTFd can be made to produce that stat
 that aborts with 429 (CTFd's own sign-in limit answers with JSON, not the error page), and a 500 through a route that raises; those
 two routes exist only in these tests, added to the test app's routing table.
 """
+import html
 import re
+import urllib.parse
 
 import pytest
 from flask import abort
@@ -48,6 +50,42 @@ def test_the_sign_in_page_is_the_theme_and_carries_the_session_token(app):
             assert "Keep me tuned in" not in body
             assert "Human check" not in body
             assert "Continue with Google" not in body
+
+
+def test_sign_in_shows_google_button_when_google_auth_configured(app, monkeypatch):
+    with app.app_context():
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
+        with app.test_client() as client:
+            body = client.get("/login?next=%2Fguide").get_data(as_text=True)
+            assert "Continue with Google" in body
+            assert 'href="/auth/google?next=/guide"' in body
+
+            # And without next
+            body_no_next = client.get("/login").get_data(as_text=True)
+            assert 'href="/auth/google"' in body_no_next
+
+
+@pytest.mark.parametrize("hostile_next", [
+    "https://evil.example/steal",
+    "//evil.example",
+    "/\\evil.example",
+    "javascript:alert(1)",
+    "http://attacker.com",
+])
+def test_google_auth_link_sanitizes_hostile_next(app, monkeypatch, hostile_next):
+    """C9: Prove Google auth link suppresses hostile next parameters so users cannot be tricked to leave site."""
+    with app.app_context():
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
+        with app.test_client() as client:
+            body = client.get(f"/login?next={hostile_next}").get_data(as_text=True)
+            assert "Continue with Google" in body
+            # Hostile next must NOT be forwarded to Google OAuth URL
+            assert 'href="/auth/google"' in body
+            assert hostile_next not in body
 
 
 def test_a_wrong_password_comes_back_on_the_theme_with_the_alert_and_the_typed_name(app):
@@ -178,6 +216,28 @@ def test_a_server_error_page_is_ours_with_status_500_and_no_traceback(app):
             assert "a test-only failure" not in body
 
 
+def test_an_unauthorized_error_page_is_ours_with_status_401(app):
+    app.url_map.add(Rule("/l3mon-test/unauthorized", endpoint="l3mon_test_unauthorized"))
+    app.view_functions["l3mon_test_unauthorized"] = lambda: abort(401)
+    with app.app_context():
+        with app.test_client() as client:
+            r = client.get("/l3mon-test/unauthorized")
+            assert r.status_code == 401
+            body = r.get_data(as_text=True)
+            assert SLATE in body and "SIGN IN REQUIRED" in body
+
+
+def test_a_bad_gateway_error_page_is_ours_with_status_502(app):
+    app.url_map.add(Rule("/l3mon-test/bad-gateway", endpoint="l3mon_test_bad_gateway"))
+    app.view_functions["l3mon_test_bad_gateway"] = lambda: abort(502)
+    with app.app_context():
+        with app.test_client() as client:
+            r = client.get("/l3mon-test/bad-gateway")
+            assert r.status_code == 502
+            body = r.get_data(as_text=True)
+            assert SLATE in body and "BACK IN A MOMENT" in body
+
+
 def test_the_pages_have_no_inline_script_style_or_event_attribute(app):
     with app.app_context():
         with app.test_client() as client:
@@ -203,7 +263,7 @@ def test_ctfds_own_pages_still_render_with_the_theme_in_place(app):
     # the pages the theme does not have fall back to CTFd's core theme; core's own asset calls (Assets.css, Assets.js) must still work
     with app.app_context():
         with app.test_client() as client:
-            for path in ("/register", "/scoreboard"):
+            for path in ("/register",):
                 r = client.get(path)
                 assert r.status_code == 200, path
                 body = r.get_data(as_text=True)
@@ -211,6 +271,26 @@ def test_ctfds_own_pages_still_render_with_the_theme_in_place(app):
         player = login_as_user(app, "player", PASSWORD)
         settings = player.get("/settings")
         assert settings.status_code == 200
+
+
+def test_next_address_with_parameters_is_url_encoded(app, monkeypatch):
+    """C3: next=/guide?x=1&y=2 gives encoded href for Google and CTFtime, preserving parameters."""
+    with app.app_context():
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
+        monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("CTFTIME_CLIENT_ID", "mock-ctftime-id")
+        monkeypatch.setenv("CTFTIME_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
+        from CTFd.utils import set_config
+        set_config("oauth_client_id", "ctftime-mock-id")
+        with app.test_client() as client:
+            body = client.get("/login?" + urllib.parse.urlencode({"next": "/guide?x=1&y=2"})).get_data(as_text=True)
+            assert 'href="/auth/google?next=/guide%3Fx%3D1%26y%3D2"' in body
+            assert 'href="/auth/ctftime?next=/guide%3Fx%3D1%26y%3D2"' in body
+            assert 'name="next" value="/guide?x=1&amp;y=2"' in body
+            match = re.search(r'name="next"\s+value="([^"]*)"', body)
+            assert match is not None
+            assert html.unescape(match.group(1)) == "/guide?x=1&y=2"
 
 
 def test_the_sign_in_and_error_pages_carry_no_prototype_wording(app):
