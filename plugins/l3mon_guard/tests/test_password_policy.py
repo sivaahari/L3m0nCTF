@@ -372,10 +372,11 @@ def test_user_public_api_patch_enforces_password_policy(app):
         db.session.add(u_admin)
         db.session.add(u_target)
         db.session.commit()
+        target_id = u_target.id
 
         client = login_as_user(app, name="admin_crew", password=crew_pw)
         r = client.patch(
-            f"/api/v1/users/{u_target.id}",
+            f"/api/v1/users/{target_id}",
             json={"password": "short"},
         )
         assert r.status_code == 400

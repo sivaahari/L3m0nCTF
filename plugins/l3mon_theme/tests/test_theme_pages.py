@@ -277,6 +277,8 @@ def test_next_address_with_parameters_is_url_encoded(app, monkeypatch):
     with app.app_context():
         monkeypatch.setenv("GOOGLE_CLIENT_ID", "mock-google-id.apps.googleusercontent.com")
         monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "mock-secret")
+        monkeypatch.setenv("CTFTIME_CLIENT_ID", "mock-ctftime-id")
+        monkeypatch.setenv("CTFTIME_CLIENT_SECRET", "mock-secret")
         monkeypatch.setenv("L3MON_PLATFORM_HOST", "play.l3m0nctf.xyz")
         from CTFd.utils import set_config
         set_config("oauth_client_id", "ctftime-mock-id")

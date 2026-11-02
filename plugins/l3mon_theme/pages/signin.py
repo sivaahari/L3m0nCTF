@@ -17,14 +17,14 @@ class _ResetMessageTargets(dict):
     """Mapping of reset error messages to target field ('password', 'email', or None for summary)."""
 
     def get(self, key, default=None):
-        if key in self:
+        if super().__contains__(key):
             return super().get(key, default)
         if isinstance(key, str) and key.startswith("Password must be at least ") and key.endswith(" characters"):
             return "password"
         return default
 
     def __getitem__(self, key):
-        if key in self:
+        if super().__contains__(key):
             return super().__getitem__(key)
         if isinstance(key, str) and key.startswith("Password must be at least ") and key.endswith(" characters"):
             return "password"
