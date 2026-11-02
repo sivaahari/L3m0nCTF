@@ -516,8 +516,9 @@ def _board_view(slug=None):
 
 
 def _redirect_challenges():
-    """Before CTFd's own challenges listing: for our theme, GET and HEAD /challenges from any signed-in account redirects 302 to /board.
-    A visitor keeps CTFd's own answer (the sign-in redirect with next=/challenges).
+    """Before CTFd's own challenges listing: for our theme, GET and HEAD /challenges redirects 302 to /board, for a signed-in account and for a visitor alike.
+    The board's own gates then answer (a visitor is asked to sign in with the board as the destination; CTFd's own answer for a visitor first sends them to
+    /team and then to sign-in with next=/team?next=/challenges, so after signing in they landed on the studio page and not on the board).
     Only that address and only those methods; costs nothing on other paths.
     """
     from flask import redirect, request
@@ -527,10 +528,6 @@ def _redirect_challenges():
     from CTFd.utils import get_config
 
     if get_config("ctf_theme") != "l3mon":
-        return None
-    from CTFd.utils.user import authed
-
-    if not authed():
         return None
     return redirect(BOARD, code=302)
 

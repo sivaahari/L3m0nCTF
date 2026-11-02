@@ -1,7 +1,7 @@
 """Stream A, round 3 (the real-browser finding of 25 October 2026):
 
-  * GET and HEAD /challenges from any signed-in account redirects 302 to /board;
-  * a visitor keeps CTFd's own sign-in redirect with next=/challenges;
+  * GET and HEAD /challenges from anybody redirects 302 to /board (merge of the four streams: for a visitor too; /board then asks them to sign in with
+    next=/board, where CTFd's own answer sent them via /team and they landed on the studio page after signing in);
   * only /challenges and only GET/HEAD: other methods and subpaths are untouched;
   * the hook costs nothing on other paths (0 statements);
   * the redirect happens before CTFd's 403 (with the hook disabled, player gets 403).
@@ -140,17 +140,19 @@ def test_suspended_player_is_turned_away(play, method):
         db.session.commit()
 
 
-def test_visitor_keeps_ctfds_own_answer_and_then_sent_to_board_after_login(play):
+@pytest.mark.parametrize("method", ["get", "head"])
+def test_visitor_is_sent_to_the_board_and_from_there_to_sign_in_with_the_board_as_the_destination(play, method):
+    """/challenges sends everybody to /board. CTFd's own answer for a visitor goes via /team to sign-in with next=/team?next=/challenges, which landed a
+    player on the studio page after signing in (found driving the merged platform in a browser); through /board the destination of the sign-in is the board."""
     visitor = play.app.test_client()
     with clock(T_LIVE):
-        r = visitor.get("/challenges")
-        assert r.status_code == 302
-        loc = r.headers["Location"]
-        assert "/login" in loc and ("next=%2Fchallenges" in loc or "next=/challenges" in loc)
-
-        head_r = visitor.head("/challenges")
-        assert head_r.status_code == 302
-        assert "/login" in head_r.headers["Location"]
+        r = getattr(visitor, method)("/challenges")
+        assert r.status_code == 302 and r.headers["Location"].endswith("/board"), r.headers.get("Location")
+        second = getattr(visitor, method)("/board")
+        assert second.status_code == 302
+        loc = second.headers["Location"]
+        assert loc.startswith("/login") and ("next=%2Fboard" in loc or "next=/board" in loc), loc
+        assert "challenges" not in loc and "team" not in loc.split("next=", 1)[1]
 
 
 def test_only_exact_challenges_path_and_get_head_methods_are_ours(play):

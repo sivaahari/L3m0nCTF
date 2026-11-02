@@ -163,7 +163,8 @@ def same_gate(client):
 def test_a_visitor_is_sent_to_sign_in_from_every_address(play):
     with clock(T_LIVE):
         visitor = play.app.test_client()
-        gates = [seen(visitor.get(p)) for p in ("/challenges", "/board", "/board/lantern_walk", "/board/nothing_like_it")]
+        gates = [seen(visitor.get(p)) for p in ("/board", "/board/lantern_walk", "/board/nothing_like_it")]
+        assert seen(visitor.get("/challenges")) == (302, "/board"), "CTFd's address sends a visitor on to the board, whose gate asks them to sign in (next=/board)"
     assert all(status == 302 and location.startswith("/login") for status, location in gates), gates
 
 
@@ -268,19 +269,17 @@ def test_the_gates_of_the_three_addresses_agree_in_every_state(play):
         with clock(at):
             for who, client in clients.items():
                 one = seen(client.get("/challenges"))
+                assert one == (302, "/board"), (name, who, "/challenges redirects 302 to /board, for a signed-in account and for a visitor")
                 if name == "before":
-                    if who != "visitor":
-                        assert one == (302, "/board"), (name, who, "signed-in account on /challenges redirects 302 to /board")
-                    continue  # the board shows its own page before the start (tested above); CTFd's address keeps its 403
+                    continue  # the board shows its own page before the start (tested above)
                 if who != "visitor":
-                    assert one == (302, "/board"), (name, who, "signed-in account on /challenges redirects 302 to /board")
                     followed = seen(client.get("/challenges", follow_redirects=True))
                     assert followed == seen(client.get("/board")), (name, who, "/challenges followed agrees with /board")
                     continue
-                assert seen(client.get("/board")) == one, (name, who, "/board")
-                assert seen(client.get("/board/lantern_walk"))[0] in (one[0], 404), (name, who, "/board/<slug>")
-                if one[0] != 200:
-                    assert seen(client.get("/board/lantern_walk")) == one, (name, who, "/board/<slug>")
+                board = seen(client.get("/board"))  # a visitor's own gate: CTFd's (sign in, or its 403 after the end), the same for the programme's page
+                assert seen(client.get("/board/lantern_walk"))[0] in (board[0], 404), (name, who, "/board/<slug>")
+                if board[0] != 200:
+                    assert seen(client.get("/board/lantern_walk")) == board, (name, who, "/board/<slug>")
 
 
 def test_a_withheld_everything_board_is_an_empty_frame_not_an_error(play):
