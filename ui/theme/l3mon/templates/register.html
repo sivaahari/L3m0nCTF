@@ -1,0 +1,132 @@
+{# Registration (Account), for the CTFd theme (SP6 stream B). Hand-written:
+   sets the values the generated register-account page reads, then includes it.
+   The typed fields, next address and errors come from CTFd's request and view;
+   the addresses, sign-in state, event name, assets and captcha state come from
+   the theme plugin (l3mon). #}
+{% set l3 = l3mon %}
+{% set errs = errors|default([]) %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set next_to = request.args.get('next') or request.form.get('next') or '' %}
+{% set ctftime_on = l3.ctftime_on %}
+{% set cap = l3.captcha %}
+{% set captcha = {'sitekey': cap.sitekey or none} %}
+{% set ctftime_href = '/auth/ctftime' ~ ('?next=' ~ next_to|urlencode if next_to else '') %}
+
+{% set FIELD_MAP = l3.field_messages if (l3 and l3.field_messages) else {
+  'That user name is already taken': 'username',
+  'Your user name cannot be an email address': 'username',
+  'Pick a longer user name': 'username',
+  'Choose a username.': 'username',
+  'Usernames are 3 to 24 characters: letters, numbers, dots, dashes and underscores.': 'username',
+  'That username is taken. Try another.': 'username',
+  'That email has already been used': 'email',
+  'Please enter a valid email address': 'email',
+  'Please provide a valid email address.': 'email',
+  'Your email address is not from an allowed domain': 'email',
+  'This email address cannot be used here. Please use a permanent email address.': 'email',
+  'Email address is required.': 'email',
+  'Email address contains invalid control characters.': 'email',
+  'Pick a longer password': 'password',
+  'Pick a shorter password': 'password',
+  'Choose a password.': 'password',
+  'Use at least 12 characters.': 'password',
+  'Use at most 128 characters.': 'password',
+  'That password is too common. Try a short sentence.': 'password',
+  'Do not use your username in your password.': 'password',
+  'Do not use your email address in your password.': 'password',
+  'Tick the box to accept the rules.': 'privacy'
+} %}
+{% set summary = [] %}
+{% set ns = namespace(u_err=none, e_err=none, p_err=none, pr_err=none) %}
+{% for err in errs %}
+  {% set target = FIELD_MAP.get(err) %}
+  {# Password must be at least N characters has a dynamic number from config; startswith is kept per B3 #}
+  {% if not target and err.startswith('Password must be at least') %}
+    {% set target = 'password' %}
+  {% endif %}
+  {% if target == 'username' %}
+    {% if not ns.u_err %}{% set ns.u_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-username', 'text': err}) %}
+  {% elif target == 'email' %}
+    {% if not ns.e_err %}{% set ns.e_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-email', 'text': err}) %}
+  {% elif target == 'password' %}
+    {% if not ns.p_err %}{% set ns.p_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-password', 'text': err}) %}
+  {% elif target == 'privacy' %}
+    {% if not ns.pr_err %}{% set ns.pr_err = err %}{% endif %}
+    {% set _ = summary.append({'href': '#f-privacy', 'text': err}) %}
+  {% else %}
+    {% set _ = summary.append({'href': '#reg-h', 'text': err}) %}
+  {% endif %}
+{% endfor %}
+{% set field_errs = {'username': ns.u_err, 'email': ns.e_err, 'password': ns.p_err, 'privacy': ns.pr_err} %}
+
+{% set alert = none %}
+{% set has_summary = errs|length > 0 %}
+
+{% set reg = {
+  'key': 'account',
+  'h1': 'Create your account',
+  'lead': 'One account to play, solve and join a studio.',
+  'phone': 'Step 1 of 3: Account',
+  'dir': '',
+  'showStepper': true,
+  'stepper': {
+    's1': {'cls': 'st on', 'current': true, 'tick': false, 'link': none, 'label': 'Account', 'sr': ', current step'},
+    's2': {'cls': 'st', 'current': false, 'tick': false, 'link': none, 'label': 'Verify', 'sr': ', not started'},
+    's3': {'cls': 'st', 'current': false, 'tick': false, 'link': none, 'label': 'Studio', 'sr': ', not started'},
+    's4': none,
+    'dots': [{'cls': 'on'}, {'cls': ''}, {'cls': ''}],
+    'count': 'Step 1 of 3',
+  },
+  'alert': alert,
+  'summary': summary,
+  'hasSummary': has_summary,
+  'dev': none,
+} %}
+
+{% set acct = {
+  'create': true,
+  'edit': false,
+  'provider': none,
+  'trusted': false,
+  'lockedEmail': none,
+  'password': true,
+  'username': request.form.get('name') or request.form.get('username') or '',
+  'email': request.form.get('email', ''),
+  'privacy': true if request.form.get('privacy') == '1' else false,
+  'err': field_errs,
+  'providers': {'google': none, 'ctftime': ctftime_href if ctftime_on else none, 'any': ctftime_on},
+  'submit': 'Next: check your email ▸',
+  'retry': '',
+  'human': true if (cap.sitekey and cap.register) else false,
+  'sitekey': cap.sitekey,
+  'action': '/register',
+} %}
+
+{% set page = {
+  'title': 'Create your account | ' ~ event_name,
+  'cls': 'pg-app pg-register',
+  'osd': 'ACCOUNT · CH 000',
+  'skip': 'Skip to the form',
+  'crawl': false,
+  'signedIn': l3.signed_in,
+  'player': l3.player
+} %}
+
+{% set asset = {
+  'css': l3.assets['css.app'],
+  'boot': l3.assets['js.boot'],
+  'js': l3.assets['js.register']
+} %}
+
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set news = [] %}
+{% set dev = none %}
+
+{% include "_register-account.html" %}

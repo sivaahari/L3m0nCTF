@@ -1,0 +1,88 @@
+{# Invite code confirmation adapter (SP6 stream B). #}
+{% set forced_mode = 'join' %}
+{% set l3 = l3mon %}
+{% set errs = errors|default([]) %}
+{% set infs = infos|default([]) %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set asset = {
+  'css': l3.assets['css.app'],
+  'boot': l3.assets['js.boot'],
+  'js': l3.assets['js.register']
+} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set nav = {'board': false, 'guide': false, 'scoreboard': false} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set captcha = {'sitekey': none} %}
+{% set news = [] %}
+{% set dev = none %}
+
+{% set alert = {'kind': 'error', 'lead': '', 'text': errs|join(' '), 'focus': true, 'icon': 'i-warn'} if errs else (
+  {'kind': 'info', 'lead': '', 'text': infs|join(' '), 'focus': false, 'icon': 'i-info'} if infs else none
+) %}
+
+{% set page = {
+  'title': 'Join ' ~ (team.name if team else 'studio') ~ ' | Setup | ' ~ event_name,
+  'cls': 'pg-app pg-register',
+  'osd': 'STUDIO · CH 000',
+  'skip': 'Skip to main content',
+  'crawl': false,
+  'signedIn': l3.signed_in,
+  'player': l3.player,
+} %}
+
+{% set reg = {
+  'key': 'studio',
+  'h1': 'Join ' ~ (team.name if team else 'studio'),
+  'lead': 'You were invited to join ' ~ (team.name if team else 'a studio') ~ '.',
+  'phone': 'Step 3 of 3: Studio',
+  'dir': '',
+  'showStepper': true,
+  'stepper': {
+    's1': {'cls': 'st done', 'current': false, 'tick': true, 'link': none, 'label': 'Account', 'sr': ', completed'},
+    's2': {'cls': 'st done', 'current': false, 'tick': true, 'link': none, 'label': 'Verify', 'sr': ', completed'},
+    's3': {'cls': 'st on', 'current': true, 'tick': false, 'link': none, 'label': 'Studio', 'sr': ', current step'},
+    's4': none,
+    'dots': [{'cls': 'done'}, {'cls': 'done'}, {'cls': 'on'}],
+    'count': 'Step 3 of 3',
+  },
+  'alert': alert,
+  'summary': [],
+  'hasSummary': errs|length > 0,
+  'dev': none,
+} %}
+
+{% set code_val = request.args.get('code', '') %}
+{% set team_name = team.name if team else '' %}
+{% set studio = {
+  'create': false,
+  'join': true,
+  'name': team_name,
+  'country': '',
+  'affiliation': '',
+  'ctftime': '',
+  'invite': code_val,
+  'shuffle': '0',
+  'countries': [],
+  'ctPreview': '',
+  'hint': team_name,
+  'err': {
+    'name': none,
+    'country': none,
+    'affiliation': none,
+    'ctftime': none,
+    'invite': errs|join(' ') if errs else none,
+  },
+  'pv': {
+    'name': team_name or 'Your studio',
+    'meta': 'Studio member',
+  },
+  'mk': 'mascot mk-b0 mk-k0',
+  'mood': 'idle',
+  'action': request.full_path,
+  'back': '/team',
+  'submit': 'Join ' ~ (team_name or 'studio'),
+} %}
+
+{% include "_register-studio.html" %}
