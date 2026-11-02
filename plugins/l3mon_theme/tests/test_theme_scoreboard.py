@@ -139,3 +139,22 @@ def test_scoreboard_gate_hook_costs_nothing_on_other_paths(app):
     with app.test_request_context("/scoreboard", method="POST"):
         res = _guard_scoreboard()
         assert res is None, "Hook must return None on non-GET/HEAD methods"
+
+
+def test_the_scoreboard_shows_the_newest_public_notifications_in_the_news_crawl_and_never_a_studios_private_line(app):
+    """Merge of the four streams: stream C had the crawl off ('l3.crawl' lived on stream A's branch); the scoreboard now draws it like the board does."""
+    from CTFd.models import Notifications
+
+    with app.app_context():
+        studio = Teams.query.filter_by(name="Citrus Crew").first()
+        db.session.add(Notifications(title="Doors open", content="The first programme is on air"))
+        db.session.add(Notifications(title="Only for Citrus Crew", content="a private line", team_id=studio.id))
+        db.session.commit()
+
+    client = login_as_user(app, "captain", PASSWORD)
+    r = client.get("/scoreboard")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert '<section class="crawl"' in body
+    assert "Doors open: The first programme is on air" in body
+    assert "Only for Citrus Crew" not in body and "a private line" not in body
