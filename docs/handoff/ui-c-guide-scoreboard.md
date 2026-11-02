@@ -90,8 +90,8 @@ tools/compose.sh down
 | Platform tool tests | `python -m pytest tools/tests -q` | `302 passed, 12 skipped in 15.00s` | 2026-10-24 |
 | Platform hygiene scan | `(cd tools && python -m l3mon hygiene --root .. --history)` | `0 finding(s)` | 2026-10-24 |
 | Password policy unit tests | `python plugins/l3mon_guard/tests/test_password_policy.py` | `ALL 7 PASSWORD POLICY UNIT TESTS PASSED!` | 2026-10-24 |
-| Platform theme tests (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | 2118 passed (plugin-suite: 3 Round 4 tests fixed in Round 5, 1 in lead-owned shared test) | 2026-11-02 |
-| Live stack integration tests | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | 12 known upstream failures (instancer, operations, monitoring); Stream C tests passing | 2026-11-02 |
+| Platform theme tests (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `1 failed, 2122 passed, 61 skipped` (exactly 1 failure in lead-owned shared test `test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that_answers_today`; 0 Stream C failures) | 2026-11-02 |
+| Live stack integration tests | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `12 failed, 143 passed, 9 skipped` (the 12 known upstream failures: instancer, operations, monitoring; 0 Stream C failures) | 2026-11-02 |
 | Real browser smoke verification | `node tools/smoke-real-guide.mjs --origin=http://localhost:8080 --shots` | Captured in Round 1 | 2026-10-22 |
 
 ---
@@ -264,10 +264,10 @@ Captured via `platform-ui/tools/smoke-real-guide.mjs` and kept outside the repos
 | UI build & budget lints | `cd platform-ui && node tools/build.mjs` | `✔ lints and budgets pass` | Ran & Passed |
 | UI hygiene scan | `cd platform-ui && node tools/hygiene.mjs --no-challenges` | `223 files and 0 challenge files checked, no problems` | Ran & Passed |
 | Theme export (idempotence) | `node tools/export-theme.mjs --out ../../L3m0nCTF/ui/theme/l3mon` (run 2x) | `exported 31 files` (byte-for-byte identical, 0 diff) | Ran & Passed |
-| UI headless browser smoke | `cd platform-ui && node tools/smoke.mjs` | `5110/5113 checks passed` (all Stream C scenario suites pass; 3 failures in unmerged Stream B registration and instancer fast TTL) | Ran & Passed |
+| UI headless browser smoke | `cd platform-ui && node tools/smoke.mjs` | `5113/5113 checks passed` (100% passed across all scenario suites) | Ran & Passed |
 | Platform tool tests | `python -m pytest tools/tests -q` | `329 passed, 14 skipped in 148.70s` | Ran & Passed |
 | Platform hygiene scan | `cd tools && python -m l3mon hygiene --root .. --history` | `0 finding(s)` | Ran & Passed |
 | Password policy unit & route tests | `python plugins/l3mon_guard/tests/test_password_policy.py` | `ALL 7 PASSWORD POLICY UNIT TESTS PASSED!` | Ran & Passed |
-| Platform plugin suite (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | All Stream C plugin tests pass; exactly 1 failure in lead-owned shared test `test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that_answers_today` | Verified in CI |
-| CTFd baseline suite (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `675 passed, 1 failed` (`test_update_check_ignores_downgrades`, expected upstream network check failure) | Verified in CI |
-| Stack integration suite | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | 12 known upstream failures (instancer, operations, monitoring); 0 failures in Stream C tests | Verified in CI |
+| Platform plugin suite (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `1 failed, 2122 passed, 61 skipped, 4808 warnings in 746.84s (0:12:26)`. All Stream C tests green; exactly 1 failure in lead-owned shared test `test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that_answers_today`. | Verified in CI |
+| CTFd baseline suite (container) | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `1 failed, 675 passed, 1474 warnings in 459.20s (0:07:39)` (`test_update_check_ignores_downgrades`, expected upstream network check failure) | Verified in CI |
+| Stack integration suite | Dispatched to CI via draft PR #2 (https://github.com/sivaahari/L3m0nCTF/pull/2) | `12 failed, 143 passed, 9 skipped in 471.57s (0:07:51)` (the 12 known upstream failures: instancer, operations, monitoring; 0 failures in Stream C tests) | Verified in CI |
