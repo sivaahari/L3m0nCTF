@@ -78,7 +78,7 @@ def put_painted(slug, title, count, **kw):
 
 def purge():
     for path, value in (("/api/v1/teams", "storyplayer-team"), ("/api/v1/users", "storyplayer")):
-        status, out = r.admin("GET", f"{path}?field=name&q={value}")
+        status, out = r.admin("GET", f"{path}?view=admin&field=name&q={value}")
         for row in (out["data"] if status == 200 else []):
             if row["name"] == value:
                 r.admin("DELETE", f"{path}/{row['id']}")

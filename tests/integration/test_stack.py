@@ -103,7 +103,13 @@ class Session:
             return e
 
     def nonce(self, path: str) -> str:
-        page = self.open(path).read().decode("utf-8", "replace")
+        for _ in range(3):  # a signed-in player asking for /challenges is sent on to /board
+            answer = self.open(path)
+            where = answer.headers.get("Location") if answer.status in (301, 302, 303, 307, 308) else None
+            if not where:
+                break
+            path = urllib.parse.urlsplit(where).path or path
+        page = answer.read().decode("utf-8", "replace")
         m = re.search(r"""name=["']nonce["'][^>]*value=["']([0-9a-f]+)["']|value=["']([0-9a-f]+)["'][^>]*name=["']nonce["']|csrfNonce['"]?\s*[:=]\s*['"]([0-9a-f]+)['"]""", page)
         assert m, f"no form token found on {path}"
         return next(g for g in m.groups() if g)

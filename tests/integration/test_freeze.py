@@ -31,7 +31,7 @@ TICKS = "/api/v1/l3mon/ticks"
 def purge():
     for name in PLAYERS:
         for path, value in (("/api/v1/teams", f"{name}-team"), ("/api/v1/users", name)):
-            status, out = r.admin("GET", f"{path}?field=name&q={value}")
+            status, out = r.admin("GET", f"{path}?view=admin&field=name&q={value}")
             for row in (out["data"] if status == 200 else []):
                 if row["name"] == value:
                     r.admin("DELETE", f"{path}/{row['id']}")

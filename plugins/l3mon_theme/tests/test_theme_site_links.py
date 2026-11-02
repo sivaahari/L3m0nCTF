@@ -74,19 +74,15 @@ def test_the_error_pages_lead_to_pages_that_exist(app):
     assert not offending, f"links to pages that do not exist yet: {offending}; all links: {[h for h in hrefs if not h.startswith('#')]}"
 
 
-def test_the_prototype_addresses_that_ctfd_lacks_send_a_visitor_to_the_page_that_answers_today(app):
-    from CTFd.plugins.l3mon_theme import values
-
+def test_the_prototype_addresses_are_answered_by_their_own_pages_and_no_alias_stands_in_front_of_them(app):
+    """The aliases (pages/routes.py) send a prototype address that CTFd lacks to the page that answers today. Stream A built /board and stream C built /guide, so
+    both answer themselves and no alias is left; a visitor is asked to sign in at either, and the destination of the sign-in is a real page."""
     with app.test_client() as client:
-        for path, route in (("/guide", "guide"),):  # "/board" is answered by the board itself since stream A (pages/board.py): no alias
+        assert not [rule.endpoint for rule in app.url_map.iter_rules() if rule.endpoint.startswith("l3mon_theme_alias_")]
+        for path in ("/board", "/guide"):
             r = client.get(path)
-            assert r.status_code == 302 and r.headers["Location"].endswith(values.ROUTES[route]), path
-            assert client.head(path).status_code == 302
-            assert client.post(path).status_code in (404, 405), "an alias answers GET and HEAD only (CTFd shows its 404 page for a refused method)"
-        r = client.get("/board")
-        assert r.status_code == 302 and r.headers["Location"].startswith("/login"), "the board answers its own address: a visitor is asked to sign in, not sent to /challenges"
-        # and the destination really is a page
-        assert client.get("/scoreboard").status_code == 200
+            assert r.status_code == 302 and r.headers["Location"].startswith("/login"), path
+        assert client.get("/login").status_code == 200
 
 
 def test_a_page_that_answers_its_own_address_is_not_aliased():
