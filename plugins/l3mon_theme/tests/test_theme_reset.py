@@ -121,7 +121,7 @@ def test_reset_password_invalid_link_shows_alert(app):
         r = client.get("/reset_password/bad-invalid-token")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        assert "Your reset link is invalid" in body or "link does not work" in body
+        assert "Your reset link is invalid, please generate a new one" in body
 
 
 def test_reset_password_set_mode_renders_new_password_form(app):
@@ -209,7 +209,7 @@ def test_reset_does_not_mark_address_confirmed(app):
 # =============================================================================
 
 def test_reset_message_targets_table_structure():
-    """C4: Table contains exact messages for CTFd, password policy, and turnstile."""
+    """C4/Round 4 C3: Table contains exact messages for CTFd, password policy, and turnstile."""
     expected_keys = {
         V_MSG_PASS_EMPTY,
         V_MSG_PASS_SHORT,
@@ -220,12 +220,15 @@ def test_reset_message_targets_table_structure():
         "Please complete the security check.",
         "Security check failed. Please try again.",
         "This CTF is not configured to send email.<br> Please contact an organizer to have your password reset.",
-        "Your link has expired",
-        "Your reset token is invalid",
+        "Your reset link is invalid, please generate a new one",
+        "Your account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider.",
+        "Please pick a longer password",
     }
     assert set(RESET_MESSAGE_TARGETS.keys()) == expected_keys
     for k, v in RESET_MESSAGE_TARGETS.items():
         assert v in ("password", "email", None), f"Unexpected target for {k!r}: {v!r}"
+    assert RESET_MESSAGE_TARGETS.get("Password must be at least 8 characters") == "password"
+    assert RESET_MESSAGE_TARGETS.get("Password must be at least 12 characters") == "password"
 
 
 def test_error_pass_empty_mapped_to_password_field(app):
@@ -430,7 +433,7 @@ def test_error_mail_unconfigured_mapped_to_summary_only(app, monkeypatch):
 
 
 def test_error_link_expired_mapped_to_summary_only(app):
-    """C4: Expired token message maps to summary only and appears once."""
+    """C3: Expired token message maps to summary only and appears once."""
     with app.app_context():
         # Token generated 3600s in the past
         past_time = time.time() - 3600
@@ -442,7 +445,7 @@ def test_error_link_expired_mapped_to_summary_only(app):
         assert r.status_code == 200
         body = r.get_data(as_text=True)
 
-        msg = "Your link has expired"
+        msg = "Your reset link is invalid, please generate a new one"
         assert msg in body
         assert f'href="#reg-h">{msg}</a>' in body
         assert "data-alert" not in body
@@ -450,17 +453,91 @@ def test_error_link_expired_mapped_to_summary_only(app):
 
 
 def test_error_token_invalid_mapped_to_summary_only(app):
-    """C4: Invalid token message maps to summary only and appears once."""
+    """C3: Invalid token message maps to summary only and appears once."""
     with app.test_client() as client:
         r = client.get("/reset_password/bad-invalid-token-1234")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
 
-        msg = "Your reset token is invalid"
+        msg = "Your reset link is invalid, please generate a new one"
         assert msg in body
         assert f'href="#reg-h">{msg}</a>' in body
         assert "data-alert" not in body
         assert body.count(msg) == 1
+
+
+def test_error_provider_account_has_no_password_mapped_to_summary_only(app):
+    """C3: Provider account without password maps to summary only and appears once."""
+    with app.app_context():
+        u = Users(name="oauth_user", email="oauth@example.com", password="", oauth_id=12345, verified=True)
+        db.session.add(u)
+        db.session.commit()
+        token = "test-oauth-user-reset-token"
+        cache.set(f"reset_password_{token}", u.email, timeout=1800)
+
+    with app.test_client() as client:
+        client.get(f"/reset_password/{token}")
+        with client.session_transaction() as sess:
+            nonce = sess["nonce"]
+
+        r = client.post(f"/reset_password/{token}", data={"password": "ValidNewPassword123!", "nonce": nonce})
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+
+        msg = "Your account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider."
+        assert msg in body
+        assert f'href="#reg-h">{msg}</a>' in body
+        assert "data-alert" not in body
+        assert body.count(msg) == 1
+
+
+def test_error_ctfd_pass_short_mapped_to_password_field(app):
+    """C3: CTFd's own empty password check maps to password field and appears once in each presentation slot."""
+    app.config["L3MON_SIGNUP_RULES"] = False
+    token = "test-ctfd-pass-short-token"
+    with app.app_context():
+        cache.set(f"reset_password_{token}", "player@example.com", timeout=1800)
+
+    with app.test_client() as client:
+        client.get(f"/reset_password/{token}")
+        with client.session_transaction() as sess:
+            nonce = sess["nonce"]
+
+        r = client.post(f"/reset_password/{token}", data={"password": "", "nonce": nonce})
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+
+        msg = "Please pick a longer password"
+        assert msg in body
+        assert f'href="#f-password">{msg}</a>' in body
+        assert 'id="f-password-e"' in body
+        assert "data-alert" not in body
+        assert body.count(msg) == 2
+
+
+def test_error_ctfd_configured_minimum_password_length_mapped_to_password_field(app):
+    """C3: CTFd's configured minimum password length check maps to password field."""
+    app.config["L3MON_SIGNUP_RULES"] = False
+    token = "test-ctfd-min-length-token"
+    with app.app_context():
+        set_config("password_min_length", 8)
+        cache.set(f"reset_password_{token}", "player@example.com", timeout=1800)
+
+    with app.test_client() as client:
+        client.get(f"/reset_password/{token}")
+        with client.session_transaction() as sess:
+            nonce = sess["nonce"]
+
+        r = client.post(f"/reset_password/{token}", data={"password": "abc", "nonce": nonce})
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+
+        msg = "Password must be at least 8 characters"
+        assert msg in body
+        assert f'href="#f-password">{msg}</a>' in body
+        assert 'id="f-password-e"' in body
+        assert "data-alert" not in body
+        assert body.count(msg) == 2
 
 
 def test_reset_four_states_and_signin_single_message_rendering(app, monkeypatch):
@@ -507,7 +584,7 @@ def test_reset_four_states_and_signin_single_message_rendering(app, monkeypatch)
         b_inv = r_inv.get_data(as_text=True)
         assert "data-summary" in b_inv
         assert "data-alert" not in b_inv
-        assert b_inv.count("Your reset token is invalid") == 1
+        assert b_inv.count("Your reset link is invalid, please generate a new one") == 1
 
         # 5. Sign-in page: clean GET /login and failed POST /login
         r_login_get = client.get("/login")

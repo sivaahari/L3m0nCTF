@@ -13,12 +13,37 @@ from CTFd.plugins.l3mon_theme.registry import value
 
 logger = logging.getLogger(__name__)
 
+class _ResetMessageTargets(dict):
+    """Mapping of reset error messages to target field ('password', 'email', or None for summary)."""
+
+    def get(self, key, default=None):
+        if key in self:
+            return super().get(key, default)
+        if isinstance(key, str) and key.startswith("Password must be at least ") and key.endswith(" characters"):
+            return "password"
+        return default
+
+    def __getitem__(self, key):
+        if key in self:
+            return super().__getitem__(key)
+        if isinstance(key, str) and key.startswith("Password must be at least ") and key.endswith(" characters"):
+            return "password"
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        if super().__contains__(key):
+            return True
+        if isinstance(key, str) and key.startswith("Password must be at least ") and key.endswith(" characters"):
+            return True
+        return False
+
+
 # Exact error messages that can occur on the reset password flow, mapped to:
 # - 'password': password field error (f-password)
 # - 'email': email field error (f-email)
 # - None: summary only (no field attachment)
 # Any message not in this table also defaults to summary only.
-RESET_MESSAGE_TARGETS = {
+RESET_MESSAGE_TARGETS = _ResetMessageTargets({
     # Guard password policy messages (password field)
     V_MSG_PASS_EMPTY: "password",
     V_MSG_PASS_SHORT: "password",
@@ -31,9 +56,11 @@ RESET_MESSAGE_TARGETS = {
     "Security check failed. Please try again.": None,
     # CTFd core auth.py reset_password messages (summary only)
     "This CTF is not configured to send email.<br> Please contact an organizer to have your password reset.": None,
-    "Your link has expired": None,
-    "Your reset token is invalid": None,
-}
+    "Your reset link is invalid, please generate a new one": None,
+    "Your account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider.": None,
+    # CTFd core auth.py reset_password messages (password field)
+    "Please pick a longer password": "password",
+})
 
 
 @value("reset_message_targets", default={})

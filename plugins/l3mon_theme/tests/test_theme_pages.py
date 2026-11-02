@@ -8,6 +8,7 @@ that aborts with 429 (CTFd's own sign-in limit answers with JSON, not the error 
 two routes exist only in these tests, added to the test app's routing table.
 """
 import re
+import urllib.parse
 
 import pytest
 from flask import abort
@@ -280,7 +281,7 @@ def test_next_address_with_parameters_is_url_encoded(app, monkeypatch):
         from CTFd.utils import set_config
         set_config("oauth_client_id", "ctftime-mock-id")
         with app.test_client() as client:
-            body = client.get("/login?next=/guide?x=1&y=2").get_data(as_text=True)
+            body = client.get("/login?" + urllib.parse.urlencode({"next": "/guide?x=1&y=2"})).get_data(as_text=True)
             assert 'href="/auth/google?next=/guide%3Fx%3D1%26y%3D2"' in body
             assert 'href="/auth/ctftime?next=/guide%3Fx%3D1%26y%3D2"' in body
             assert 'name="next" value="/guide?x=1&y=2"' in body

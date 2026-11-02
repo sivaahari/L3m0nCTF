@@ -174,12 +174,37 @@ def test_register_route_enforces_password_policy(app):
                     "name": "validname",
                     "email": "validname@example.com",
                     "password": "short",
+                    "privacy": "1",
                     "nonce": nonce,
                     "_submit": "Submit",
                 },
             )
             assert r.status_code == 200
             assert "Use at least 12 characters." in r.get_data(as_text=True)
+
+
+def test_register_with_privacy_box_and_short_password_fails_and_creates_no_user(app):
+    """C2: With privacy box ticked and short password 'abc', answer is 200 with error and no user created."""
+    from CTFd.models import Users
+    with app.app_context():
+        with app.test_client() as client:
+            client.get("/register")
+            with client.session_transaction() as sess:
+                nonce = sess.get("nonce")
+            r = client.post(
+                "/register",
+                data={
+                    "name": "shortpwuser",
+                    "email": "shortpw@example.com",
+                    "password": "abc",
+                    "privacy": "1",
+                    "nonce": nonce,
+                    "_submit": "Submit",
+                },
+            )
+            assert r.status_code == 200
+            assert "Use at least 12 characters." in r.get_data(as_text=True)
+            assert Users.query.filter_by(email="shortpw@example.com").first() is None
 
 
 def test_reset_password_route_enforces_password_policy(app):
@@ -216,13 +241,9 @@ def test_user_me_settings_patch_enforces_password_policy(app):
         db.session.commit()
 
         client = login_as_user(app, name="patchuser", password="OldPassword1234!")
-        with client.session_transaction() as sess:
-            nonce = sess.get("nonce")
-
         r = client.patch(
             "/api/v1/users/me",
             json={"password": "short"},
-            headers={"CSRF-Token": nonce},
         )
         assert r.status_code == 400
         data = r.get_json()
@@ -244,6 +265,7 @@ def test_register_route_refuses_spaces_surrounding_short_password(app):
                     "name": "spaced_player",
                     "email": "spaced_player@example.com",
                     "password": "           ab1",
+                    "privacy": "1",
                     "nonce": nonce,
                     "_submit": "Submit",
                 },
@@ -261,6 +283,7 @@ def test_register_route_refuses_spaces_surrounding_short_password(app):
                     "name": "spaced_player2",
                     "email": "spaced_player2@example.com",
                     "password": "   ab1   ",
+                    "privacy": "1",
                     "nonce": nonce,
                     "_submit": "Submit",
                 },
@@ -318,13 +341,9 @@ def test_user_me_settings_patch_refuses_spaces_surrounding_short_password(app):
         db.session.commit()
 
         client = login_as_user(app, name="patch_space_user", password="OldPassword1234!")
-        with client.session_transaction() as sess:
-            nonce = sess.get("nonce")
-
         r = client.patch(
             "/api/v1/users/me",
             json={"password": "           ab1"},
-            headers={"CSRF-Token": nonce},
         )
         assert r.status_code == 400
         data = r.get_json()
@@ -334,35 +353,35 @@ def test_user_me_settings_patch_refuses_spaces_surrounding_short_password(app):
         r2 = client.patch(
             "/api/v1/users/me",
             json={"password": "   ab1   "},
-            headers={"CSRF-Token": nonce},
         )
         assert r2.status_code == 400
-        assert "Use at least 12 characters." in r2.get_json()["errors"]["password"]
+        data2 = r2.get_json()
+        assert data2["success"] is False
+        assert "Use at least 12 characters." in data2["errors"]["password"]
 
 
 def test_user_public_api_patch_enforces_password_policy(app):
     """C2: PATCH /api/v1/users/<id> (crew) enforces password policy on target user."""
     from CTFd.models import Users, db
-    from tests.helpers import login_as_user, register_user
+    from tests.helpers import login_as_user
     with app.app_context():
-        register_user(app, name="admin", email="admin@example.com", password="AdminPassword123!")
-        u_admin = Users.query.filter_by(name="admin").first()
-        u_admin.type = "admin"
-        register_user(app, name="target_user", email="target@example.com", password="TargetPassword123!")
-        u_target = Users.query.filter_by(name="target_user").first()
+        crew_pw = "Lemon-Crew-Passphrase-2026"
+        target_pw = "Lemon-Player-Passphrase-2026"
+        u_admin = Users(name="admin_crew", email="admin_crew@example.com", password=crew_pw, type="admin", verified=True)
+        u_target = Users(name="target_player", email="target@example.com", password=target_pw, verified=True)
+        db.session.add(u_admin)
+        db.session.add(u_target)
         db.session.commit()
 
-        client = login_as_user(app, name="admin", password="AdminPassword123!")
-        with client.session_transaction() as sess:
-            nonce = sess.get("nonce")
-
+        client = login_as_user(app, name="admin_crew", password=crew_pw)
         r = client.patch(
             f"/api/v1/users/{u_target.id}",
             json={"password": "short"},
-            headers={"CSRF-Token": nonce},
         )
         assert r.status_code == 400
-        assert "Use at least 12 characters." in r.get_json()["errors"]["password"]
+        data = r.get_json()
+        assert data["success"] is False
+        assert "Use at least 12 characters." in data["errors"]["password"]
 
 
 if __name__ == "__main__":
