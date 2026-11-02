@@ -182,7 +182,11 @@ def _wrap_user_api_patch(orig_view):
             data = request.get_json(silent=True)
             if isinstance(data, dict) and "password" in data:
                 if enforced():
-                    from CTFd.utils.user import get_current_user
+                    from CTFd.utils.user import authed, get_current_user, is_admin
+                    if not authed() or (kwargs.get("user_id") is not None and not is_admin()):
+                        # CTFd's own decorators answer first (sign in; `/users/<id>` is for the crew): the check reads the username and the address of the
+                        # account it judges for, so a verdict given before that would tell a visitor whether a guess contains a player's name or address
+                        return orig_view(*args, **kwargs)
                     user = get_current_user()
                     username = user.name if user else ""
                     email = user.email if user else ""

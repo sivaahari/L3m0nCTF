@@ -385,6 +385,71 @@ def test_user_public_api_patch_enforces_password_policy(app):
         assert "Use at least 12 characters." in data["errors"]["password"]
 
 
+def _answer_text(response):
+    """Everything in an answer that would tell the asker something about the account whose id is in the address."""
+    return response.get_data(as_text=True)
+
+
+def test_a_visitor_cannot_use_the_password_check_to_learn_a_name_or_an_address(app):
+    """The password rule judges only a request CTFd would let through (merge of the four streams, found by the lead).
+    Before: a visitor with a session token could PATCH /api/v1/users/<id> with a password and read 'Do not use your username in your password'
+    for any player, which says whether the guess contains that player's name or the start of their address."""
+    from CTFd.models import Users, db
+    with app.app_context():
+        target = Users(name="victimplayer", email="victimmail@example.com", password="Lemon-Player-Passphrase-2026", verified=True)
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+        with app.test_client() as client:
+            client.get("/register")  # a session and its token, as a browser has
+            for guess in ("my-victimplayer-secret-99", "my-victimmail-secret-99", "short"):
+                for path in (f"/api/v1/users/{target_id}", "/api/v1/users/me"):
+                    response = client.patch(path, json={"password": guess})
+                    assert response.status_code in (401, 403), (path, guess, response.status_code, _answer_text(response)[:200])
+                    text = _answer_text(response)
+                    for sentence in (V_MSG_PASS_USER, V_MSG_PASS_EMAIL, V_MSG_PASS_SHORT, V_MSG_PASS_COMMON):
+                        assert sentence not in text, (path, guess, sentence)
+
+
+def test_a_player_cannot_use_the_crews_call_to_probe_the_password_check(app):
+    """A signed-in player asking about another player gets CTFd's 403, not a verdict that reads the other account."""
+    from CTFd.models import Users, db
+    from tests.helpers import login_as_user
+    with app.app_context():
+        target = Users(name="victimplayer", email="victimmail@example.com", password="Lemon-Player-Passphrase-2026", verified=True)
+        asker = Users(name="askingplayer", email="asking@example.com", password="Lemon-Asker-Passphrase-2026", verified=True)
+        db.session.add_all([target, asker])
+        db.session.commit()
+        target_id = target.id
+        client = login_as_user(app, name="askingplayer", password="Lemon-Asker-Passphrase-2026")
+        for guess in ("my-victimplayer-secret-99", "my-victimmail-secret-99", "short"):
+            response = client.patch(f"/api/v1/users/{target_id}", json={"password": guess})
+            assert response.status_code == 403, (guess, response.status_code, _answer_text(response)[:200])
+            text = _answer_text(response)
+            for sentence in (V_MSG_PASS_USER, V_MSG_PASS_EMAIL, V_MSG_PASS_SHORT, V_MSG_PASS_COMMON):
+                assert sentence not in text, (guess, sentence)
+
+
+def test_the_crew_is_still_judged_on_the_account_it_changes_and_a_player_on_their_own(app):
+    """The guard above must not loosen the rule where CTFd lets the call through."""
+    from CTFd.models import Users, db
+    from tests.helpers import login_as_user
+    with app.app_context():
+        crew = Users(name="crewmember", email="crewmember@example.com", password="Lemon-Crew-Passphrase-2026", type="admin", verified=True)
+        target = Users(name="victimplayer", email="victimmail@example.com", password="Lemon-Player-Passphrase-2026", verified=True)
+        db.session.add_all([crew, target])
+        db.session.commit()
+        target_id = target.id
+        crew_client = login_as_user(app, name="crewmember", password="Lemon-Crew-Passphrase-2026")
+        response = crew_client.patch(f"/api/v1/users/{target_id}", json={"password": "my-victimplayer-secret-99"})
+        assert response.status_code == 400
+        assert V_MSG_PASS_USER in response.get_json()["errors"]["password"]
+        player_client = login_as_user(app, name="victimplayer", password="Lemon-Player-Passphrase-2026")
+        response = player_client.patch("/api/v1/users/me", json={"password": "my-victimmail-secret-99"})
+        assert response.status_code == 400
+        assert V_MSG_PASS_EMAIL in response.get_json()["errors"]["password"]
+
+
 if __name__ == "__main__":
     test_password_empty()
     test_password_length_boundaries()
