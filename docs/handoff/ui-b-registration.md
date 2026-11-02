@@ -252,6 +252,9 @@ None.
 | UI: Register Validate Tests | `node --test tests/register-validate.test.mjs` | PASS | 10 passed in 350ms | 2026-11-02 |
 | UI: Exporter Determinism | `node tools/export-theme.mjs --out ../../L3m0nCTF/ui/theme/l3mon` (run twice) | PASS | Byte-for-byte identical output (30 files exported) | 2026-11-02 |
 | Local Docker Environment | `docker ps` | NOT RUN | Docker daemon is not running on local Windows machine; container suites covered via GitHub Actions CI Draft PR | 2026-11-02 |
-| GitHub CI: Plugin Suite (`plugin-suite`) | GitHub Actions CI Draft PR | PENDING | Monitored on GitHub Actions via Draft PR | 2026-11-02 |
-| GitHub CI: CTFd Core Suite (`ctfd-suite`) | GitHub Actions CI Draft PR | PENDING | Monitored on GitHub Actions via Draft PR | 2026-11-02 |
+| GitHub CI: Draft PR Link | Draft PR #1 from `ui/b-registration` to `pre-deployment` | OPEN | [PR #1](https://github.com/sivaahari/L3m0nCTF/pull/1) (Run ID: `41425233520`) | 2026-11-02 |
+| GitHub CI: Plugin Suite (`plugin-suite`) | GitHub Actions CI Draft PR #1 | PASS | 2070 passed, 61 skipped, 0 failed in 949.50s (0:15:49) across 4 workers; zero failures in Stream B or plugin tests | 2026-11-02 |
+| GitHub CI: CTFd Core Suite (`ctfd-suite`) | GitHub Actions CI Draft PR #1 | COMPLETED (Expected) | Completed with 1 failure: `tests/utils/test_updates.py::test_update_check_ignores_downgrades` (known network check failure against CTFd update server) | 2026-11-02 |
+| GitHub CI: Integration Suite (`integration`) | GitHub Actions CI Draft PR #1 | NOT IN SCOPE | Failed on tests of instancer, operations, and monitoring pieces outside Stream B scope | 2026-11-02 |
+| GitHub CI: Lint & Hygiene | GitHub Actions CI Draft PR #1 | PASS | `lint` and `hygiene` jobs completed successfully | 2026-11-02 |
 
