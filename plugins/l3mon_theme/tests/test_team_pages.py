@@ -394,6 +394,15 @@ def test_settings_password_change_invalidates_other_client_sessions(app):
 # Stream D Round 2 tests (D1 - D4)
 # ==============================================================================
 from unittest.mock import patch, MagicMock
+from CTFd.plugins.l3mon_guard.policies.password import (
+    V_MSG_PASS_COMMON,
+    V_MSG_PASS_EMAIL,
+    V_MSG_PASS_EMPTY,
+    V_MSG_PASS_LONG,
+    V_MSG_PASS_SHORT,
+    V_MSG_PASS_USER,
+    validate_password,
+)
 from CTFd.plugins.l3mon_guard.policies.team_name import (
     MSG_CHARS, MSG_EMPTY as MSG_TEAM_EMPTY, MSG_LENGTH, MSG_SCRIPTS, MSG_TAKEN as MSG_TEAM_TAKEN
 )
@@ -805,3 +814,235 @@ def test_d2_break_on_purpose_no_mail_sent(app):
     with patch("CTFd.plugins.l3mon_theme.pages.team_settings.verify_email_address") as mock_verify:
         # If call is omitted or fails, verify_email_address call count is 0
         assert mock_verify.call_count == 0
+
+
+# ==============================================================================
+# Stream D Round 4 tests (D1 - D3)
+# ==============================================================================
+
+def test_round4_d1_password_validation_rules(app):
+    """D1: Test password policy enforcement on POST /settings (part=password)."""
+    app.config["L3MON_SIGNUP_RULES"] = True
+    with app.app_context():
+        user_name = "r4_pw_player"
+        email = "r4_distinct_mail@example.com"
+        register_user(app, name=user_name, email=email, password=PASSWORD)
+
+        client = login_as_user(app, name=user_name, password=PASSWORD)
+        b = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(b)
+
+        # 1. Short password: "abc"
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": "abc", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        b_err = client.get("/settings").get_data(as_text=True)
+        assert V_MSG_PASS_SHORT in b_err
+
+        # 2. Eleven spaces and "ab1" (11 spaces + 3 chars = 14 raw, 3 stripped -> refused)
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": "           ab1", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        b_err = client.get("/settings").get_data(as_text=True)
+        assert V_MSG_PASS_SHORT in b_err
+
+        # 3. Common password: "password1234"
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": "password1234", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        b_err = client.get("/settings").get_data(as_text=True)
+        assert V_MSG_PASS_COMMON in b_err
+
+        # 4. Player's username inside password
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": f"my_{user_name}_pass", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        b_err = client.get("/settings").get_data(as_text=True)
+        assert V_MSG_PASS_USER in b_err
+
+        # 5. Email local part inside password
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": "pass_r4_distinct_mail_ok", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        b_err = client.get("/settings").get_data(as_text=True)
+        assert V_MSG_PASS_EMAIL in b_err
+
+        # Verify old password still works
+        u = Users.query.filter_by(name=user_name).first()
+        from CTFd.utils.crypto import verify_password
+        assert verify_password(PASSWORD, u.password)
+
+        # 6. Good password: "correct horse battery staple"
+        GOOD_PW = "correct horse battery staple"
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": GOOD_PW, "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+        b_good = client.get("/settings").get_data(as_text=True)
+        assert "Your changes are saved." in b_good
+
+        # Verify new password is set and old is invalid
+        db.session.refresh(u)
+        assert verify_password(GOOD_PW, u.password)
+        assert not verify_password(PASSWORD, u.password)
+
+
+def test_round4_d1_break_on_purpose_password_rule_disabled(app):
+    """D1 Break-on-purpose: when signup rules are disabled, POST /settings accepts 'abc'."""
+    app.config["L3MON_SIGNUP_RULES"] = False
+    with app.app_context():
+        user_name = "bop_pw_player"
+        register_user(app, name=user_name, email="bop_pw@example.com", password=PASSWORD)
+
+        client = login_as_user(app, name=user_name, password=PASSWORD)
+        b = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(b)
+
+        # Post weak password "abc" without signup rules
+        res = client.post("/settings", data={
+            "nonce": nonce, "part": "password", "password": "abc", "confirm": PASSWORD
+        })
+        assert res.status_code == 303
+
+        # Password was changed to "abc"
+        u = Users.query.filter_by(name=user_name).first()
+        from CTFd.utils.crypto import verify_password
+        assert verify_password("abc", u.password)
+
+
+def test_round4_d2_ratelimit_on_team_post(app):
+    """D2: Test 10 requests/60s rate limit on POST /team and GET not counting."""
+    with app.app_context():
+        uid, tid = make_player_and_team(app, user_name="rl_cap1", team_name="RL Studio One")
+        client = login_as_user(app, name="rl_cap1", password=PASSWORD)
+
+        b = client.get("/team").get_data(as_text=True)
+        nonce = nonce_in(b)
+
+        # 10 POSTs are accepted
+        for _ in range(10):
+            r = client.post("/team", data={"nonce": nonce, "name": "RL Studio One", "affiliation": "Test"})
+            assert r.status_code == 303
+
+        # 11th POST is refused with HTTP 429
+        r11 = client.post("/team", data={"nonce": nonce, "name": "RL Studio One", "affiliation": "Test"})
+        assert r11.status_code == 429
+        data11 = r11.get_json()
+        assert "Too many requests" in data11.get("message", "")
+
+        # GET /team is not blocked and does not count towards limit
+        r_get = client.get("/team")
+        assert r_get.status_code == 200
+
+
+def test_round4_d2_ratelimit_on_handover_captain_post(app):
+    """D2: Test 10 requests/60s rate limit on POST /team/members/<id>/captain."""
+    with app.app_context():
+        uid, tid = make_player_and_team(app, user_name="rl_cap2", team_name="RL Studio Two")
+        client = login_as_user(app, name="rl_cap2", password=PASSWORD)
+
+        b = client.get("/team").get_data(as_text=True)
+        nonce = nonce_in(b)
+
+        # 10 POSTs evaluated
+        for _ in range(10):
+            r = client.post("/team/members/99999/captain", data={"nonce": nonce})
+            assert r.status_code in (400, 303)
+
+        # 11th POST is ratelimited (HTTP 429) before reaching view
+        r11 = client.post("/team/members/99999/captain", data={"nonce": nonce})
+        assert r11.status_code == 429
+        assert "Too many requests" in r11.get_json().get("message", "")
+
+        # GET /team is not blocked
+        r_get = client.get("/team")
+        assert r_get.status_code == 200
+
+
+def test_round4_d2_ratelimit_on_settings_post(app):
+    """D2: Test 10 requests/60s rate limit on POST /settings and GET not counting."""
+    with app.app_context():
+        user_name = "rl_st_user"
+        register_user(app, name=user_name, email="rl_st@example.com", password=PASSWORD)
+        client = login_as_user(app, name=user_name, password=PASSWORD)
+
+        b = client.get("/settings").get_data(as_text=True)
+        nonce = nonce_in(b)
+
+        # 10 POSTs are accepted
+        for _ in range(10):
+            r = client.post("/settings", data={"nonce": nonce, "part": "details", "name": user_name})
+            assert r.status_code == 303
+
+        # 11th POST is refused with HTTP 429
+        r11 = client.post("/settings", data={"nonce": nonce, "part": "details", "name": user_name})
+        assert r11.status_code == 429
+        assert "Too many requests" in r11.get_json().get("message", "")
+
+        # GET /settings is not blocked
+        r_get = client.get("/settings")
+        assert r_get.status_code == 200
+
+
+def test_round4_d3_legacy_studio_name_unchanged(app):
+    """D3: A studio created before a rule existed (e.g. 1-char name 'Q') can update affiliation without error."""
+    with app.app_context():
+        # Create team directly in DB with 1-character name "Q"
+        user = Users(name="q_captain", email="q_cap@example.com", password=PASSWORD, verified=True)
+        db.session.add(user)
+        db.session.commit()
+
+        team = Teams(name="Q", password="team-secret-pw")
+        team.captain_id = user.id
+        db.session.add(team)
+        db.session.commit()
+
+        team.members.append(user)
+        user.team_id = team.id
+        db.session.commit()
+        tid = team.id
+
+        client = login_as_user(app, name="q_captain", password=PASSWORD)
+        b = client.get("/team").get_data(as_text=True)
+        nonce = nonce_in(b)
+
+        # 1. Update affiliation and country while keeping unchanged name "Q"
+        res = client.post("/team", data={
+            "nonce": nonce,
+            "name": "Q",
+            "affiliation": "Lemon Orchard Collective",
+            "country": "FR"
+        })
+        assert res.status_code == 303
+
+        follow = client.get("/team").get_data(as_text=True)
+        assert "Your changes are saved." in follow
+        assert "Lemon Orchard Collective" in follow
+
+        # Query team from DB to verify persisted changes
+        t_saved = Teams.query.filter_by(id=tid).first()
+        assert t_saved.name == "Q"
+        assert t_saved.affiliation == "Lemon Orchard Collective"
+        assert t_saved.country == "FR"
+
+        # 2. Renaming to another invalid 1-character name "X" is judged and refused
+        res_bad = client.post("/team", data={
+            "nonce": nonce,
+            "name": "X",
+            "affiliation": "New Affiliation",
+            "country": "FR"
+        })
+        assert res_bad.status_code == 303
+
+        follow_err = client.get("/team").get_data(as_text=True)
+        assert MSG_LENGTH in follow_err
+
+        # Studio name remains "Q", not "X"
+        t_unchanged = Teams.query.filter_by(id=tid).first()
+        assert t_unchanged.name == "Q"
+

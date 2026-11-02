@@ -16,8 +16,18 @@ from CTFd.constants.sessions import Session
 from CTFd.models import Teams, Users, db
 from CTFd.plugins.l3mon_board import board
 from CTFd.plugins.l3mon_core.clock import current_phase
+from CTFd.plugins.l3mon_core.signup_rules import enforced
 from CTFd.plugins.l3mon_guard.policies.disposable import is_disposable_domain
 from CTFd.plugins.l3mon_guard.policies.email_norm import is_email_disguise_used
+from CTFd.plugins.l3mon_guard.policies.password import (
+    V_MSG_PASS_COMMON,
+    V_MSG_PASS_EMAIL,
+    V_MSG_PASS_EMPTY,
+    V_MSG_PASS_LONG,
+    V_MSG_PASS_SHORT,
+    V_MSG_PASS_USER,
+    validate_password,
+)
 from CTFd.plugins.l3mon_guard.policies.team_name import canonical_team_name, validate_team_name
 from CTFd.plugins.l3mon_guard.policies.username import validate_username
 from CTFd.plugins.l3mon_theme.registry import value
@@ -26,6 +36,7 @@ from CTFd.schemas.users import UserSchema
 from CTFd.utils import get_config
 from CTFd.utils.config import can_send_mail
 from CTFd.utils.countries import SELECT_COUNTRIES_LIST, lookup_country_code
+from CTFd.utils.decorators import ratelimit
 from CTFd.utils.email import check_email_is_blacklisted, check_email_is_whitelisted, verify_email_address
 from CTFd.utils.security.auth import update_user
 from CTFd.utils.user import authed, get_current_team, get_current_user, is_admin
@@ -277,6 +288,7 @@ def install(app):
     """Register write endpoints for team and settings pages."""
 
     @app.route("/team", methods=["POST"])
+    @ratelimit(method="POST", limit=10, interval=60)
     def update_team_details():
         _verify_nonce()
         if not authed():
@@ -297,13 +309,17 @@ def install(app):
 
         errors = {}
 
-        # Validate team name policy (confusables, length, collision, impersonation)
-        clean_name, name_err = validate_team_name(raw_name, is_crew=is_admin(), exclude_team_id=team.id)
-        if name_err:
-            errors["name"] = [name_err]
-            name = raw_name
+        # D3: If the posted name equals the stored one (raw_name == team.name), do not judge it again
+        if raw_name == team.name:
+            name = team.name
         else:
-            name = clean_name
+            # Validate team name policy (confusables, length, collision, impersonation)
+            clean_name, name_err = validate_team_name(raw_name, is_crew=is_admin(), exclude_team_id=team.id)
+            if name_err:
+                errors["name"] = [name_err]
+                name = raw_name
+            else:
+                name = clean_name
 
         # Validate country code if provided
         if country and lookup_country_code(country) is None:
@@ -328,6 +344,7 @@ def install(app):
         return redirect("/team", code=303)
 
     @app.route("/team/members/<int:member_id>/captain", methods=["POST"])
+    @ratelimit(method="POST", limit=10, interval=60)
     def handover_captain(member_id):
         _verify_nonce()
         if not authed():
@@ -355,6 +372,7 @@ def install(app):
         return redirect("/team", code=303)
 
     @app.route("/settings", methods=["POST"])
+    @ratelimit(method="POST", limit=10, interval=60)
     def update_settings():
         _verify_nonce()
         if not authed():
@@ -445,14 +463,22 @@ def install(app):
             if provider:
                 abort(400)
 
-            password = request.form.get("password", "")
+            password = (request.form.get("password") or "").strip()
             confirm = request.form.get("confirm", "")
+
+            # D1: Password validation against guard policy before schema load
+            if enforced():
+                valid, pass_err = validate_password(password, username=user.name, email=user.email)
+                if not valid:
+                    errors["password"] = [pass_err]
+
             data = {"password": password, "confirm": confirm}
 
-            schema_res = UserSchema(view="self", instance=user, partial=True).load(data)
-            if schema_res.errors:
-                for k, v in schema_res.errors.items():
-                    errors.setdefault(k, []).extend(v if isinstance(v, list) else [v])
+            if not errors:
+                schema_res = UserSchema(view="self", instance=user, partial=True).load(data)
+                if schema_res.errors:
+                    for k, v in schema_res.errors.items():
+                        errors.setdefault(k, []).extend(v if isinstance(v, list) else [v])
 
             if errors:
                 db.session.rollback()

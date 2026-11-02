@@ -222,3 +222,58 @@ Following real-browser auditing against the live stack with upstream merged (`or
 ### What Could Not Be Run
 
 - None. All required local unit tests, plugin tests, integration tests, hygiene scanners, builds, and real stack headless browser smoke suites ran to completion on the developer workstation.
+
+---
+
+## 13. Round 4 (Live Stack Findings D1 to D4)
+
+Following the lead engineer's live testing of the integrated platform across streams A, B, C, and D against the full Docker stack (image built, nginx reverse proxy, MariaDB, Redis, and SMTP catcher), three specific issues were identified and addressed:
+1. **D1 (Security Hole):** `POST /settings` (`part=password`) previously accepted weak passwords like `"abc"`, allowing players to bypass guard policies.
+2. **D2 (Abuse Prevention):** `POST /settings`, `POST /team`, and `POST /team/members/<id>/captain` had no rate limiting, allowing unbounded email generation and password guessing.
+3. **D3 (Legacy Preservation):** `update_team_details` revalidated the studio name even when unchanged, preventing studios created before name length/confusable rules (e.g. 1-character name "Q") from updating affiliation or country.
+4. **D4 (Verification & Browser Smoke):** Added browser automation to test weak password rejection on `/settings` and verify passwords remain unchanged; ran test suites.
+
+### Upstream Integration
+Merged `origin/pre-deployment` cleanly into `ui/d-team-settings` (bringing commits `2fe1050` and `63a4b51`), incorporating the centralized player guard rules and the multi-worker CI matrix. Checked out `plugins/l3mon_guard/policies/password.py` from `origin/ui/c-guide-scoreboard` to supply `validate_password` and `V_MSG_PASS_*` constants.
+
+### Audit Findings Matrix (Round 4)
+
+| Finding | What was done | Proving Test | Break-on-Purpose Result |
+|---|---|---|---|
+| **D1: Password Policy Enforcement in Settings** | In `plugins/l3mon_theme/pages/team_settings.py` (`update_settings`, `part == "password"` branch), added policy check before schema load: `if enforced(): valid, pass_err = validate_password(password, username=user.name, email=user.email)`. Stripped password (`(request.form.get("password") or "").strip()`) is judged. On refusal: sets `errors["password"] = [pass_err]`, rolls back session, flashes errors in session, and returns 303 redirect to `/settings`. Rendered under `#p-new` in field error `<p class="field-e" id="p-new-e">` and in summary box `[data-summary]`. | `test_round4_d1_password_validation_rules` in `test_team_pages.py` (proves `abc`, 11 spaces + `ab1`, `password1234`, username inside password, email local part inside password are all refused, and `"correct horse battery staple"` is accepted and resets sessions); browser smoke step 20 in `smoke-real-account.mjs` verifying `#p-new-e` shows `"Use at least 12 characters."` and screenshot `11-settings-weak-password-refused.png`. | `test_round4_d1_break_on_purpose_password_rule_disabled` demonstrates that without the D1 check (`L3MON_SIGNUP_RULES = False`), stock CTFd accepts `"abc"`, persists it, and permits sign-in with `"abc"`. |
+| **D2: Form Rate Limiting** | Applied standard CTFd `@ratelimit(method="POST", limit=10, interval=60)` decorator from `CTFd.utils.decorators` to `update_team_details` (`POST /team`), `handover_captain` (`POST /team/members/<int:member_id>/captain`), and `update_settings` (`POST /settings`). Restricts requests to 10 per minute per endpoint/IP. GET requests are completely unconstrained and do not increment or count against the limiter. | `test_round4_d2_ratelimit_on_team_post`, `test_round4_d2_ratelimit_on_handover_captain_post`, `test_round4_d2_ratelimit_on_settings_post` in `test_team_pages.py`. Proves 10 POST requests are permitted, the 11th call returns HTTP 429 (`{"code": 429, "message": "Too many requests. Limit is 10 requests in 60 seconds"}`), and GET requests return 200 without counting towards the limit. | Removing `@ratelimit` decorator allows 11+ POST requests without HTTP 429 refusal. |
+| **D3: Studio Name Policy Skipped for Unchanged Names** | In `plugins/l3mon_theme/pages/team_settings.py` (`update_team_details`), added check: if `raw_name == team.name`, keep stored `team.name` without running `validate_team_name`. Only changed studio names are judged. This mirrors the lead engineer's guard patch wrapper in `l3mon_guard/__init__.py`. Allows legacy studios created before name rules (e.g. 1-character name "Q") to update affiliation and country. | `test_round4_d3_legacy_studio_name_unchanged` in `test_team_pages.py` (proves studio "Q" created directly in DB updates affiliation to "Lemon Orchard Collective" and country to "FR" with 303 success; attempting to rename to another 1-character name "X" is judged and refused with `MSG_LENGTH`). | Omitting `raw_name == team.name` check fails when updating affiliation on studio "Q" because `validate_team_name("Q")` triggers `MSG_LENGTH` ("Studio name must be between 2 and 32 characters long."). |
+| **D4: Verification, Browser Smoke Suite & Handoff** | Added weak password test step to `platform-ui/tools/smoke-real-account.mjs` (types `"abc"` with current password, verifies `[data-summary]` and `#p-new-e` error "Use at least 12 characters.", captures screenshot `11-settings-weak-password-refused.png`, verifies sign-in with `"abc"` is refused, and verifies sign-in with original password succeeds). Rebuilt Docker image `l3mon/ctfd:dev` and ran complete test suites. | `smoke-real-account.mjs` (22 steps pass, 11 screenshots in `docs/handoff/shots/`), `test_team_pages.py` (28/28 pass), `tests/integration/test_theme_d.py` (5/5 pass), UI test suite (336 pass, 0 fail, 1 skipped). | In pre-fix codebase, typing `"abc"` in settings was accepted and changed password. |
+
+### Test Counts & Execution Report (Round 4)
+
+1. **Theme Plugin Suite (including Team & Settings):**
+   - Command: `tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -v -p no:randomly -p no:cacheprovider /l3mon_tests/l3mon_theme`
+   - Result: `93 passed, 184 warnings in 155.07s` (100% pass: all 28 team & settings tests covering D1–D3 + 65 theme tests)
+2. **Integration Tests through Nginx:**
+   - Command: `python -m pytest tests/integration/test_theme.py tests/integration/test_theme_d.py -v`
+   - Result: `8 passed in 9.17s` (5 passed on `test_theme_d.py` in 8.84s, 3 passed on `test_theme.py` in 0.33s)
+3. **Browser Smoke Suite on Live Stack:**
+   - Command: `node tools/smoke-real-account.mjs`
+   - Result: `--- All Real Stack Smoke Checks (D1 to D4) PASSED! ---` (22 steps verified including weak password rejection and login verification, 11 screenshots captured into `docs/handoff/shots/`)
+4. **UI Repository Prototype Test Suite:**
+   - Command: `node --test --test-concurrency=1 (Get-ChildItem tests/*.test.mjs).FullName`
+   - Result: `ℹ tests 337, ℹ suites 0, ℹ pass 336, ℹ fail 0, ℹ cancelled 0, ℹ skipped 1, ℹ duration_ms 180299.6` (100% of runnable tests passed)
+5. **UI Prototype Production Build:**
+   - Command: `node tools/build.mjs`
+   - Result: All budgets respected (`slates`, `board`, `guide`, `scoreboard`, `studio`: 42.5/46 KB, `settings`: 39.7/44 KB)
+6. **Theme Exporter Idempotence:**
+   - Command: `node tools/export-theme.mjs --out ../../L3m0nCTF/ui/theme/l3mon` run twice consecutively
+   - Result: `exported 28 files to .../ui/theme/l3mon` with 0 diff on second execution
+7. **UI Prototype Hygiene Scan:**
+   - Command: `node tools/hygiene.mjs --no-challenges`
+   - Result: `hygiene: 218 files and 0 challenge files checked, no problems`
+8. **Repository Hygiene & History Scans:**
+   - Command: `python -m pytest tools/tests/test_hygiene.py tools/tests/test_hygiene_strict.py -v`
+   - Result: `31 passed in 16.57s`
+   - Command: `python -m l3mon hygiene --root . --history`
+   - Result: `0 finding(s)`
+
+### What Could Not Be Run Locally
+
+- **Full 2000+ Plugin Suite & CTFd Core Suite:** On local workstation, the monolithic plugin suite (`/l3mon_tests`) previously took 65+ minutes due to single-threaded test execution. Per D4 guidance, the multi-worker CI matrix (`plugin-suite` and `ctfd-suite`) on `pre-deployment` executes the full suite in CI upon opening the draft pull request from `ui/d-team-settings` to `pre-deployment`. All stream D tests, integration tests, UI prototype tests, and live stack smoke tests ran cleanly locally with 100% pass rate.
