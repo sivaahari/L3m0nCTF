@@ -4,6 +4,8 @@ Verifies `/reset_password` rendering, C8 GET-only redirect from `/reset`, CSRF t
 Turnstile integration, field-specific error mapping (C6), password policy integration (C7), token handling
 (invalid, expired, used), session clearing, and single rate-limit bucket.
 """
+import ast
+import inspect
 import os
 import time
 from unittest import mock
@@ -27,7 +29,10 @@ from CTFd.utils.security.signing import serialize
 from tests.helpers import create_ctfd, destroy_ctfd, register_user
 
 PASSWORD = "test-reset-password-123"
-KEYS = {"TURNSTILE_SITEKEY": turnstile.CF_TEST_PASS_SITEKEY, "TURNSTILE_SECRET": turnstile.CF_TEST_PASS_SECRET}
+SENT = "If that account exists you will receive an email, please check your inbox"  # the one sentence that really means "we sent it"
+# CTFd says this to a provider-registered account at the REQUEST step (the token step has the shorter sentence above it in the table)
+PROVIDER_REQUEST_STEP = "The email address associated with this account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider."
+KEYS ={"TURNSTILE_SITEKEY": turnstile.CF_TEST_PASS_SITEKEY, "TURNSTILE_SECRET": turnstile.CF_TEST_PASS_SECRET}
 WIDGET = 'class="cf-turnstile"'
 SCRIPT = "https://challenges.cloudflare.com/turnstile/v0/api.js"
 
@@ -245,6 +250,7 @@ def test_reset_message_targets_table_structure():
         "This CTF is not configured to send email.<br> Please contact an organizer to have your password reset.",
         "Your reset link is invalid, please generate a new one",
         "Your account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider.",
+        PROVIDER_REQUEST_STEP,
         "Please pick a longer password",
     }
     assert set(RESET_MESSAGE_TARGETS.keys()) == expected_keys
@@ -512,6 +518,67 @@ def test_error_provider_account_has_no_password_mapped_to_summary_only(app):
         assert f'href="#reg-h">{msg}</a>' in body
         assert "data-alert" not in body
         assert body.count(msg) == 1
+
+
+def test_request_step_for_a_provider_account_says_nothing_was_sent(app, monkeypatch):
+    """Merge of the four streams: asking for a reset link for an account made through CTFtime or Google showed 'SENT.' above CTFd's sentence that
+    says no password exists and no mail is sent. The sentence is a summary-only line like the token step's, and no sent banner is drawn."""
+    from CTFd.utils import config
+    monkeypatch.setattr(config, "can_send_mail", lambda: True)  # without a mail service CTFd stops earlier, with its 'not configured to send email'
+    with app.app_context():
+        db.session.add(Users(name="oauth_user", email="oauth@example.com", password="", oauth_id=12345, verified=True))
+        db.session.commit()
+
+    with app.test_client() as client:
+        client.get("/reset_password")
+        with client.session_transaction() as sess:
+            nonce = sess["nonce"]
+        r = client.post("/reset_password", data={"email": "oauth@example.com", "nonce": nonce})
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+
+        assert body.count(PROVIDER_REQUEST_STEP) == 1
+        assert f'href="#reg-h">{PROVIDER_REQUEST_STEP}</a>' in body
+        assert "data-alert" not in body, "no 'SENT.' banner: nothing was sent"
+        assert "SENT." not in body
+
+
+def test_every_sentence_ctfd_gives_the_reset_flow_as_information_is_in_the_table_or_is_the_sent_one(app):
+    """The table must hold every information sentence CTFd can pass to the reset page, or the page draws 'SENT.' above it. Read from CTFd's own source,
+    so a CTFd update that adds a sentence fails here instead of lying to a player."""
+    import CTFd.auth as ctfd_auth
+
+    tree = ast.parse(inspect.getsource(ctfd_auth))
+    reset = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "reset_password")
+
+    def sentences(expr):
+        for node in ast.walk(expr):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                yield node.value
+
+    informational = set()
+    for call in (n for n in ast.walk(reset) if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", "")) == "render_template"):
+        for keyword in call.keywords:
+            if keyword.arg == "infos":
+                informational.update(sentences(keyword.value))
+    assert SENT in informational, "the scan reads CTFd's reset_password function"
+    assert PROVIDER_REQUEST_STEP in informational
+    missing = {s for s in informational if s != SENT and s not in RESET_MESSAGE_TARGETS}
+    assert not missing, f"CTFd gives these as information and the table does not hold them (the page would draw 'SENT.' above them): {sorted(missing)}"
+
+
+def test_the_templates_own_fallback_table_holds_the_same_sentences_as_the_python_table():
+    """reset_password.html carries a copy of the table for the case that the theme's values are not there; the two must not drift apart."""
+    import re
+    from pathlib import Path
+
+    import CTFd
+
+    text = (Path(CTFd.__file__).resolve().parent / "themes" / "l3mon" / "templates" / "reset_password.html").read_text(encoding="utf-8")
+    start = text.index("{% set target_map = {") + len("{% set target_map = ")
+    literal = text[start : text.index("} %}", start) + 1]  # a dictionary literal in Python's own syntax, except for Jinja's `none`
+    in_template = ast.literal_eval(re.sub(r":\s*none\b", ": None", literal))
+    assert in_template == dict(RESET_MESSAGE_TARGETS), {k: (in_template.get(k, "missing"), dict(RESET_MESSAGE_TARGETS).get(k, "missing")) for k in set(in_template) ^ set(RESET_MESSAGE_TARGETS) | {k for k in in_template if k in RESET_MESSAGE_TARGETS and in_template[k] != RESET_MESSAGE_TARGETS[k]}}
 
 
 def test_error_ctfd_pass_short_mapped_to_password_field(app):

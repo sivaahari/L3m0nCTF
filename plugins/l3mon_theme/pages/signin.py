@@ -43,6 +43,9 @@ class _ResetMessageTargets(dict):
 # - 'email': email field error (f-email)
 # - None: summary only (no field attachment)
 # Any message not in this table also defaults to summary only.
+# One more rule for the INFORMATION sentences: CTFd gives the page the sentence "If that account exists you will receive an email..." when a mail
+# really goes out, and the page draws it under "SENT.". Every other information sentence CTFd can give must be in this table, or it would be drawn
+# under "SENT." as well (test_every_sentence_ctfd_gives_the_reset_flow_as_information_is_in_the_table_or_is_the_sent_one reads CTFd's source for them).
 RESET_MESSAGE_TARGETS = _ResetMessageTargets({
     # Guard password policy messages (password field)
     V_MSG_PASS_EMPTY: "password",
@@ -57,7 +60,9 @@ RESET_MESSAGE_TARGETS = _ResetMessageTargets({
     # CTFd core auth.py reset_password messages (summary only)
     "This CTF is not configured to send email.<br> Please contact an organizer to have your password reset.": None,
     "Your reset link is invalid, please generate a new one": None,
+    # the token step says it this way, the request step (asking for the link with the account's address) the longer way
     "Your account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider.": None,
+    "The email address associated with this account was registered via an authentication provider and does not have an associated password. Please login via your authentication provider.": None,
     # CTFd core auth.py reset_password messages (password field)
     "Please pick a longer password": "password",
 })
