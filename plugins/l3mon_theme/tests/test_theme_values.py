@@ -150,3 +150,22 @@ def test_a_failing_event_name_gives_a_safe_default(app, monkeypatch, caplog):
             assert values.Values(app).event_name == ""
     assert any("event_name" in r.getMessage() for r in caplog.records)
     assert not any("database detail" in r.getMessage() for r in caplog.records)
+
+
+def test_every_page_that_states_the_password_length_states_the_one_the_rule_enforces():
+    """Found in the merge of the four streams: the Settings page said 'At least 10 characters' beside a refusal that said 12. The browser-side twin of this
+    test is platform-ui/tests/password-rule-wording.test.mjs; this one reads the pages as the platform serves them (generated and hand-written)."""
+    import re
+    from pathlib import Path
+
+    import CTFd
+    from CTFd.plugins.l3mon_guard.policies.password import V_LIMITS_PASS_MIN
+
+    folder = Path(CTFd.__file__).resolve().parent / "themes" / "l3mon" / "templates"
+    found = []
+    for page in sorted(folder.rglob("*.html")):
+        for match in re.finditer(r"at least (\d+) characters", page.read_text(encoding="utf-8"), re.I):
+            found.append((page.name, int(match.group(1))))
+    assert any(name == "_settings.html" for name, _ in found), "the Settings page states the length, so this test sees it"
+    assert any(name == "_register-account.html" for name, _ in found)
+    assert [f for f in found if f[1] != V_LIMITS_PASS_MIN] == [], f"every statement says {V_LIMITS_PASS_MIN}"
