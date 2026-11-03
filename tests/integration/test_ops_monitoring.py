@@ -45,6 +45,7 @@ def _required_targets_state(required_jobs):
     return required_jobs - set(found), found
 
 
+@pytest.mark.overlays
 def test_prometheus_health_and_targets_up():
     """Verify Prometheus is reachable and that all core scrape targets are UP.
 
@@ -84,6 +85,7 @@ def test_prometheus_health_and_targets_up():
         pytest.fail(f"Target job '{job}' is not UP: health={health}, lastError={last_err}")
 
 
+@pytest.mark.overlays
 def test_prometheus_rules_loaded():
     """Verify that all 13 operational alert rules are loaded into Prometheus."""
     url = "http://127.0.0.1:9090/api/v1/rules"
@@ -113,6 +115,7 @@ def test_prometheus_rules_loaded():
     assert not missing, f"Missing operational alert rules in Prometheus: {missing}"
 
 
+@pytest.mark.overlays
 def test_alertmanager_health_and_status():
     """Verify Alertmanager /-/healthy and /api/v2/status."""
     healthy_url = "http://127.0.0.1:9093/-/healthy"
@@ -128,6 +131,7 @@ def test_alertmanager_health_and_status():
     assert "cluster" in status_data
 
 
+@pytest.mark.overlays
 def test_grafana_health_datasources_and_dashboards():
     """Verify Grafana health, provisioned Prometheus/Loki datasources, and 4 dashboards."""
     health_url = "http://127.0.0.1:3000/api/health"
@@ -168,6 +172,7 @@ def test_grafana_health_datasources_and_dashboards():
     assert not missing_dashboards, f"Missing Grafana dashboards: {missing_dashboards}"
 
 
+@pytest.mark.overlays
 def test_loki_ready_status():
     """Verify Loki log store answers /ready with 'ready'."""
     cmd = ["docker", "exec", "l3mon-loki-1", "wget", "-qO-", "http://127.0.0.1:3100/ready"]
@@ -181,6 +186,7 @@ def test_loki_ready_status():
     assert "ready" in out.lower(), f"Loki failed to report ready: {out}"
 
 
+@pytest.mark.overlays
 def test_fire_drill_script_passes():
     """Execute tools/ops/fire_drill.sh and verify all 13 alerts inject and verify."""
     drill_script = ROOT / "tools" / "ops" / "fire_drill.sh"

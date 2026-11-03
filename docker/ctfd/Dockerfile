@@ -6,13 +6,13 @@ FROM ghcr.io/ctfd/ctfd@sha256:07cc9788d58b2a18ea4dc2103ff385c053ffc506f57d0c769a
 
 USER root
 
-# Operating-system fixes the upstream image does not have yet (Trivy, 2026-10-06): libpcre2 and perl-base.
+# Operating-system fixes the upstream image does not have yet (Trivy, 2026-10-06 and 2026-11-03): libpcre2, perl-base and OpenSSL (libssl3, openssl).
 # Only these two are upgraded; nothing else is installed, and the package lists are removed again. The versions are not
 # pinned on purpose: the point is to take whatever fixed version Debian's security archive has (verify-image.sh checks
 # the minimum).
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base \
+    && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base libssl3 openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/ctfd/requirements.overrides.txt /tmp/overrides.txt

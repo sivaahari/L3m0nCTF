@@ -45,6 +45,7 @@ def test_preflight_json_format_output():
     assert any(r["name"] == "metadata_block" and r["status"] == "PASS" for r in data["results"])
 
 
+@pytest.mark.overlays
 def test_preflight_catches_active_maintenance_mode():
     """Verify that preflight.sh reports FAIL when maintenance flag file is active."""
     # Turn on maintenance

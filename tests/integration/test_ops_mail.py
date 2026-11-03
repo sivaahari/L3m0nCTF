@@ -30,6 +30,7 @@ def ctfd_exec(cmd: str, timeout: int = 60) -> subprocess.CompletedProcess:
     )
 
 
+@pytest.mark.overlays
 def test_mail_relay_accepts_submission_and_exports_metrics():
     # Execute python script inside CTFd container to talk to mail-relay on internal network
     client_code = """
@@ -53,6 +54,7 @@ print(metrics)
     assert "l3mon_mail_holding" in done.stdout
 
 
+@pytest.mark.overlays
 def test_mail_relay_enforces_size_limit():
     # Attempt sending payload > 10MB with chunked lines
     code = """

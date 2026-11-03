@@ -35,6 +35,7 @@ def generate_age_keypair(key_path: Path, pub_path: Path):
     pub_path.write_text(cmd_pub.stdout.strip() + "\n", encoding="utf-8")
 
 
+@pytest.mark.overlays
 def test_ops_backup_full_and_binlog_encrypted(tmp_path):
     key_file = tmp_path / "test.key"
     pub_file = tmp_path / "test.pub"

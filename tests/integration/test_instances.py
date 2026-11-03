@@ -220,6 +220,7 @@ def world():
         restart_ctfd()
 
 
+@pytest.mark.overlays
 def test_instances_end_to_end_lifecycle(world):
     # 1. Create Challenge in CTFd
     status, out = admin("POST", "/api/v1/challenges", {
@@ -348,6 +349,7 @@ def test_instances_end_to_end_lifecycle(world):
         admin("DELETE", f"/api/v1/users/{uid_b}")
 
 
+@pytest.mark.overlays
 def test_router_survives_hostile_traffic(world):
     # Setup challenge and instance
     status, out = admin("POST", "/api/v1/challenges", {

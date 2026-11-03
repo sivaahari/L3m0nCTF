@@ -26,6 +26,7 @@ Checked on 2026-10-06 against the official CTFd 3.8.8 image (`sha256:07cc9788d58
 | pip | 24.0 | removed | not needed at run time; its bundled libraries only ever trigger scanner findings |
 | libpcre2-8-0 (Debian) | 10.42-1+deb12u1 | 10.42-1+deb12u2 | HIGH fixed |
 | perl-base (Debian) | 5.36.0-7+deb12u3 | 5.36.0-7+deb12u4 | 3 CRITICAL and 4 HIGH fixed |
+| libssl3 and openssl (Debian) | 3.0.22-1~deb12u1 | 3.0.22-1~deb12u2 | HIGH CVE-2026-84782 fixed (Debian published the fix after 2026-10-06; it was an accepted advisory until then) |
 
 The pins are in [`docker/ctfd/requirements.overrides.txt`](../../docker/ctfd/requirements.overrides.txt) and the operating-system step is in [`docker/ctfd/Dockerfile`](../../docker/ctfd/Dockerfile). `tools/verify-image.sh` checks every one of them on the built image.
 
@@ -77,7 +78,6 @@ These Debian 12 packages have **no fixed version in Debian yet** (Trivy, 2026-10
 | libsqlite3-0 | 1 CRITICAL, 2 HIGH | CVE-2025-7458 (CRITICAL); CVE-2026-11822, CVE-2026-11824 (HIGH) |
 | zlib1g | 1 CRITICAL | CVE-2023-45853 |
 | util-linux family (bsdutils, libblkid1, libmount1, libsmartcols1, libuuid1, mount, util-linux, util-linux-extra) | HIGH | CVE-2026-53613 and four others |
-| libssl3, openssl | 1 HIGH | CVE-2026-84782 |
 | ncurses (libncursesw6, libtinfo6, ncurses-base, ncurses-bin) | 1 HIGH | CVE-2025-69720 |
 | libsystemd0, libudev1 | 1 HIGH | CVE-2026-16742 |
 | gzip, libacl1, perl-base | 1 HIGH each | CVE-2026-41992, CVE-2026-54369, CVE-2026-9538 |

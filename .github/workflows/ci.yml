@@ -134,6 +134,45 @@ jobs:
               --ignorefile /rules/accepted-advisories.txt --skip-files usr/local/bin/gosu --exit-code 1 --no-progress
           done
 
+  integration-overlays:
+    # The pieces the plain integration job does not start: the instancer with its router (development mode, one fixture web challenge) and the
+    # operations stack (mail relay, Prometheus, Alertmanager, Grafana, Loki). The twelve tests that need them are marked `overlays` and skipped
+    # everywhere else; they used to fail in the plain job on every run.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      INSTANCER_DEV: "1"
+      L3MON_OVERLAYS: instancer,ops
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install the test runner and the age tool (the backup test encrypts with it)
+        run: |
+          python -m pip install pytest
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+      - name: Build the platform image and the fixture challenge
+        run: |
+          docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
+          docker build -t l3mon-fixture/demo-web:dev services/instancer/tests/fixtures/web
+      - name: Generate settings and secrets (throwaway, for this run only)
+        working-directory: tools
+        run: |
+          python -m l3mon secrets generate --dir ../.secrets
+          python -m l3mon config render ../config/event.example.toml --out ../deploy/compose/generated
+      - name: Start the stack with the instancer and operations overlays
+        run: tools/compose.sh up -d --wait --wait-timeout 600
+      - name: The tests that need the overlays
+        run: python -m pytest tests/integration -q -p no:cacheprovider --run-overlays -m overlays
+      - name: Logs, when something failed
+        if: failure()
+        run: tools/compose.sh logs --no-color --tail 200
+      - name: Remove the stack
+        if: always()
+        run: tools/compose.sh down -v
+
   plugin-suite:
     # Our own plugins' tests (about 3,000), on four workers. They shared one job with CTFd's suite on a single worker, which needed more than the 40 minutes
     # that job was given: it was cancelled on every push, so no pull request ever got a result (the teammates who cannot run Docker rely on this one).
@@ -155,7 +194,8 @@ jobs:
       - name: Build
         run: docker build -f docker/ctfd/Dockerfile -t l3mon/ctfd:dev .
       - name: CTFd's whole suite
-        run: tools/run-ctfd-tests.sh l3mon/ctfd:dev
+        # minus the one test that asks CTFd's update server whether a newer version exists: its answer changed on 2026-10-22, when CTFd 3.8.9 was published (we stay on 3.8.8 on purpose: see docs/security/dependency-bumps.md)
+        run: tools/run-ctfd-tests.sh l3mon/ctfd:dev -- -q -n 2 -p no:randomly --deselect tests/utils/test_updates.py::test_update_check_ignores_downgrades tests
 
   integration:
     # The real stack (CTFd, MariaDB, Redis, nginx) started with Docker Compose, and the tests that probe it.
