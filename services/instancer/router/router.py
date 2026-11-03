@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.parse
 from typing import Optional
 
@@ -104,6 +105,92 @@ def sanitize_headers(headers: dict | list[tuple[str, str]], is_websocket: bool =
     return sanitized_list
 
 
+DEFAULT_TCP_PORT_START = 30000
+DEFAULT_TCP_PORT_COUNT = 200
+DEFAULT_TCP_IDLE_TIMEOUT_SECONDS = 300.0
+DEFAULT_TCP_LIFETIME_CAP_SECONDS = 3600.0
+DEFAULT_TCP_MAX_CONNS_PER_INSTANCE = 5
+DEFAULT_TCP_MAX_CONNS_PER_IP = 60  # Campus NAT friendly (Lead Item 5)
+DEFAULT_TCP_MAX_TOTAL_CONNS = 500
+DEFAULT_TCP_RATE_LIMIT_BPS = 2 * 1024 * 1024  # 2 MB/s
+DEFAULT_TCP_RATE_LIMIT_BURST = 4 * 1024 * 1024  # 4 MB
+DEFAULT_INSTANCE_POOL = "10.200.0.0/16"
+TCP_CONNECT_TIMEOUT_SECONDS = 5.0
+
+
+def validate_route_target(
+    target_ip: str,
+    target_port: int,
+    pool: ipaddress.IPv4Network | ipaddress.IPv6Network,
+    allow_loopback: bool = False,
+) -> bool:
+    """Validate that target_ip:target_port is safe to connect to.
+
+    Target MUST lie strictly inside pool and NOT be the network address, gateway (.1),
+    or broadcast address. Refuses public IPs, metadata 169.254.169.254, loopback,
+    and private IPs outside pool (e.g. 10.0.0.5).
+    """
+    if not isinstance(target_port, int) or not (1 <= target_port <= 65535):
+        return False
+    if not target_ip or not isinstance(target_ip, str):
+        return False
+    try:
+        addr = ipaddress.ip_address(target_ip.strip())
+    except ValueError:
+        return False
+
+    if addr not in pool:
+        return False
+
+    # Reject network address and broadcast address
+    if addr == pool.network_address:
+        return False
+    if hasattr(pool, "broadcast_address") and addr == pool.broadcast_address:
+        return False
+
+    # Reject host gateway (.1 in any IPv4 subnet) unless loopback test mode
+    if isinstance(addr, ipaddress.IPv4Address) and not (allow_loopback and addr.is_loopback):
+        if addr.packed[-1] == 1:
+            return False
+        if addr.packed[-1] in (0, 255):
+            return False
+
+    # Reject loopback, multicast, link-local, unspecified
+    if addr.is_loopback and not allow_loopback:
+        return False
+    if addr.is_multicast or addr.is_link_local or addr.is_unspecified:
+        return False
+
+    return True
+
+
+class TokenBucketRateLimiter:
+    """Token bucket rate limiter enforcing bytes-per-second limit with burst allowance."""
+
+    def __init__(self, rate_bps: int, burst_bytes: int):
+        self.rate = rate_bps
+        self.burst = burst_bytes
+        self.tokens = float(burst_bytes)
+        self.last_update = time.monotonic()
+        self._lock = asyncio.Lock()
+
+    async def consume(self, nbytes: int) -> None:
+        if nbytes <= 0 or self.rate <= 0:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self.last_update
+            self.last_update = now
+            self.tokens = min(float(self.burst), self.tokens + elapsed * self.rate)
+            if self.tokens < nbytes:
+                deficit = nbytes - self.tokens
+                wait_time = deficit / self.rate
+                await asyncio.sleep(wait_time)
+                self.tokens = 0.0
+            else:
+                self.tokens -= nbytes
+
+
 class InstanceRouter:
     """Reverse proxy carrying HTTP traffic to per-team challenge instances without Docker daemon access."""
 
@@ -117,7 +204,32 @@ class InstanceRouter:
         max_connections_per_ip: int = MAX_CONNECTIONS_PER_IP,
         max_total_connections: int = MAX_TOTAL_CONNECTIONS,
         global_reading_budget: int = GLOBAL_READING_BUDGET,
+        tcp_port_start: int = DEFAULT_TCP_PORT_START,
+        tcp_port_count: int = DEFAULT_TCP_PORT_COUNT,
+        tcp_idle_timeout: float = DEFAULT_TCP_IDLE_TIMEOUT_SECONDS,
+        tcp_lifetime_cap: float = DEFAULT_TCP_LIFETIME_CAP_SECONDS,
+        tcp_max_connections_per_instance: int = DEFAULT_TCP_MAX_CONNS_PER_INSTANCE,
+        tcp_max_connections_per_ip: int = DEFAULT_TCP_MAX_CONNS_PER_IP,
+        tcp_max_total_connections: int = DEFAULT_TCP_MAX_TOTAL_CONNS,
+        tcp_rate_limit_bps: int = DEFAULT_TCP_RATE_LIMIT_BPS,
+        tcp_rate_limit_burst: int = DEFAULT_TCP_RATE_LIMIT_BURST,
+        instance_pool: str = DEFAULT_INSTANCE_POOL,
+        tcp_connect_timeout: float = TCP_CONNECT_TIMEOUT_SECONDS,
+        allow_loopback_for_tests: bool = False,
     ):
+        if not (1024 <= tcp_port_start <= 65535):
+            raise ValueError(f"INSTANCER_TCP_PORT_START must be between 1024 and 65535, got {tcp_port_start}")
+        if not (1 <= tcp_port_count <= 2000):
+            raise ValueError(f"INSTANCER_TCP_PORT_COUNT must be between 1 and 2000, got {tcp_port_count}")
+        if tcp_port_start + tcp_port_count - 1 > 65535:
+            raise ValueError(
+                f"TCP port range [{tcp_port_start}, {tcp_port_start + tcp_port_count - 1}] exceeds 65535"
+            )
+        try:
+            self.pool_network = ipaddress.ip_network(instance_pool)
+        except ValueError as e:
+            raise ValueError(f"Invalid INSTANCER_INSTANCE_POOL '{instance_pool}': {e}")
+
         self.instance_domain = instance_domain
         self.instancer_url = instancer_url
         self.router_token = router_token
@@ -126,6 +238,19 @@ class InstanceRouter:
         self.max_connections_per_ip = max_connections_per_ip
         self.max_total_connections = max_total_connections
         self.global_reading_budget = global_reading_budget
+
+        self.tcp_port_start = tcp_port_start
+        self.tcp_port_count = tcp_port_count
+        self.tcp_idle_timeout = tcp_idle_timeout
+        self.tcp_lifetime_cap = tcp_lifetime_cap
+        self.tcp_max_connections_per_instance = tcp_max_connections_per_instance
+        self.tcp_max_connections_per_ip = tcp_max_connections_per_ip
+        self.tcp_max_total_connections = tcp_max_total_connections
+        self.tcp_rate_limit_bps = tcp_rate_limit_bps
+        self.tcp_rate_limit_burst = tcp_rate_limit_burst
+        self.instance_pool = instance_pool
+        self.tcp_connect_timeout = tcp_connect_timeout
+        self.allow_loopback_for_tests = allow_loopback_for_tests
 
         self._routes: dict[str, dict] = {}  # instance_id -> route dict
         self._lock = asyncio.Lock()
@@ -137,6 +262,21 @@ class InstanceRouter:
         # Global reading budget tracking (N1)
         self._current_reading_bytes: int = 0
         self._budget_lock = asyncio.Lock()
+
+        # TCP Relay state tracking (F1)
+        self._tcp_listeners: dict[int, asyncio.Server] = {}
+        self._tcp_routes: dict[int, dict] = {}
+        self._tcp_connections: dict[int, set[asyncio.Task]] = collections.defaultdict(set)
+        self._tcp_conns_per_ip: dict[str, int] = collections.defaultdict(int)
+        self._tcp_conns_per_inst: dict[str, int] = collections.defaultdict(int)
+        self._total_tcp_connections: int = 0
+        self._tcp_lock = asyncio.Lock()
+
+        # TCP Metrics (F1.5, no instance IDs as labels)
+        self._tcp_metrics_open_relays: int = 0
+        self._tcp_metrics_bytes_relayed: int = 0
+        self._tcp_metrics_refusals: dict[str, int] = collections.defaultdict(int)
+        self._tcp_metrics_connect_failures: int = 0
 
     def get_route(self, inst_id: str) -> dict | None:
         """Lookup route dictionary for a given instance ID."""
@@ -219,6 +359,11 @@ class InstanceRouter:
             if inst_id:
                 new_routes[inst_id] = r
         self._routes = new_routes
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.sync_tcp_routes(routes))
+        except RuntimeError:
+            pass
 
     async def acquire_connection(self, inst_id: str) -> tuple[bool, int, str]:
         """Atomically check and acquire an instance connection slot."""
@@ -268,10 +413,337 @@ class InstanceRouter:
                     routes = body.get("routes", [])
                     async with self._lock:
                         self.update_routes(routes)
+                    await self.sync_tcp_routes(routes)
             except Exception as e:
                 _log.debug("Error polling routes from %s: %s", self.instancer_url, e)
 
             await asyncio.sleep(self.poll_interval)
+
+    async def sync_tcp_routes(self, routes: list[dict]) -> None:
+        """Synchronize active TCP port listeners with current route table (F1)."""
+        new_tcp_routes: dict[int, dict] = {}
+        for r in routes:
+            if r.get("protocol") == "tcp":
+                port = r.get("port")
+                if port and isinstance(port, int) and (self.tcp_port_start <= port < self.tcp_port_start + self.tcp_port_count):
+                    target_ip = r.get("target_ip")
+                    target_port = r.get("target_port")
+                    if validate_route_target(
+                        target_ip, target_port, self.pool_network, allow_loopback=self.allow_loopback_for_tests
+                    ):
+                        new_tcp_routes[port] = r
+                    else:
+                        _log.warning(
+                            "Rejecting invalid/poisoned TCP route target: %s:%s on port %s",
+                            target_ip,
+                            target_port,
+                            port,
+                        )
+                        async with self._tcp_lock:
+                            self._tcp_metrics_refusals["invalid_target"] += 1
+
+        async with self._tcp_lock:
+            current_ports = set(self._tcp_listeners.keys())
+            desired_ports = set(new_tcp_routes.keys())
+
+            # Ports to close: missing from new routes or target modified
+            ports_to_close = set()
+            for p in current_ports:
+                if p not in desired_ports:
+                    ports_to_close.add(p)
+                else:
+                    curr_r = self._tcp_routes.get(p, {})
+                    new_r = new_tcp_routes[p]
+                    if (
+                        curr_r.get("target_ip") != new_r.get("target_ip")
+                        or curr_r.get("target_port") != new_r.get("target_port")
+                        or curr_r.get("id") != new_r.get("id")
+                    ):
+                        ports_to_close.add(p)
+
+            ports_to_open = desired_ports - (current_ports - ports_to_close)
+
+        # Close removed/changed listeners outside lock to avoid deadlocks
+        for p in ports_to_close:
+            server = self._tcp_listeners.pop(p, None)
+            if server:
+                server.close()
+
+            # Abort all active relay tasks on this port first so sockets close
+            tasks = list(self._tcp_connections.pop(p, set()))
+            for t in tasks:
+                t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            if server:
+                try:
+                    await asyncio.wait_for(server.wait_closed(), timeout=0.5)
+                except Exception:
+                    pass
+
+            self._tcp_routes.pop(p, None)
+            _log.info("Closed TCP listener and terminated relays on port %d", p)
+
+        if ports_to_close:
+            await asyncio.sleep(0.05)
+
+        # Open new listeners
+        for p in ports_to_open:
+            route = new_tcp_routes[p]
+            try:
+                server = await asyncio.start_server(
+                    lambda r, w, port=p: self.handle_tcp_client(r, w, port),
+                    "0.0.0.0",
+                    p,
+                )
+                self._tcp_listeners[p] = server
+                self._tcp_routes[p] = route
+                _log.info(
+                    "Started TCP relay listener on 0.0.0.0:%d -> %s:%s (instance: %s)",
+                    p,
+                    route.get("target_ip"),
+                    route.get("target_port"),
+                    route.get("id"),
+                )
+            except Exception as e:
+                _log.error("Failed to bind TCP listener on port %d: %s", p, e)
+
+    async def handle_tcp_client(
+        self, client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter, port: int
+    ) -> None:
+        """Handle incoming TCP connection on an allocated challenge port (F1)."""
+        peername = None
+        if hasattr(client_writer, "get_extra_info"):
+            peername = client_writer.get_extra_info("peername")
+        peer_ip = peername[0] if (peername and isinstance(peername, tuple)) else "127.0.0.1"
+
+        inst_id = ""
+        route = None
+        async with self._tcp_lock:
+            route = self._tcp_routes.get(port)
+            if not route:
+                self._tcp_metrics_refusals["route_closed"] += 1
+                try:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
+            inst_id = route.get("id", "")
+            if self._total_tcp_connections >= self.tcp_max_total_connections:
+                self._tcp_metrics_refusals["global_cap"] += 1
+                _log.warning("TCP refusal: global connection cap reached (%d)", self.tcp_max_total_connections)
+                try:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
+            curr_ip_conns = self._tcp_conns_per_ip.get(peer_ip, 0)
+            if curr_ip_conns >= self.tcp_max_connections_per_ip:
+                self._tcp_metrics_refusals["ip_cap"] += 1
+                _log.warning("TCP refusal: per-IP cap reached for %s (%d)", peer_ip, self.tcp_max_connections_per_ip)
+                try:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
+            curr_inst_conns = self._tcp_conns_per_inst.get(inst_id, 0)
+            if curr_inst_conns >= self.tcp_max_connections_per_instance:
+                self._tcp_metrics_refusals["instance_cap"] += 1
+                _log.warning(
+                    "TCP refusal: per-instance cap reached for %s (%d)", inst_id, self.tcp_max_connections_per_instance
+                )
+                try:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
+            self._total_tcp_connections += 1
+            self._tcp_conns_per_ip[peer_ip] = curr_ip_conns + 1
+            self._tcp_conns_per_inst[inst_id] = curr_inst_conns + 1
+            self._tcp_metrics_open_relays += 1
+
+        curr_task = asyncio.current_task()
+        if curr_task is not None:
+            self._tcp_connections[port].add(curr_task)
+
+        target_ip = route.get("target_ip")
+        target_port = route.get("target_port")
+        backend_reader = None
+        backend_writer = None
+
+        try:
+            try:
+                backend_reader, backend_writer = await asyncio.wait_for(
+                    asyncio.open_connection(target_ip, target_port),
+                    timeout=self.tcp_connect_timeout,
+                )
+            except Exception as e:
+                self._tcp_metrics_connect_failures += 1
+                _log.warning("TCP connect failure to target %s:%s: %s", target_ip, target_port, e)
+                try:
+                    client_writer.close()
+                    await client_writer.wait_closed()
+                except Exception:
+                    pass
+                return
+
+            # Bidirectional relay with token bucket rate limit and backpressure
+            rate_limiter = TokenBucketRateLimiter(self.tcp_rate_limit_bps, self.tcp_rate_limit_burst)
+            last_activity = time.monotonic()
+            chunk_size = 16384  # 16 KB bounded buffer
+
+            async def pipe_client_to_backend():
+                nonlocal last_activity
+                try:
+                    while not client_reader.at_eof():
+                        data = await client_reader.read(chunk_size)
+                        if not data:
+                            break
+                        last_activity = time.monotonic()
+                        await rate_limiter.consume(len(data))
+                        backend_writer.write(data)
+                        await backend_writer.drain()
+                        self._tcp_metrics_bytes_relayed += len(data)
+                except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
+                    pass
+                finally:
+                    try:
+                        if backend_writer and hasattr(backend_writer, "write_eof") and not backend_writer.is_closing():
+                            backend_writer.write_eof()
+                    except Exception:
+                        pass
+
+            async def pipe_backend_to_client():
+                nonlocal last_activity
+                try:
+                    while not backend_reader.at_eof():
+                        data = await backend_reader.read(chunk_size)
+                        if not data:
+                            break
+                        last_activity = time.monotonic()
+                        client_writer.write(data)
+                        await client_writer.drain()
+                        self._tcp_metrics_bytes_relayed += len(data)
+                except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
+                    pass
+                finally:
+                    try:
+                        if client_writer and hasattr(client_writer, "write_eof") and not client_writer.is_closing():
+                            client_writer.write_eof()
+                    except Exception:
+                        pass
+
+            async def monitor_idle():
+                while True:
+                    await asyncio.sleep(min(2.0, max(0.5, self.tcp_idle_timeout / 4)))
+                    if time.monotonic() - last_activity > self.tcp_idle_timeout:
+                        _log.info("TCP relay idle timeout (%ds) on port %d", self.tcp_idle_timeout, port)
+                        break
+
+            async def run_pipes():
+                await asyncio.gather(pipe_client_to_backend(), pipe_backend_to_client())
+
+            task_pipes = asyncio.create_task(run_pipes())
+            task_idle = asyncio.create_task(monitor_idle())
+
+            try:
+                done, pending = await asyncio.wait(
+                    [task_pipes, task_idle],
+                    timeout=self.tcp_lifetime_cap,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            finally:
+                for t in (task_pipes, task_idle):
+                    if not t.done():
+                        t.cancel()
+                await asyncio.gather(task_pipes, task_idle, return_exceptions=True)
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            _log.warning("TCP relay error on port %d: %s", port, e)
+        finally:
+            if curr_task is not None and port in self._tcp_connections:
+                self._tcp_connections[port].discard(curr_task)
+            if backend_writer:
+                try:
+                    backend_writer.close()
+                except Exception:
+                    pass
+            try:
+                client_writer.close()
+            except Exception:
+                pass
+
+            async with self._tcp_lock:
+                self._total_tcp_connections = max(0, self._total_tcp_connections - 1)
+                curr_ip = self._tcp_conns_per_ip.get(peer_ip, 0)
+                if curr_ip <= 1:
+                    self._tcp_conns_per_ip.pop(peer_ip, None)
+                else:
+                    self._tcp_conns_per_ip[peer_ip] = curr_ip - 1
+
+                curr_inst = self._tcp_conns_per_inst.get(inst_id, 0)
+                if curr_inst <= 1:
+                    self._tcp_conns_per_inst.pop(inst_id, None)
+                else:
+                    self._tcp_conns_per_inst[inst_id] = curr_inst - 1
+
+                self._tcp_metrics_open_relays = max(0, self._tcp_metrics_open_relays - 1)
+
+    async def close_all_tcp_listeners(self) -> None:
+        """Close all TCP listeners and abort all active connections."""
+        for p, server in list(self._tcp_listeners.items()):
+            server.close()
+            try:
+                await server.wait_closed()
+            except Exception:
+                pass
+        self._tcp_listeners.clear()
+        for p, tasks in list(self._tcp_connections.items()):
+            for t in tasks:
+                t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+        self._tcp_connections.clear()
+        self._tcp_routes.clear()
+
+    def get_tcp_metrics(self) -> dict:
+        """Retrieve current TCP metrics snapshot (no instance IDs)."""
+        return {
+            "open_relays": self._tcp_metrics_open_relays,
+            "bytes_relayed": self._tcp_metrics_bytes_relayed,
+            "refusals": dict(self._tcp_metrics_refusals),
+            "connect_failures": self._tcp_metrics_connect_failures,
+        }
+
+    def format_tcp_metrics_prometheus(self) -> str:
+        """Render Prometheus format metrics for TCP relays."""
+        lines = [
+            "# HELP instancer_router_tcp_open_relays Current number of open TCP relays.",
+            "# TYPE instancer_router_tcp_open_relays gauge",
+            f"instancer_router_tcp_open_relays {self._tcp_metrics_open_relays}",
+            "# HELP instancer_router_tcp_bytes_total Total bytes relayed over TCP.",
+            "# TYPE instancer_router_tcp_bytes_total counter",
+            f"instancer_router_tcp_bytes_total {self._tcp_metrics_bytes_relayed}",
+            "# HELP instancer_router_tcp_connect_failures_total Total TCP connect failures to backends.",
+            "# TYPE instancer_router_tcp_connect_failures_total counter",
+            f"instancer_router_tcp_connect_failures_total {self._tcp_metrics_connect_failures}",
+            "# HELP instancer_router_tcp_refusals_total Total TCP connection refusals by reason.",
+            "# TYPE instancer_router_tcp_refusals_total counter",
+        ]
+        for reason, count in sorted(self._tcp_metrics_refusals.items()):
+            lines.append(f'instancer_router_tcp_refusals_total{{reason="{reason}"}} {count}')
+        return "\n".join(lines) + "\n"
 
     async def forward_stream(
         self,

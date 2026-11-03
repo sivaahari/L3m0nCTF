@@ -220,11 +220,25 @@ async def main():
     instance_domain = os.getenv("INSTANCE_DOMAIN", "localhost:8090")
     instancer_url = os.getenv("INSTANCER_URL", "http://instancer:8300")
     port = int(os.getenv("ROUTER_HTTP_PORT", "8090"))
+    tcp_port_start = int(os.getenv("INSTANCER_TCP_PORT_START", "30000"))
+    tcp_port_count = int(os.getenv("INSTANCER_TCP_PORT_COUNT", "200"))
+    tcp_idle_timeout = float(os.getenv("INSTANCER_TCP_IDLE_TIMEOUT", "300"))
+    tcp_lifetime_cap = float(os.getenv("INSTANCER_TCP_LIFETIME_CAP", "3600"))
+    tcp_max_conns_per_ip = int(os.getenv("INSTANCER_TCP_MAX_CONNS_PER_IP", "60"))
+    tcp_rate_limit_bps = int(os.getenv("INSTANCER_TCP_RATE_LIMIT_BPS", str(2 * 1024 * 1024)))
+    instance_pool = os.getenv("INSTANCER_INSTANCE_POOL", "10.200.0.0/16")
 
     router = InstanceRouter(
         instance_domain=instance_domain,
         instancer_url=instancer_url,
         router_token=router_token,
+        tcp_port_start=tcp_port_start,
+        tcp_port_count=tcp_port_count,
+        tcp_idle_timeout=tcp_idle_timeout,
+        tcp_lifetime_cap=tcp_lifetime_cap,
+        tcp_max_connections_per_ip=tcp_max_conns_per_ip,
+        tcp_rate_limit_bps=tcp_rate_limit_bps,
+        instance_pool=instance_pool,
     )
 
     # Start route poller task in background

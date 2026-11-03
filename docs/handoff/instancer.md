@@ -342,7 +342,71 @@ tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
 
 ---
 
-## 11. Anything suspicious or buggy you noticed elsewhere
+---
 
-1. **HAProxy `read_only: true` in Docker Socket Proxy**: `tecnativa/docker-socket-proxy:0.3` dynamically runs `sed` on its configuration template at startup. Imposing `read_only: true` on the socket proxy container prevented it from starting. Retained `read_only: false` for socket-proxy with all Linux capabilities dropped (`cap_drop: [ALL]`) and `no-new-privileges: true`.
-2. **Audit A6 Note**: Audit finding A6 confirmed that `docker/ctfd/Dockerfile` must remain unmodified; the previous local `pip.conf` attempt was reverted and the Dockerfile is clean.
+## Part 2: TCP, hosts, host kit (Milestone 1, 3 November 2026)
+
+Following the lead engineer's review of the second half plan (`NOTE-F.md`), Milestone 1 implements the TCP router relay (F1), automated isolation proof (F2), and test fixtures:
+
+### 1. F1: TCP Router & Relay Architecture
+- **Direct Per-Host Public DNS Routing**:
+  - Cloudflare free/standard plans do not proxy arbitrary TCP port ranges.
+  - Each challenge host has a direct DNS A-record with Cloudflare proxying disabled (DNS-only / Grey Cloud): e.g. `h1.inst.l3m0nctf.xyz -> <Host 1 Public IP>`.
+  - When starting a TCP challenge, the plugin returns `{"protocol": "tcp", "host": "h1.inst.l3m0nctf.xyz", "port": 30042}`.
+  - Players connect directly to the challenge host: `nc h1.inst.l3m0nctf.xyz 30042`.
+  - The router binds allocated TCP relay ports (`30000-30200`) and relays packets bidirectionally to the challenge container on its isolated bridge network.
+
+### 2. Configuration Settings & Validation
+- Added to `services/instancer/manager.py`, `services/instancer/main.py`, `services/instancer/router/router.py`, and `services/instancer/router/main.py`:
+  - `INSTANCER_TCP_PORT_START`: default `30000` (strictly 1024..65535).
+  - `INSTANCER_TCP_PORT_COUNT`: default `200` (strictly 1..2000, start + count - 1 <= 65535).
+  - `INSTANCER_TCP_IDLE_TIMEOUT`: default `300.0`s (drops inactive connections after 5 minutes).
+  - `INSTANCER_TCP_LIFETIME_CAP`: default `3600.0`s (maximum 1 hour per connection).
+  - `INSTANCER_TCP_MAX_CONNS_PER_INSTANCE`: default `5`.
+  - `INSTANCER_TCP_MAX_CONNS_PER_IP`: default `60` (campus NAT friendly per Lead Item 5).
+  - `INSTANCER_TCP_MAX_TOTAL_CONNS`: default `500`.
+  - `INSTANCER_TCP_RATE_LIMIT_BPS`: default `2097152` (2 MB/s).
+  - `INSTANCER_TCP_RATE_LIMIT_BURST`: default `4194304` (4 MB burst).
+  - `INSTANCER_INSTANCE_POOL`: default `10.200.0.0/16` (matches `daemon.json` `default-address-pools`).
+
+### 3. Route-Poisoning & Pool Validation Defenses (Lead Item 1)
+- `validate_route_target(target_ip, target_port, pool)`:
+  - Target MUST lie strictly inside `INSTANCER_INSTANCE_POOL` (`10.200.0.0/16`).
+  - Rejects network address (`10.200.0.0`) and broadcast address (`10.200.255.255`).
+  - Rejects container bridge gateway (`10.200.0.1` and `.1` in any subnet).
+  - Rejects cloud metadata (`169.254.169.254`).
+  - Rejects host loopback (`127.0.0.1`).
+  - Rejects public IPs (`8.8.8.8`).
+  - **Rejects private addresses outside the pool** (e.g. `10.0.0.5`, platform VM, CTFd, MariaDB).
+
+### 4. Dynamic Listener Lifecycle & Clean Port Reuse
+- `sync_tcp_routes(routes)` dynamically manages listener servers and active tasks:
+  - Opens `asyncio.start_server` for newly added TCP routes.
+  - Closes listeners on removed or changed routes.
+  - Actively aborts and cancels all in-flight relay tasks on closed ports.
+  - Zero-leakage port reuse guarantee: old client sockets are closed before a new session on that port can begin.
+
+### 5. Bidirectional Relay with Backpressure, Half-Close & Rate Limiting
+- `TokenBucketRateLimiter`: Enforces 2 MB/s with 4 MB burst.
+- Bounded 16 KB chunks with `await writer.drain()` backpressure.
+- Clean half-close propagation: when client half-closes (`write_eof()`), the router propagates EOF to backend and continues relaying the backend's response back to client until backend completes.
+- Silent connect failure: if backend is unreachable, router closes client connection immediately without leaking internal banners or tracebacks.
+
+### 6. Automated Isolation Proof (F2) & Fixtures
+- **TCP Pwn Fixture** (`services/instancer/tests/fixtures/tcp/`):
+  - Docker container running unprivileged Python server (`UID 10001:10001`) on port 8000.
+  - Reads line, replies with dynamic `os.environ["FLAG"]` on command `open` or `flag`.
+- **Prober Fixture** (`services/instancer/tests/fixtures/prober/`):
+  - Unprivileged container (`UID 10001:10001`) with `/report` endpoint and `--run-once` CLI.
+  - Probes: other instances by name/IP, host gateway (ports 22, 2375, 8080), internet outbound (1.1.1.1:53), cloud metadata (169.254.169.254), Docker socket (/var/run/docker.sock), instancer API (8300/8301), and platform core (CTFd, MariaDB, Redis).
+- **Test Suites**:
+  - `services/instancer/tests/test_router_tcp.py`: 11 tests verifying port validation, pool defenses, rate limiting, dynamic listeners, port reuse, bidirectional half-close, idle timeout, connection caps, silent error closure, metrics, and TCP fixture.
+  - `tests/integration/test_instances_isolation.py`: automated external and internal isolation tests.
+
+### 7. TCP Metrics & Prometheus
+- `get_tcp_metrics()` and `format_tcp_metrics_prometheus()`:
+  - `instancer_router_tcp_open_relays` (gauge)
+  - `instancer_router_tcp_bytes_total` (counter)
+  - `instancer_router_tcp_connect_failures_total` (counter)
+  - `instancer_router_tcp_refusals_total{reason="..."}` (counter by reason: `instance_cap`, `ip_cap`, `global_cap`, `invalid_target`, `route_closed`)
+  - No instance IDs or team identifiers exposed in metric labels.

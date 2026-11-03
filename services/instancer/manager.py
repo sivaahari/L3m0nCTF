@@ -126,6 +126,15 @@ class InstanceManager:
         dev_mode: bool = False,
         time_fn: Optional[Callable[[], float]] = None,
     ):
+        if not (1024 <= tcp_port_start <= 65535):
+            raise ValueError(f"INSTANCER_TCP_PORT_START must be between 1024 and 65535, got {tcp_port_start}")
+        if not (1 <= tcp_port_count <= 2000):
+            raise ValueError(f"INSTANCER_TCP_PORT_COUNT must be between 1 and 2000, got {tcp_port_count}")
+        if tcp_port_start + tcp_port_count - 1 > 65535:
+            raise ValueError(
+                f"TCP port range [{tcp_port_start}, {tcp_port_start + tcp_port_count - 1}] exceeds 65535"
+            )
+
         self.manifest = manifest
         self.docker = docker_client
         self.instance_domain = instance_domain
