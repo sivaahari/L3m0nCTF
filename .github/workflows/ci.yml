@@ -163,7 +163,10 @@ jobs:
           python -m l3mon secrets generate --dir ../.secrets
           python -m l3mon config render ../config/event.example.toml --out ../deploy/compose/generated
       - name: Start the stack with the instancer and operations overlays
-        run: tools/compose.sh up -d --wait --wait-timeout 600
+        # the maintenance switch writes a flag file into this folder as the runner's own user; if Docker created it first it would belong to root
+        run: |
+          mkdir -p deploy/ops/maintenance
+          tools/compose.sh up -d --wait --wait-timeout 600
       - name: The tests that need the overlays
         run: python -m pytest tests/integration -q -p no:cacheprovider --run-overlays -m overlays
       - name: Logs, when something failed
