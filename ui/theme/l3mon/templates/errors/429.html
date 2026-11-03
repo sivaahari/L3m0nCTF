@@ -1,5 +1,5 @@
 {# Too many requests (429), for the CTFd theme (SP6 slice 1). Hand-written: it sets the values the generated slate page reads, then includes it.
-   The wording is the prototype's for this state. CTFd does not say how long to wait, so no countdown is shown. The status is CTFd's. #}
+   The wording is the prototype's for this state. The status is CTFd's. #}
 {% set l3 = l3mon %}
 {% set event_name = l3.event_name or 'CTF' %}
 {% set target = '/' if request.path.startswith('//') else request.path %}
@@ -7,5 +7,7 @@
 {% set asset = {'css': l3.assets['css.slate'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.slate']} %}
 {% set dev = none %}
 {% set news = [] %}
-{% set slate = {'id': 'ratelimited', 'status': 429, 'inShell': false, 'cls': 'sl-429', 'srStatus': 'Status 429: ', 'mood': 'sad', 'code': 'PLEASE STAND BY', 'h1': 'Too many requests', 'line': 'Slow down a little.', 'retry': none, 'retryLead': '', 'retryUrl': target, 'ways': [{'href': target, 'label': 'Try again', 'cls': 'btn-main'}], 'requestId': none, 'note': none, 'site': l3.site_url} %}
+{% set retry_s = retry_after if retry_after is defined and retry_after else none %}
+{% set retry_lead = 'Try again in' if retry_s else '' %}
+{% set slate = {'id': 'ratelimited', 'status': 429, 'inShell': false, 'cls': 'sl-429', 'srStatus': 'Status 429: ', 'mood': 'sad', 'code': 'PLEASE STAND BY', 'h1': 'Too many requests', 'line': 'Slow down a little.', 'retry': retry_s, 'retryLead': retry_lead, 'retryUrl': target, 'ways': [{'href': target, 'label': 'Try again', 'cls': 'btn-main'}], 'requestId': none, 'note': none, 'site': l3.site_url} %}
 {% include "_slate.html" %}
