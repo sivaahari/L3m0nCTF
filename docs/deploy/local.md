@@ -52,7 +52,7 @@ The crew decides which channels and programmes (challenges) players can see, and
 
 **The page.** Sign in as the organiser and open <http://localhost:8080/admin/l3mon/release> (it is also on the admin menu as "Release control"). Each channel and each programme has three buttons: *Release now* (it asks first: players see the programme at once), *Withhold* and *Schedule* (type a date and time in **India time**; the page converts it). *Withhold every channel* is the panic button. The table at the bottom is the audit trail: who changed what, when, and the reason typed in the box at the top.
 
-**Loading the plan.** Until the author kit's sync exists, a plan is loaded with one call, which can be repeated safely (it creates what is missing and updates words; it never puts anything on air, because a new entry starts withheld. It can take something off air: a challenge on no channel is hidden once any channel exists, and moving a programme to a channel that is off air pulls it back). Names, storylines and sponsor names are plain words: they may not contain `< > [ ] { } * _ \` \\ # | ~` or `//`, because they are shown in a notification and on pages. Save this as `plan.json`, with the real challenge ids (the number in the challenge's address in the admin area):
+**Loading the plan.** Until the author kit's sync exists, a plan is loaded with one call, which can be repeated safely (it creates what is missing and updates words; it never puts anything on air, because a new entry starts withheld. It can take something off air: a challenge on no channel is hidden once any channel exists, and moving a programme to a channel that is off air pulls it back). Names, storylines and sponsor names are plain words: they may not contain `< > [ ] { } * _ \` \\ # | ~` or `//`, because they are shown in a notification and on pages. Each programme may also carry an optional `story` line (plain text, at most 280 characters, no `<` or `>`, no control characters or line breaks; omitted leaves an existing line unchanged, `""` clears) shown in the programme panel's "In the story" section. Save this as `plan.json`, with the real challenge ids (the number in the challenge's address in the admin area):
 
 ```json
 {
@@ -61,7 +61,7 @@ The crew decides which channels and programmes (challenges) players can see, and
     {"slug": "break", "name": "Sponsored Break", "position": 7, "kind": "sponsored", "sponsor_name": "Acme"}
   ],
   "programmes": [
-    {"challenge_id": 1, "channel": "street", "cell": 0, "number": 101, "slug": "wrestler-padding"},
+    {"challenge_id": 1, "channel": "street", "cell": 0, "number": 101, "slug": "wrestler-padding", "story": "The champion was last seen near the arcade."},
     {"challenge_name": "Midnight Mango", "channel": "street", "cell": 1, "number": 102, "slug": "midnight-mango"}
   ]
 }

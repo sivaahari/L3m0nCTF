@@ -64,6 +64,7 @@ class Programme(db.Model):
     release_at = db.Column(db.DateTime)
     difficulty = db.Column(db.String(16), nullable=False, default="medium", server_default="medium")  # the tile and the filters show it (third revision)
     delivery = db.Column(db.String(24), nullable=False, default="static_shared", server_default="static_shared")  # how the player gets it; live ones have instances (SP4)
+    story = db.Column(db.String(280), nullable=False, default="", server_default="")  # the programme's story piece (Stream E)
 
 
 class Void(db.Model):
