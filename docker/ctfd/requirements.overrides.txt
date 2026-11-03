@@ -3,10 +3,13 @@
 # Every change here is verified against CTFd's own test suite (tools/run-ctfd-tests.sh) and explained in
 # docs/security/dependency-bumps.md, including the advisories that remain (Flask and Werkzeug are NOT bumped:
 # every newer Flask breaks CTFd's own tests, and the advisories are not reachable here).
+# certifi: CTFd 3.8.9 (published 2026-10-22) is a security release for exactly this: certifi's bundle carried a root certificate that must not be trusted.
+# Our image stays on CTFd 3.8.8 (the plugins refuse another version) and takes the fix here; pip, the other half of that release, is not in our image at all.
+certifi==2026.10.23
 click==8.5.0
 cryptography==50.0.2
 idna==3.20
-pillow==12.3.0
+pillow==13.0.0
 python-dotenv==1.2.4
 requests==2.34.2
 urllib3==2.8.0
@@ -15,4 +18,4 @@ urllib3==2.8.0
 pydantic==1.10.26
 # Newer setuptools carries fixed copies of the wheel and jaraco.context code it bundles (Trivy: CVE-2026-24049,
 # CVE-2026-23949). pkg_resources is gone from it; CTFd does not use it (only passlib.pwd does, and CTFd never imports that).
-setuptools==84.0.0
+setuptools==84.2.1

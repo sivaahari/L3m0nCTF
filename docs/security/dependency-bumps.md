@@ -16,12 +16,13 @@ Checked on 2026-10-06 against the official CTFd 3.8.8 image (`sha256:07cc9788d58
 | click | 8.2.1 | 8.5.0 | advisory fixed |
 | cryptography | 45.0.6 | 50.0.2 | advisories fixed (pulls in cffi 2.1.1) |
 | idna | 3.10 | 3.20 | advisory fixed |
-| pillow | 12.2.0 | 12.3.0 | advisory fixed |
+| pillow | 12.2.0 | 13.0.0 | 12.3.0 fixed the first advisory; 13.0.0 (2026-11-03) fixes the 39 later ones (PYSEC-2026-4326 to 4343 and 21 GitHub advisories) |
+| certifi | 2025.8.3 | 2026.10.23 | PYSEC-2026-4320, and CTFd 3.8.9's own security fix: the bundle held a root certificate that must not be trusted. We stay on CTFd 3.8.8 (the plugins refuse any other version); 3.8.9 contains only this and a `pip` bump, and our image has no `pip` |
 | python-dotenv | 0.13.0 | 1.2.4 | advisory fixed |
 | requests | 2.32.4 | 2.34.2 | advisory fixed |
 | urllib3 | 2.6.0 | 2.8.0 | advisories fixed |
 | pydantic | 1.6.2 | 1.10.26 | advisory fixed (same major version, which CTFd needs) |
-| setuptools | 79.0.1 | 84.0.0 (both Python installs) | its bundled copies of `wheel` and `jaraco.context` carried advisories (CVE-2026-24049, CVE-2026-23949) |
+| setuptools | 79.0.1 | 84.2.1 (both Python installs) | its bundled copies of `wheel` and `jaraco.context` carried advisories (CVE-2026-24049, CVE-2026-23949); 84.0.0 itself carried GHSA-xmj3-9gf7-h52w, fixed in 84.1.0 |
 | pip | 24.0 | removed | not needed at run time; its bundled libraries only ever trigger scanner findings |
 | libpcre2-8-0 (Debian) | 10.42-1+deb12u1 | 10.42-1+deb12u2 | HIGH fixed |
 | perl-base (Debian) | 5.36.0-7+deb12u3 | 5.36.0-7+deb12u4 | 3 CRITICAL and 4 HIGH fixed |
@@ -85,11 +86,11 @@ What limits the damage in the meantime: the container runs as an unprivileged us
 
 ## The other images in the stack (MariaDB, Redis, nginx)
 
-Scanned the same way on 2026-10-06 (`--ignore-unfixed`, HIGH and CRITICAL). The pinned digests in [`compose.base.yml`](../../deploy/compose/compose.base.yml) are the newest the projects publish for these tags; nothing newer exists to upgrade to.
+Scanned the same way on 2026-10-06 and again on 2026-11-03 (`--ignore-unfixed`, HIGH and CRITICAL). The pinned digests in [`compose.base.yml`](../../deploy/compose/compose.base.yml) are the newest the projects publish for these tags (all three were moved on 2026-11-03: the old nginx digest carried three nginx findings, CVE-2026-15176, CVE-2026-93479 and CVE-2026-97205, a libX11 and a libtiff one, all fixed in the new image).
 
 | Image | Result | Explanation |
 |-------|--------|-------------|
-| `nginxinc/nginx-unprivileged:stable-alpine` | clean | none |
+| `nginxinc/nginx-unprivileged:stable-alpine` | brotli-libs CVE-2026-111497 (CRITICAL), curl and libcurl CVE-2026-92392, libexpat CVE-2026-117610 and CVE-2026-118370 (HIGH) | Fixed Alpine packages exist but are not in the image yet. **None of them is loaded by nginx**: the binary links only musl, pcre2, OpenSSL and zlib (`ldd /usr/sbin/nginx`), our configuration loads no module (the image-filter module is what needs freetype, fontconfig and so brotli and expat), and the health check uses `wget`, not `curl`. Accepted until upstream rebuilds the image |
 | `redis:7-alpine` | OpenSSL CVE-2026-84782 and CVE-2026-75804 (HIGH) | Fixed Alpine packages exist but are not in the image yet. Redis in our stack has **TLS switched off** and listens only on the private internal network, so it never starts a TLS or QUIC handshake. Accepted until upstream rebuilds the image |
 | `mariadb:10.11` | OpenSSL CVE-2026-84782 (HIGH), and 22 findings in `gosu` (a small Go helper whose standard library is old) | Same reasoning for OpenSSL: no TLS in our stack, private network only. `gosu` is how the image's default entrypoint drops privileges; **our container starts directly as user 999** (`user: "999:999"`), so it never runs. The scan skips that one file, and nothing else |
 

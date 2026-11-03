@@ -88,7 +88,7 @@ services:
 
   db:
     <<: *hardening
-    image: mariadb:10.11@sha256:7db29378d4fdab73f8123bbc2b48905c90d1a4b00cf848b028f1e81e623257f2
+    image: mariadb:10.11@sha256:d769e37960821dfdcf096954f6e7ac89f747e116c1bba98e48edd265dfc7deae
     # Starts as the unprivileged "mysql" user from the first moment (the image would otherwise start as root and drop down).
     user: "999:999"
     environment:
@@ -117,7 +117,7 @@ services:
 
   cache:
     <<: *hardening
-    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:7-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
     user: "999:1000"
     # The password is read from the secret file when the server starts and never appears in a file or in `docker inspect`.
     command:
@@ -139,7 +139,7 @@ services:
 
   nginx:
     <<: *hardening
-    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:15c994d10d6d78658721c3bcafff14cb281fba2a4bdf9d5ba92c416a472516e3
+    image: nginxinc/nginx-unprivileged:stable-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
     environment:
       PLATFORM_HOST: "${PLATFORM_HOST}"
       EXTRA_HOST: "${EXTRA_HOST:-${PLATFORM_HOST}}"
