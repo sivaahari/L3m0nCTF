@@ -137,6 +137,7 @@
 <p class="gd-meter-l" id="gd-meter-l">Reels toward the Director's Cut: <b data-k="reels">{{ guide.story.reels }}</b> of <b data-k="needed">{{ guide.story.needed }}</b></p>
 <div class="gd-meter pv-{{ guide.story.pct }}" role="meter" aria-labelledby="gd-meter-l" aria-valuemin="0" aria-valuemax="{{ guide.story.needed }}" aria-valuenow="{{ guide.story.reels }}" aria-valuetext="{{ guide.story.valuetext }}" data-meter><i></i></div>
 <p class="gd-air-l">On-Air: <b data-k="air">{{ guide.story.air }}</b>% of the picture is back across every studio.</p>
+<p class="gd-stories-link"><a class="btn btn-sm btn-ghost" href="/stories">Watch the stories</a></p>
 {% else %}<p class="gd-note">Story mode is off for this event.</p>{% endif %}
 </section>
 <details class="gd-chan" id="channels" data-chan>

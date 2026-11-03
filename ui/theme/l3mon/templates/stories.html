@@ -1,0 +1,13 @@
+{# The Stories page (SP6 Stream E). Hand-written: it sets the values the generated stories page reads, then includes it. #}
+{% set l3 = l3mon %}
+{% set event_name = l3.event_name or 'CTF' %}
+{% set news = l3.crawl %}
+{% set page = {'title': 'Stories | ' ~ event_name, 'cls': 'pg-app pg-stories', 'osd': 'STORIES', 'skip': 'Skip to stories', 'crawl': news|length > 0, 'signedIn': l3.signed_in, 'player': l3.player} %}
+{% set asset = {'css': l3.assets['css.app'], 'boot': l3.assets['js.boot'], 'js': l3.assets['js.shell']} %}
+{% set nav = {'board': false, 'guide': true, 'scoreboard': false} %}
+{% set me = l3.me %}
+{% set csrf = l3.csrf %}
+{% set event = {'name': event_name, 'contact': none, 'site': l3.site_url} %}
+{% set build = {'sha': l3.build_sha} %}
+{% set dev = none %}
+{% include "_stories.html" %}
