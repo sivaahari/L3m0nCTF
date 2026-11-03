@@ -130,6 +130,11 @@ def test_query_budget_reading_challenge_detail_has_no_extra_queries(play):
 
 
 def test_noscript_page_shows_story_and_escapes_markup(play):
+    from CTFd.utils import set_config
+
+    with play.app.app_context():
+        set_config("ctf_theme", "l3mon")
+
     prog = Programme.query.filter_by(slug="lantern_walk").one()
     prog.story = "A curious story with & special <script>alert(1)</script> characters."
     db.session.commit()

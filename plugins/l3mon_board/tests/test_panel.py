@@ -52,7 +52,7 @@ def test_a_fixed_programme_gets_its_block_and_keeps_every_key_of_ctfds_own_answe
     assert data["l3mon"] == {
         "slug": "lantern_walk", "number": 101, "channel": street_id, "channel_name": "Mighty Street", "sponsor": None, "difficulty": "warmup",
         "author": "Asha", "live": False, "decay": False, "start": None, "floor": None, "first_blood_open": True, "tries_left": None, "score": 0,
-        "phase": {"state": "live", "frozen": False},
+        "phase": {"state": "live", "frozen": False}, "story": "",
     }
     stock = {"attempts", "attribution", "category", "connection_info", "decay", "description", "files", "function", "hints", "id", "initial", "logic",
              "max_attempts", "minimum", "name", "next_id", "position", "rating", "ratings", "solution_id", "solution_state", "solved_by_me", "solves",
@@ -105,7 +105,8 @@ def test_the_studios_own_score_is_in_the_block_and_follows_a_solve_and_a_hint(pl
 
 def test_the_block_never_holds_a_flag_a_hint_text_or_another_studios_numbers(play):
     block = detail(play.alice, play.ids.lantern)["l3mon"]
-    assert set(block) == {"slug", "number", "channel", "channel_name", "sponsor", "difficulty", "author", "live", "decay", "start", "floor", "first_blood_open", "tries_left", "score", "phase"}
+    assert set(block) == {"slug", "number", "channel", "channel_name", "sponsor", "difficulty", "author", "live", "decay", "start", "floor", "first_blood_open", "tries_left", "score", "phase", "story"}
+    assert isinstance(block["story"], str) and len(block["story"]) <= 280
     assert "-answer" not in str(block) and "look left" not in str(block)
 
 

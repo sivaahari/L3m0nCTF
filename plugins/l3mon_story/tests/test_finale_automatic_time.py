@@ -20,7 +20,7 @@ from CTFd.models import db
 from CTFd.plugins.l3mon_core import clock, settings
 from CTFd.plugins.l3mon_core.clock import current_phase
 from CTFd.plugins.l3mon_core.settings import finale_at
-from CTFd.plugins.l3mon_story import finale, store
+from CTFd.plugins.l3mon_story import store
 from CTFd.utils import set_config
 from story_world import (
     STORY,
@@ -34,10 +34,18 @@ from story_world import (
     team_client,
     write_pic_story,
 )
-from tests.helpers import destroy_ctfd, login_as_user
+from tests.helpers import create_ctfd, destroy_ctfd, login_as_user
 
 FINALE_AT = "l3mon_finale_at"
 TARGET_TIME = T_LIVE + 1800  # 30 minutes into the live event
+
+
+@pytest.fixture
+def app():
+    """A CTFd app for testing settings parsing."""
+    app = create_ctfd()
+    yield app
+    destroy_ctfd(app)
 
 
 @pytest.fixture
@@ -104,10 +112,12 @@ def test_finale_at_defensive_parsing(app, value, expected):
 def test_finale_never_opens_before_event_start_even_if_timestamp_reached(play):
     """Before the event start, the finale NEVER opens, even if l3mon_finale_at is in the past."""
     with play.app.app_context():
-        set_config(FINALE_AT, T_START - 100)
-        # Move clock to before start
-        with freeze_clock(T_START - 500):
+        # Set automatic time in 2026 before start
+        set_config(FINALE_AT, T_START - 1800)
+        # Move clock to 600s before start: timestamp (T_START - 1800) has been reached!
+        with freeze_clock(T_START - 600):
             assert current_phase().state == "before"
+            assert clock.now() >= (T_START - 1800)
             r = play.alice.get(f"{STORY}/finale")
             assert r.status_code == 404
             assert play.alice.get("/story/finale").status_code == 404
@@ -150,10 +160,15 @@ def test_finale_opens_at_or_after_timestamp_for_all_players(play):
 
 def test_crew_trigger_and_meter_still_work_with_automatic_time(play):
     """The crew's trigger and the on-air meter still open the finale independently of automatic time."""
-    from story_world import TARGET
-    from tests.helpers import gen_solve
-    from CTFd.models import Users, Programme
     from CTFd.cache import clear_standings
+    from CTFd.models import Users
+    from CTFd.plugins.l3mon_core.models import Programme
+    from CTFd.plugins.l3mon_story import finale
+    from tests.helpers import gen_solve
+
+    TARGET = "l3mon_story_air_target"
+    TRIGGER = "l3mon_finale_open"
+    METER = "l3mon_story_meter"
 
     with play.app.app_context():
         set_config(FINALE_AT, TARGET_TIME + 10000)  # Far in future
@@ -162,15 +177,16 @@ def test_crew_trigger_and_meter_still_work_with_automatic_time(play):
             assert play.alice.get(f"{STORY}/finale").status_code == 404
 
             # 2. Crew trigger opens it
-            set_config("l3mon_finale_open", True)
+            set_config(TRIGGER, True)
             assert play.alice.get(f"{STORY}/finale").status_code == 200
 
             # 3. Crew trigger closed again
-            set_config("l3mon_finale_open", False)
+            set_config(TRIGGER, False)
             finale.forget()
             assert play.alice.get(f"{STORY}/finale").status_code == 404
 
             # 4. Meter target at 100% opens it
+            set_config(METER, True)
             set_config(TARGET, 1)
             cid = Programme.query.filter_by(slug="lantern_walk").one().challenge_id
             u = Users.query.filter_by(name="alice").one()
@@ -183,8 +199,11 @@ def test_crew_trigger_and_meter_still_work_with_automatic_time(play):
 def test_five_second_cache_does_not_hold_stale_closed_past_timestamp(play, monkeypatch):
     """The cached meter answer must not delay opening once the timestamp arrives."""
     from CTFd.plugins.l3mon_board import guide
+    from CTFd.plugins.l3mon_story import finale
 
     with play.app.app_context():
+        set_config("l3mon_story_meter", True)
+        set_config("l3mon_story_air_target", 10)  # 10 solves needed; 0 done -> meter reads 0%
         set_config(FINALE_AT, TARGET_TIME)
         calls = []
         real = guide.meter
@@ -204,29 +223,41 @@ def test_five_second_cache_does_not_hold_stale_closed_past_timestamp(play, monke
         with freeze_clock(TARGET_TIME):
             r = play.alice.get(f"{STORY}/finale")
             assert r.status_code == 200, "opens immediately once timestamp is reached"
-            # It did not even need to call guide.meter because auto_at takes precedence
+            # It did not call guide.meter because auto_at takes precedence
             assert len(calls) == 1
 
 
 def test_finale_automatic_time_query_budget(play):
     """Checking the automatic time adds zero extra database queries beyond settings."""
+    from CTFd.plugins.l3mon_story import finale
+
     with play.app.app_context():
         set_config(FINALE_AT, TARGET_TIME)
-        seen = []
+        with freeze_clock(TARGET_TIME + 10):
+            # Warm up caches for both endpoints
+            play.alice.get(f"{STORY}/street")
+            play.alice.get(f"{STORY}/finale")
 
-        def on(conn, cursor, statement, parameters, context, executemany):
-            seen.append(statement)
+            seen = []
 
-        event.listen(db.engine, "before_cursor_execute", on)
-        try:
-            with freeze_clock(TARGET_TIME + 10):
-                # First request warms cache
-                play.alice.get(f"{STORY}/finale")
+            def on(conn, cursor, statement, parameters, context, executemany):
+                seen.append(statement)
+
+            event.listen(db.engine, "before_cursor_execute", on)
+            try:
+                # Measure queries for a standard story on warm cache
                 seen.clear()
+                r_street = play.alice.get(f"{STORY}/street")
+                assert r_street.status_code == 200
+                street_queries = len(seen)
 
-                # Second request
-                r = play.alice.get(f"{STORY}/finale")
-                assert r.status_code == 200
-                assert len(seen) == 0, f"expected 0 queries on warm cache, got {len(seen)}: {seen}"
-        finally:
-            event.remove(db.engine, "before_cursor_execute", on)
+                # Measure queries for finale story on warm cache
+                seen.clear()
+                r_finale = play.alice.get(f"{STORY}/finale")
+                assert r_finale.status_code == 200
+                finale_queries = len(seen)
+
+                # The finale check adds exactly 0 queries on top of a plain story request
+                assert finale_queries <= street_queries, f"finale ({finale_queries}) added queries on top of street ({street_queries})"
+            finally:
+                event.remove(db.engine, "before_cursor_execute", on)

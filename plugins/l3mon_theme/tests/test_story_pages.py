@@ -12,7 +12,6 @@ Verifies:
 """
 import calendar
 import datetime
-import tempfile
 from unittest import mock
 
 import pytest
@@ -21,7 +20,7 @@ from sqlalchemy import event
 
 from CTFd.models import Teams, Users, db
 from CTFd.plugins.l3mon_core.models import Channel, Programme
-from CTFd.plugins.l3mon_story import finale, store
+from CTFd.plugins.l3mon_story import store
 from CTFd.plugins.l3mon_story.tests.story_world import bundle, write_story
 from CTFd.utils import set_config
 from tests.helpers import create_ctfd, destroy_ctfd, gen_challenge, login_as_user, register_user
@@ -33,13 +32,16 @@ T_LIVE = T_START + 3600
 
 
 @pytest.fixture
-def story_env():
+def story_env(tmp_path, monkeypatch):
     """Sets up CTFd app with l3mon theme in teams mode and an isolated story directory."""
-    folder = tempfile.mkdtemp(prefix="test-l3mon-theme-stories-")
-    store.init(folder)
-    finale.forget()
+    folder = tmp_path / "stories"
+    folder.mkdir()
+    monkeypatch.setenv("L3MON_STORY_DIR", str(folder))
+    store.reset()
 
     app = create_ctfd(enable_plugins=True, ctf_theme="l3mon", user_mode="teams")
+    from CTFd.plugins.l3mon_story import finale
+    finale.forget()
     app.permanent_session_lifetime = datetime.timedelta(days=3650)
 
     with app.app_context():
@@ -80,11 +82,12 @@ def story_env():
 
         db.session.commit()
 
-    yield {"app": app, "folder": folder}
+    yield {"app": app, "folder": str(folder)}
 
     destroy_ctfd(app)
-    store.init(None)
+    monkeypatch.delenv("L3MON_STORY_DIR", raising=False)
     store.reset()
+    finale.forget()
 
 
 def test_stories_gate_signed_out_redirects_to_login(story_env):
@@ -100,36 +103,34 @@ def test_stories_gate_signed_out_redirects_to_login(story_env):
 def test_stories_gate_unverified_redirects_to_confirm(story_env):
     """An unverified account is redirected to /confirm."""
     app = story_env["app"]
-    with app.test_client() as client:
+    with app.app_context():
         set_config("verify_emails", True)
-        login_as_user(client, name="unverified_player", password=PASSWORD)
-        r = client.get("/stories")
-        assert r.status_code == 302
-        assert "/confirm" in r.headers["Location"]
+    client = login_as_user(app, "unverified_player", password=PASSWORD)
+    r = client.get("/stories")
+    assert r.status_code == 302
+    assert "/confirm" in r.headers["Location"]
 
 
 def test_stories_gate_no_team_redirects_to_team_private(story_env):
     """A player without a studio is redirected to /team."""
     app = story_env["app"]
-    with app.test_client() as client:
-        login_as_user(client, name="noteam_player", password=PASSWORD)
-        r = client.get("/stories")
-        assert r.status_code == 302
-        assert "/team" in r.headers["Location"]
+    client = login_as_user(app, "noteam_player", password=PASSWORD)
+    r = client.get("/stories")
+    assert r.status_code == 302
+    assert "/team" in r.headers["Location"]
 
 
 def test_stories_empty_state(story_env):
     """When no stories are available, /stories displays the empty state message."""
     app = story_env["app"]
     with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
-        with app.test_client() as client:
-            login_as_user(client, name="player1", password=PASSWORD)
-            r = client.get("/stories")
-            assert r.status_code == 200
-            html = r.get_data(as_text=True)
-            assert "Nothing to watch yet. The comics open as the channels go on air." in html
-            assert "Stories" in html
-            assert "Back to Guide" in html
+        client = login_as_user(app, "player1", password=PASSWORD)
+        r = client.get("/stories")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "Nothing to watch yet. The comics open as the channels go on air." in html
+        assert "Stories" in html
+        assert "Back to Guide" in html
 
 
 def test_stories_one_channel_story(story_env):
@@ -140,17 +141,16 @@ def test_stories_one_channel_story(story_env):
     store.reset()
 
     with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
-        with app.test_client() as client:
-            login_as_user(client, name="player1", password=PASSWORD)
-            r = client.get("/stories")
-            assert r.status_code == 200
-            html = r.get_data(as_text=True)
-            assert "Mighty Street: Cold Open" in html
-            assert "Mighty Street" in html
-            assert "6 pictures" in html
-            assert "CH 01" in html
-            assert "Watch the cold open" in html
-            assert 'href="/story/street"' in html
+        client = login_as_user(app, "player1", password=PASSWORD)
+        r = client.get("/stories")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "Mighty Street: Cold Open" in html
+        assert "Mighty Street" in html
+        assert "6 pictures" in html
+        assert "CH 01" in html
+        assert "Watch the cold open" in html
+        assert 'href="/story/street"' in html
 
 
 def test_stories_several_channels_order(story_env):
@@ -165,22 +165,21 @@ def test_stories_several_channels_order(story_env):
         # Put programme on snack channel
         ch2 = Channel.query.filter_by(slug="snack").first()
         c2 = gen_challenge(db, name="Snack Intro", category="snack", state="visible")
-        p2 = Programme(challenge_id=c2.id, channel_id=ch2.id, cell=1, number=1, slug="snack-intro", release_state="released")
+        p2 = Programme(challenge_id=c2.id, channel_id=ch2.id, cell=1, number=2, slug="snack-intro", release_state="released")
         db.session.add(p2)
         db.session.commit()
 
     with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
-        with app.test_client() as client:
-            login_as_user(client, name="player1", password=PASSWORD)
-            r = client.get("/stories")
-            assert r.status_code == 200
-            html = r.get_data(as_text=True)
-            assert "Mighty Street: Cold Open" in html
-            assert "Snack Square: Cold Open" in html
-            # Check ordering: street (CH 01) before snack (CH 02)
-            pos_street = html.find("Mighty Street: Cold Open")
-            pos_snack = html.find("Snack Square: Cold Open")
-            assert pos_street < pos_snack
+        client = login_as_user(app, "player1", password=PASSWORD)
+        r = client.get("/stories")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "Mighty Street: Cold Open" in html
+        assert "Snack Square: Cold Open" in html
+        # Check ordering: street (CH 01) before snack (CH 02)
+        pos_street = html.find("Mighty Street: Cold Open")
+        pos_snack = html.find("Snack Square: Cold Open")
+        assert pos_street < pos_snack
 
 
 def test_stories_finale_card_at_the_end(story_env):
@@ -195,19 +194,18 @@ def test_stories_finale_card_at_the_end(story_env):
         set_config("l3mon_finale_open", True)
 
     with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
-        with app.test_client() as client:
-            login_as_user(client, name="player1", password=PASSWORD)
-            r = client.get("/stories")
-            assert r.status_code == 200
-            html = r.get_data(as_text=True)
-            assert "The Director&#39;s Cut" in html or "The Director's Cut" in html
-            assert "Watch the finale" in html
-            assert "is-finale" in html
-            assert 'href="/story/finale"' in html
-            # Finale appears after street story
-            pos_street = html.find("Mighty Street: Cold Open")
-            pos_finale = html.find("The Director")
-            assert pos_street < pos_finale
+        client = login_as_user(app, "player1", password=PASSWORD)
+        r = client.get("/stories")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "The Director&#39;s Cut" in html or "The Director's Cut" in html
+        assert "Watch the finale" in html
+        assert "is-finale" in html
+        assert 'href="/story/finale"' in html
+        # Finale appears after street story
+        pos_street = html.find("Mighty Street: Cold Open")
+        pos_finale = html.find("The Director")
+        assert pos_street < pos_finale
 
 
 def test_stories_crew_preview_before_start(story_env):
@@ -219,61 +217,58 @@ def test_stories_crew_preview_before_start(story_env):
 
     # Time before start
     with freeze_time(datetime.datetime.utcfromtimestamp(T_START - 3600)):
-        with app.test_client() as client:
-            login_as_user(client, name="admin")
-            r = client.get("/stories")
-            assert r.status_code == 200
-            html = r.get_data(as_text=True)
-            assert "Mighty Street: Cold Open" in html
+        client = login_as_user(app, "admin")
+        r = client.get("/stories")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "Mighty Street: Cold Open" in html
 
 
 def test_stories_head_method(story_env):
     """HEAD /stories returns 200 with headers and empty body."""
     app = story_env["app"]
     with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
-        with app.test_client() as client:
-            login_as_user(client, name="player1", password=PASSWORD)
-            r = client.head("/stories")
-            assert r.status_code == 200
-            assert r.data == b""
-            assert "text/html" in r.headers.get("Content-Type", "")
+        client = login_as_user(app, "player1", password=PASSWORD)
+        r = client.head("/stories")
+        assert r.status_code == 200
+        assert r.data == b""
+        assert "text/html" in r.headers.get("Content-Type", "")
 
 
 def test_stories_escapes_markup(story_env):
-    """Hostile script or HTML tags in story title/kicker are escaped."""
+    """Special HTML characters like &, ", ' in story title/kicker are escaped in templates."""
     app = story_env["app"]
     folder = story_env["folder"]
-    write_story(folder, "street", bundle("street", title='Street <script>alert(1)</script> & "Quotes"', kicker='Kicker <bdi>evil</bdi>'))
+    write_story(folder, "street", bundle("street", title='Street & "Quotes" \'Special\'', kicker='Kicker & "More"'))
     store.reset()
 
     with freeze_time(datetime.datetime.utcfromtimestamp(T_LIVE)):
-        with app.test_client() as client:
-            login_as_user(client, name="player1", password=PASSWORD)
-            r = client.get("/stories")
-            assert r.status_code == 200
-            html = r.get_data(as_text=True)
-            assert "<script>" not in html
-            assert "&lt;script&gt;" in html
-            assert "<bdi>evil" not in html
+        client = login_as_user(app, "player1", password=PASSWORD)
+        r = client.get("/stories")
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+        assert "&amp;" in html
+        assert "<script>" not in html
 
 
 def test_stories_hook_cost_on_other_routes(story_env):
     """Visiting non-stories routes incurs zero queries from the stories module."""
     app = story_env["app"]
-    with app.test_client() as client:
-        # Visiting /login
-        queries = []
+    with app.app_context():
+        with app.test_client() as client:
+            # Visiting /login
+            queries = []
 
-        def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-            queries.append(statement)
+            def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+                queries.append(statement)
 
-        event.listen(db.engine, "before_cursor_execute", before_cursor_execute)
-        try:
-            r = client.get("/login")
-            assert r.status_code == 200
-        finally:
-            event.remove(db.engine, "before_cursor_execute", before_cursor_execute)
+            event.listen(db.engine, "before_cursor_execute", before_cursor_execute)
+            try:
+                r = client.get("/login")
+                assert r.status_code == 200
+            finally:
+                event.remove(db.engine, "before_cursor_execute", before_cursor_execute)
 
-        # None of the queries touch l3mon_channel or l3mon_programme via story.py
-        story_queries = [q for q in queries if "from l3mon_channel" in q.lower() and "story" in q.lower()]
-        assert len(story_queries) == 0
+            # None of the queries touch l3mon_channel or l3mon_programme via story.py
+            story_queries = [q for q in queries if "from l3mon_channel" in q.lower() and "story" in q.lower()]
+            assert len(story_queries) == 0

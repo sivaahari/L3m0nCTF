@@ -9,10 +9,22 @@ This module installs an after_request hook, active only when the l3mon theme is 
 CTFd's 429 JSON response into the themed HTML slate (`errors/429.html`) when the request is a page request,
 and leaves every other 429 (API calls, AJAX fetches, admin endpoints, other themes) untouched.
 """
+import logging
 import re
 from flask import make_response, render_template, request
 
 EXCLUDED_PREFIXES = ("/api/", "/events", "/themes/", "/files/", "/story/", "/admin/")
+
+_log = logging.getLogger("l3mon")
+_logged = set()
+
+
+def _note(path: str, err: Exception) -> None:
+    """One log line per failure kind, naming what failed and the kind of error only."""
+    key = (path, type(err).__name__)
+    if key not in _logged:
+        _logged.add(key)
+        _log.warning("l3mon theme: rate-limit page conversion error on %s (%s)", path, type(err).__name__)
 
 
 def _is_page_request(req, response) -> bool:
@@ -27,7 +39,7 @@ def _is_page_request(req, response) -> bool:
     # Check if client asked for JSON
     # 1. An Accept header that prefers application/json over text/html
     accept = req.accept_mimetypes
-    if accept and accept.get("application/json", 0) > accept.get("text/html", 0):
+    if accept and accept.best_match(["text/html", "application/json"]) == "application/json":
         return False
 
     # 2. X-Requested-With: XMLHttpRequest (standard AJAX header)
@@ -112,6 +124,7 @@ def install(app):
             new_response.headers["Retry-After"] = str(seconds)
             new_response.headers["Cache-Control"] = "no-store"
             return new_response
-        except Exception:
+        except Exception as err:
+            _note(getattr(request, "path", "/"), err)
             # On any problem, return CTFd's own response untouched
             return response
