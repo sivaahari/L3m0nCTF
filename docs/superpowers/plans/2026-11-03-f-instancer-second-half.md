@@ -3,7 +3,8 @@
 **Branch:** `build/f-instancer-second-half`  
 **Author:** venu-21 (GitHub) & coding agent  
 **Date:** 3 November 2026  
-**Status:** Milestone 1 Plan - For Lead Engineer Review  
+**Status:** Approved by Lead Engineer (incorporating `NOTE-F.md` required changes)  
+**Pull Request:** Draft PR #5 (`build/f-instancer-second-half` -> `pre-deployment`)  
 
 ---
 
@@ -16,10 +17,10 @@ However, two major gaps prevent the platform from supporting the full contest wo
 2. **Resource Scaling & Multi-Host Distribution:** Running hundreds of concurrent 256MB challenge containers on the single platform VM risks memory exhaustion, CPU contention, and side-channel leakage against the CTFd core. Challenge containers must run on dedicated external Linux VMs ("challenge hosts") running an instancer agent.
 
 This plan details the design and implementation for:
-- **F1: TCP Instance Support:** Dynamic port listeners, bidirectional TCP relay with strict backpressure, rate-limiting, connection caps, and route-poisoning defenses.
+- **F1: TCP Instance Support:** Dynamic port listeners, bidirectional TCP relay with strict backpressure, rate-limiting, connection caps (including campus NAT allowance), and route-poisoning defenses against the instance network pool.
 - **F2: Automated Isolation Proof:** Comprehensive integration suite (`test_instances_isolation.py`) using a dedicated prober fixture.
-- **F3: Multi-Host Architecture:** Host capacity probing, scheduling, failover, two-hop private HTTP forwarding, and direct TCP routing.
-- **F4: Challenge Host Kit:** Production compose overlay, idempotent Linux VM bootstrap script, runbook, and author image distribution workflow.
+- **F3: Multi-Host Architecture:** Host capacity probing with optimistic local counters, two-hop private HTTP forwarding (M2), direct TCP routing, and 30s failover.
+- **F4: Challenge Host Kit:** Production compose overlay, idempotent Linux VM bootstrap script with explicit `DOCKER-USER` flow controls, runbook, and author image distribution workflow via private GHCR.
 - **F5: Packing Test Tool:** Standard-library benchmarking script (`pack_test.py`) measuring instance provisioning density.
 - **F6: Threat Model & Documentation:** Updating deployment, traffic, and threat model specifications.
 
@@ -41,7 +42,7 @@ Every line below was verified in the codebase on 3 November 2026:
 
 ---
 
-## 3. Major Architectural Decisions & Alternatives Considered
+## 3. Major Architectural Decisions & Lead Review Updates
 
 ### Decision 1: Several-Host Architecture & Scheduling (F3)
 
@@ -54,42 +55,48 @@ Every line below was verified in the codebase on 3 November 2026:
       {
         "name": "h1",
         "url": "http://10.10.0.11:8300",
+        "router_url": "http://10.10.0.11:8090",
         "tcp_host": "h1.inst.l3m0nctf.xyz",
         "token_env": "INSTANCER_TOKEN_H1",
+        "router_token_env": "ROUTER_TOKEN_H1",
         "max_slots": 150,
         "weight": 1.0
       },
       {
         "name": "h2",
         "url": "http://10.10.0.12:8300",
+        "router_url": "http://10.10.0.12:8090",
         "tcp_host": "h2.inst.l3m0nctf.xyz",
         "token_env": "INSTANCER_TOKEN_H2",
+        "router_token_env": "ROUTER_TOKEN_H2",
         "max_slots": 150,
         "weight": 1.0
       }
     ]
     ```
-  - **Host Selection Algorithm:**
+  - **Host Selection Algorithm with Optimistic Local Counter (Lead Item 6):**
     1. Check existing instance: If an active instance already exists for `(team_id, challenge_id)`, route to the host matching `instance.host_name`.
     2. Capacity Probe: Periodically poll (every 5 seconds, cached in-process) `GET /v1/capacity` across all configured hosts.
-    3. Sort eligible hosts by available slot ratio: `(slots_total - slots_used) / slots_total`.
-    4. Failover & Health: A host that times out or returns HTTP 5xx is marked DOWN for 30 seconds for new starts. If all hosts are down or at 100% capacity, return `503 Service Unavailable` with `error: "no_capacity"` and `retry_after: 30`.
-    5. Concurrency & Idempotency: `(team_id, challenge_id)` database unique constraint guarantees exactly one instance is recorded, even if concurrent requests race across hosts.
-- **Rejected Alternatives:**
-  - *Central Master Daemon (Hierarchical Orchestrator):* Running an instancer master that proxies requests to worker instancers introduces a single point of failure, complex two-layer state synchronization, and extra private RPC latency. Having the CTFd plugin directly select the host leverages existing database transactions and simplifies the architecture.
-  - *Dynamic DNS Round-Robin:* DNS has TTL caching latency and cannot adapt to instantaneous memory pressure or sudden container failures.
+    3. Optimistic Local Counter: To prevent thirty concurrent starts from clustering on the same host within the 5s cache window, the scheduler atomically increments the selected host's in-memory `slots_used` at the instant of choice. The next 5s capacity probe re-synchronizes with true host values.
+    4. Sort eligible hosts by available slot ratio: `(slots_total - slots_used) / slots_total`.
+    5. Failover & Health: A host that times out or returns HTTP 5xx is marked DOWN for 30 seconds for new starts. If all hosts are down or at 100% capacity, return `503 Service Unavailable` with `error: "no_capacity"` and `retry_after: 30`.
+    6. Concurrency & Idempotency: `(team_id, challenge_id)` database unique constraint guarantees exactly one instance is recorded, even if concurrent requests race across hosts.
+  - **One Token Per Host (Lead Item 3):** Each host uses distinct environment variables for control (`INSTANCER_TOKEN_H1`) and route inspection (`ROUTER_TOKEN_H1`). Compromise of host 1 never yields credentials for host 2.
 
 ---
 
-### Decision 2: HTTP Traffic Routing with Several Hosts (F3)
+### Decision 2: HTTP Traffic Routing with Several Hosts (F3 & Lead Item 2, 4)
 
-- **Selected Design:** **Two-Hop Private Forwarding via Platform Router.**
+- **Selected Design:** **Two-Hop Private Forwarding via Platform Router (Moved to M2).**
   - Players connect to `<id>.<instance_domain>` via Cloudflare -> Nginx on Platform VM (Port 8443) -> Central Router (`l3mon-router` on Platform VM).
-  - The Central Router polls all configured challenge host agents (`GET /v1/routes` with `ROUTER_TOKEN`). It maps each instance ID to its assigned host agent: `id -> target_host_ip:8090`.
+  - **Strict Hop 1 Destination Integrity (Lead Item 2):**
+    - The Central Router polls all configured challenge host agents (`GET /v1/routes` with `ROUTER_TOKEN_H<N>`).
+    - The Central Router maps each instance ID to its host, but forwards **strictly to the configured `router_url` of that host** (e.g. `http://10.10.0.11:8090`), NEVER to any target address provided in the agent's route payload.
+    - The agent route list supplies the instance `id` only.
+    - If two hosts report the same instance ID, the host recorded in the database / local route map takes precedence.
+    - Any instance ID that is not 32 lowercase hex characters is rejected immediately.
   - For remote instances, the Central Router streams the HTTP request over the private VPC network to the challenge host's local router, which in turn forwards to the container on its dedicated bridge network.
   - Stale route cleanup: If an agent becomes unreachable, its routes are retained for 30 seconds, then purged.
-- **Rejected Alternatives:**
-  - *Cloudflare Direct to Remote Hosts:* Cloudflare Universal SSL does not support multi-level subdomains (`<id>.h1.inst.l3m0nctf.xyz`). Terminating on the central platform VM preserves the single wildcard SSL cert (`*.l3m0nctf.xyz`) and Authenticated Origin Pulls (AOP) security.
 
 ---
 
@@ -101,44 +108,43 @@ Every line below was verified in the codebase on 3 November 2026:
   - When starting a TCP challenge, the plugin returns `{"protocol": "tcp", "host": "h1.inst.l3m0nctf.xyz", "port": 30042}`.
   - The player runs `nc h1.inst.l3m0nctf.xyz 30042` directly to the challenge host.
   - The challenge host router binds the TCP relay ports (`30000-30200`) and relays packets directly to the challenge container over the container's isolated bridge network.
-- **Rejected Alternatives:**
-  - *SSH Port Forwarding / SOCKS5:* Unnecessarily complicated for contestants and incompatible with standard pwn automation scripts (pwntools).
-  - *Central TCP Multiplexing via SNI:* Plain netcat/socat pwn exploits do not send TLS ClientHello with SNI. Port-per-instance is the only reliable method for raw TCP challenges.
 
 ---
 
-### Decision 4: Author Image Distribution Workflow (F4.4 Recommendation)
+### Decision 4: Author Image Distribution Workflow (F4.4 & Lead Item 7)
 
-- **Evaluation of Options:**
-  1. *Option (a) - Local Private Registry on Challenge Host:*
-     - A private Docker `registry:2` container runs on `127.0.0.1:5000` on the challenge host.
-     - Authors push images via SSH port forwarding (`ssh -L 5000:localhost:5000 user@host`).
-     - Pros: Completely self-hosted, no external registry costs or rate limits.
-     - Cons: Fragile author coordination, images must be pushed separately to each challenge host VM.
-  2. *Option (b) - GitHub Container Registry (GHCR) with Read-Only Host Token (RECOMMENDED):*
-     - The project uses `ghcr.io/sivaahari/<repo>/<slug>@sha256:<digest>`.
-     - A machine-scoped GitHub Personal Access Token (PAT) with `read:packages` is stored in `.secrets/GHCR_READ_TOKEN` on each challenge host.
-     - The host kit bootstrap logs Docker into GHCR.
-     - Images are built once by authors or CI and pulled by all challenge hosts.
-     - Pros: Centralized, high availability, immutable SHA-256 digests, multi-host consistency.
-     - Cons: Requires internet access during initial pull (or pre-pull before competition starts).
-  3. *Option (c) - `docker load` from Archive with Local Digest Verification:*
-     - Challenge images are exported to `.tar.gz` and copied via SCP.
-     - Tested fact: `docker load` preserves image ID, but `docker run name@sha256:<digest>` fails if the repo digest was not populated by a registry pull unless tagged specifically.
-- **Recommendation:** **Option (b) (GHCR with pinned SHA-256 digests)** as primary workflow for production, with Option (c) (`docker load` with pinned image ID tagging) as offline fallback.
+- **Selected Workflow: GitHub Container Registry (GHCR) with Pinned SHA-256 Digests.**
+  1. **Strict CI Build & Push Only:**
+     - Images are built and pushed exclusively by GitHub Actions workflows in the private challenges repository using `GITHUB_TOKEN`.
+     - Authors never receive individual write access to the registry, preventing accidental or malicious overwriting of challenge images.
+  2. **Private Packages Only:** Every image package in GHCR is marked private.
+  3. **Read-Only Fine-Grained Token on Challenge Hosts:**
+     - A machine-scoped PAT with `read:packages` only is stored root-only (mode `0600`) at `/etc/l3mon/ghcr-token` (outside the compose directory).
+     - The host kit bootstrap logs the host Docker daemon into GHCR: `cat /etc/l3mon/ghcr-token | docker login ghcr.io -u <user> --password-stdin`.
+     - Key rotation procedure is detailed in the runbook.
+  4. **Threat Model Reality: Zero Flags Baked in Images:**
+     - If a challenge host is compromised, the attacker can inspect pulled images on disk.
+     - Therefore, **no flag may ever be baked into an image**. All dynamic flags are injected via the `FLAG` environment variable at container creation time.
+  5. **Manifest Entry Formatting:**
+     - Manifests require `image = "ghcr.io/sivaahari/<repo>/<slug>@sha256:<digest>"`.
+     - Written automatically by the lead's sync tool based on the CI build output.
+  6. **Offline Fallback (`docker load`):**
+     - `docker load` imports images with an image ID (e.g. `sha256:<image_id>`). In standard Docker Engine, running `docker run image@sha256:<digest>` fails unless a repo digest is associated by registry pull.
+     - Documented in runbook: For offline airgapped use, images loaded via `docker load` must be explicitly tagged with a local registry prefix or run by name:tag in dev mode (`INSTANCER_DEV=1`).
 
 ---
 
-### Decision 5: TCP Relay Byte-Rate Sanity Limit Justification (F1.3)
+### Decision 5: TCP Relay Byte-Rate & Connection Caps Justification (F1.3 & Lead Items 5, 8)
 
-- **Requirement:** Stop firehoses/network flood DoS while permitting heap-spraying exploits.
-- **Analysis:**
-  - Pwn exploits spraying large heap chunks (e.g. 10MB of ropchains or memory layouts) typically transmit 1–5 MB within a few seconds over a single connection.
-  - A malicious player running an unconstrained `cat /dev/urandom | nc` firehose over 5 concurrent connections can saturate a 1 Gbps host link and exhaust router memory buffers.
-- **Chosen Default:**
+- **Byte-Rate Sanity Limit:**
   - `INSTANCER_TCP_RATE_LIMIT_BYTES_PER_SEC = 2 * 1024 * 1024` (2 MB/s per connection burstable up to 4 MB token bucket).
   - Configurable via environment variable.
-  - This easily permits standard pwn payloads (64KB–1MB) to transfer in < 500ms, while capping runaway loops at 2 MB/s.
+  - Measured locally: A 10 MB payload takes ~3.1 seconds across the burstable relay, allowing rapid delivery of legitimate ropchain / heap-spray payloads while capping sustained runaway floods at 2 MB/s.
+- **Per-Address Connection Cap (Lead Item 5):**
+  - **TCP:** Default set to **60** concurrent connections per client IP address across all ports (`INSTANCER_TCP_MAX_CONNS_PER_IP = 60`).
+  - *Why:* Many student teams and university cohorts compete from behind a single campus NAT gateway or dorm Wi-Fi router. Combined with pwntools multi-threading / race condition scripts opening 5–10 sockets per team, 20 was too restrictive; 60 accommodates several active teams sharing a public IPv4 gateway.
+  - **Global TCP Cap:** Maintained at 500 active relay connections per host (`INSTANCER_TCP_MAX_TOTAL_CONNS = 500`).
+  - **HTTP:** Maintained at 50 per IP (with option for 100 on platform VM).
 
 ---
 
@@ -152,9 +158,10 @@ In `services/instancer/manager.py` and `services/instancer/router/`:
 - `INSTANCER_TCP_IDLE_TIMEOUT`: default `300` (seconds).
 - `INSTANCER_TCP_LIFETIME_CAP`: default `3600` (1 hour).
 - `INSTANCER_TCP_MAX_CONNS_PER_INSTANCE`: default `5`.
-- `INSTANCER_TCP_MAX_CONNS_PER_IP`: default `20`.
+- `INSTANCER_TCP_MAX_CONNS_PER_IP`: default `60` (setting, campus NAT friendly).
 - `INSTANCER_TCP_MAX_TOTAL_CONNS`: default `500`.
 - `INSTANCER_TCP_RATE_LIMIT_BPS`: default `2097152` (2 MB/s).
+- `INSTANCER_INSTANCE_POOL`: default `10.200.0.0/16` (CIDR matching `daemon.json`'s `default-address-pools`).
 
 ### 4.2 Dynamic Listener Lifecycle & Port Reuse Cleanliness
 - The router dynamically maintains `_tcp_listeners: dict[int, asyncio.Server]`.
@@ -166,28 +173,41 @@ In `services/instancer/manager.py` and `services/instancer/router/`:
   - Clears any buffered frames.
   - **Port Reuse Guarantee:** When another team acquires that same port a minute later, zero bytes from the previous session can leak into the new connection.
 
-### 4.3 Bidirectional Relay with Backpressure
+### 4.3 Bidirectional Relay with Backpressure & Rate Limiting
 ```python
-async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, rate_limiter, tracker):
-    chunk_size = 16384  # 16 KB bounded buffer
-    while not reader.at_eof():
-        data = await reader.read(chunk_size)
-        if not data:
-            break
-        await rate_limiter.consume(len(data))
-        writer.write(data)
-        await writer.drain()  # Strict backpressure
-```
-- Handles `asyncio.IncompleteReadError`, connection resets (`ECONNRESET`), and half-close (`writer.write_eof()`) cleanly.
+class TokenBucketRateLimiter:
+    def __init__(self, rate_bps: int = 2 * 1024 * 1024, burst_bytes: int = 4 * 1024 * 1024):
+        self.rate = rate_bps
+        self.burst = burst_bytes
+        self.tokens = burst_bytes
+        self.last_update = time.monotonic()
+        self._lock = asyncio.Lock()
 
-### 4.4 Route-Poisoning & SSRF Defenses (F1.4)
+    async def consume(self, nbytes: int):
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self.last_update
+            self.last_update = now
+            self.tokens = min(self.burst, self.tokens + elapsed * self.rate)
+            if self.tokens < nbytes:
+                deficit = nbytes - self.tokens
+                wait_time = deficit / self.rate
+                await asyncio.sleep(wait_time)
+                self.tokens = 0
+            else:
+                self.tokens -= nbytes
+```
+- Strict backpressure using bounded buffers (`chunk_size = 16384`) and `await writer.drain()`.
+- Clean half-close (`writer.write_eof()`) and reset handling.
+
+### 4.4 Route-Poisoning & Pool Validation Defenses (F1.4 & Lead Item 1)
 Before connecting to any `target_ip:target_port`:
 1. Parse `ipaddress.ip_address(target_ip)`.
-2. Reject non-private IP addresses (`not ip.is_private` or `ip.is_loopback` or `ip.is_multicast`).
-3. Reject cloud metadata address: `169.254.169.254` (link-local).
-4. Reject host loopback: `127.0.0.0/8`, `::1`.
-5. Reject reserved Docker subnet gateway addresses: must match container network CIDR pattern (`172.16.0.0/12` or `10.0.0.0/8`), but never the `.1` gateway IP.
-6. Target port must be between 1 and 65535.
+2. Parse `pool = ipaddress.ip_network(os.getenv("INSTANCER_INSTANCE_POOL", "10.200.0.0/16"))`.
+3. **Strict Pool Membership Check:** The target IP must lie strictly **inside** `pool`.
+   - Reject any address outside `pool`, including public IPs (`8.8.8.8`), cloud metadata (`169.254.169.254`), host loopback (`127.0.0.1`), and **private VPC addresses outside the pool** (e.g. `10.0.0.5`, platform VM, CTFd, MariaDB).
+4. **Subnet Boundary Checks:** Reject `pool.network_address`, `pool.broadcast_address`, and the standard `.1` container gateway address.
+5. Target port must be between 1 and 65535.
 
 ---
 
@@ -207,7 +227,7 @@ Write `tests/integration/test_instances_isolation.py` and fixture `services/inst
   7. `probe_instancer_api()`: Connect to `instancer:8300` and `8301`. (Must FAIL)
   8. `probe_router_control()`: Connect to router internal interfaces. (Must FAIL)
   9. `probe_ctfd_database_redis()`: Attempt connects to `ctfd:8000`, `db:3306`, `cache:6379`. (Must FAIL)
-- Exposes findings on an HTTP endpoint `/report` or via container exit status / stdout.
+- Returns structured JSON results on `/report` endpoint or exit code.
 
 ### 5.2 External Test Runner Assertions
 From outside (the host running pytest):
@@ -224,20 +244,24 @@ From outside (the host running pytest):
   {
     "name": "default",
     "url": "http://instancer:8300",
+    "router_url": "http://router:8090",
     "tcp_host": "localhost",
     "token_env": "INSTANCER_TOKEN",
+    "router_token_env": "ROUTER_TOKEN",
     "max_slots": 200,
     "weight": 1.0
   }
 ]
 ```
 
-### 6.2 Host Scheduler & Failover Logic
+### 6.2 Host Scheduler with Optimistic Local Counter
 - In `plugins/l3mon_instances/client.py`:
   - `HostManager` loads `hosts.json`.
   - Maintains `_host_health: dict[str, HostStatus]`.
+  - Maintains `_optimistic_slots: dict[str, int]`.
   - On `start_instance(team_id, challenge_id, slug)`:
-    - Finds least-loaded healthy host.
+    - Finds least-loaded healthy host considering `(slots_used + _optimistic_slots[host]) / slots_total`.
+    - Atomically increments `_optimistic_slots[host]`.
     - If host fails with connection error or HTTP 5xx: marks host down for 30s and retries next best host.
     - Persists selected `host_name` in `L3monInstance.host_name`.
   - On `renew_instance`, `stop_instance`, `get_instance`:
@@ -245,7 +269,7 @@ From outside (the host running pytest):
 
 ---
 
-## 7. Detailed Specification: F4 Host Kit & Bootstrap
+## 7. Detailed Specification: F4 Host Kit & Bootstrap (Lead Item 8)
 
 ### 7.1 Compose File (`deploy/compose/compose.challenge-host.yml`)
 - Services:
@@ -262,10 +286,29 @@ From outside (the host running pytest):
 - Idempotent Bash script.
 - Default `--dry-run`; executes actions only with `--apply`.
 - Tested with `shellcheck --severity=warning -x`.
-- Installs Docker Engine from official upstream repo.
-- Configures `/etc/docker/daemon.json` with `default-address-pools` (e.g. `base: 10.200.0.0/16`, `size: 28`).
-- Configures `DOCKER-USER` iptables rules dropping metadata (`169.254.169.254`) and RFC1918 traffic from challenge bridges.
-- Sets kernel limits (`vm.max_map_count = 262144`, `fs.file-max = 2097152`).
+- Unified instance pool variable:
+  ```bash
+  INSTANCER_INSTANCE_POOL="${INSTANCER_INSTANCE_POOL:-10.200.0.0/16}"
+  ```
+  Writes `default-address-pools` in `/etc/docker/daemon.json` and sets environment variable in `/etc/l3mon/instancer.env`.
+- Explicit `DOCKER-USER` iptables rules:
+  ```bash
+  # 1. Allow established and related traffic
+  iptables -A DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # 2. Allow router to instance pool
+  iptables -A DOCKER-USER -s "$ROUTER_IP" -d "$INSTANCER_INSTANCE_POOL" -j ACCEPT
+
+  # 3. Allow agent port 8300 from Platform VM only
+  iptables -A DOCKER-USER -p tcp -s "$PLATFORM_VM_IP" --dport 8300 -j ACCEPT
+
+  # 4. Drop all traffic from instance pool to any other network
+  iptables -A DOCKER-USER -s "$INSTANCER_INSTANCE_POOL" -j DROP
+
+  # 5. Drop cloud metadata from all bridge interfaces
+  iptables -A DOCKER-USER -d 169.254.169.254 -j DROP
+  ```
+- Tested with `iptables -C` checks and dry-run stub binary validation.
 
 ---
 
@@ -283,7 +326,7 @@ From outside (the host running pytest):
 
 ---
 
-## 9. Planned Break-on-Purpose Test Matrix (30+ Cases)
+## 9. Comprehensive Break-on-Purpose Test Matrix (38 Cases)
 
 | Rule # | Invariant Under Test | How It Is Broken | Test That Catches It |
 |---|---|---|---|
@@ -295,49 +338,57 @@ From outside (the host running pytest):
 | 6 | Idle Timeout Disconnect | Disable idle timeout timer | `test_tcp_idle_timeout_drops_connection` |
 | 7 | Lifetime Cap Disconnect | Disable connection lifetime cap | `test_tcp_lifetime_cap_enforced` |
 | 8 | Per-Instance Concurrency Cap | Remove `max_connections_per_instance` check | `test_tcp_max_connections_per_instance_refused` |
-| 9 | Per-IP Concurrency Cap | Remove `max_connections_per_ip` check | `test_tcp_max_connections_per_ip_refused` |
+| 9 | Per-IP Concurrency Cap (60) | Remove `max_connections_per_ip` check | `test_tcp_max_connections_per_ip_refused` |
 | 10 | Global Concurrency Cap | Remove `max_total_connections` check | `test_tcp_global_connections_cap_refused` |
 | 11 | Byte-Rate Sanity Limit | Remove token bucket rate limiter | `test_tcp_rate_limiter_throttles_firehose` |
 | 12 | Connect Timeout to Instance | Remove connect timeout | `test_tcp_connect_timeout_aborts_fast` |
 | 13 | Failed Connect Silent Close | Send verbose error banner on connect failure | `test_tcp_connect_failure_closes_silently` |
-| 14 | SSRF Defense: Metadata Denied | Feed route with `target_ip="169.254.169.254"` | `test_route_poisoning_metadata_rejected` |
-| 15 | SSRF Defense: Loopback Denied | Feed route with `target_ip="127.0.0.1"` | `test_route_poisoning_loopback_rejected` |
-| 16 | SSRF Defense: Gateway Denied | Feed route with container bridge gateway IP | `test_route_poisoning_gateway_rejected` |
-| 17 | SSRF Defense: Public IP Denied | Feed route with `target_ip="8.8.8.8"` | `test_route_poisoning_public_ip_rejected` |
-| 18 | SSRF Defense: Docker Socket Denied | Feed route targeting Docker socket proxy IP:port | `test_route_poisoning_docker_proxy_rejected` |
-| 19 | SSRF Defense: CTFd Core Denied | Feed route targeting CTFd internal IP | `test_route_poisoning_ctfd_ip_rejected` |
-| 20 | Half-Close Clean Handling | Omit `writer.write_eof()` propagation | `test_tcp_half_close_propagated` |
-| 21 | Backpressure Bounded Buffers | Use unbounded `read()` without drain | `test_tcp_backpressure_memory_bounded` |
-| 22 | Host Selection Least Loaded | Invert capacity comparator (pick most loaded) | `test_host_scheduler_picks_least_loaded` |
-| 23 | Host Down Failover | Don't mark failed host down for 30s | `test_host_scheduler_failover_on_unreachable` |
-| 24 | All Hosts Down Handling | Don't return 503 `no_capacity` on total outage | `test_host_scheduler_all_down_returns_503` |
-| 25 | Host Cache Expiry | Set cache TTL to 0 or infinite | `test_capacity_cache_ttl_revalidation` |
-| 26 | Poisoned Agent Capacity Reply | Return negative or string `slots_used` from agent | `test_malformed_agent_capacity_rejected` |
-| 27 | Poisoned Agent Route Body | Return route with invalid types from agent | `test_malformed_agent_route_rejected` |
-| 28 | Idempotent Multi-Host Racing | Disable DB unique constraint on instance start | `test_concurrent_start_yields_single_instance` |
-| 29 | Pack Tool RAM Margin Guard | Remove free memory preflight check | `test_pack_tool_refuses_low_ram` |
-| 30 | Bootstrap Dry-Run Safety | Execute commands during `--dry-run` | `test_bootstrap_dry_run_executes_nothing` |
-| 31 | Pwn Fixture Clean Flag Read | Return static flag instead of dynamic `$FLAG` | `test_tcp_fixture_returns_dynamic_flag` |
-| 32 | Prober Egress Detection | Permit outbound ping in prober network | `test_prober_detects_egress_violation` |
+| 14 | Pool Defense: Metadata Denied | Feed route with `target_ip="169.254.169.254"` | `test_route_poisoning_metadata_rejected` |
+| 15 | Pool Defense: Loopback Denied | Feed route with `target_ip="127.0.0.1"` | `test_route_poisoning_loopback_rejected` |
+| 16 | Pool Defense: Gateway Denied | Feed route with container bridge gateway IP (`10.200.0.1`) | `test_route_poisoning_gateway_rejected` |
+| 17 | Pool Defense: Public IP Denied | Feed route with `target_ip="8.8.8.8"` | `test_route_poisoning_public_ip_rejected` |
+| 18 | Pool Defense: Private Outside Pool | Feed route with `target_ip="10.0.0.5"` (platform VM IP) | `test_route_poisoning_private_outside_pool_rejected` |
+| 19 | Pool Defense: Docker Socket Denied | Feed route targeting Docker socket proxy IP:port | `test_route_poisoning_docker_proxy_rejected` |
+| 20 | Pool Defense: CTFd Core Denied | Feed route targeting CTFd internal IP | `test_route_poisoning_ctfd_ip_rejected` |
+| 21 | Hop 1 Address Integrity | Central router forwards to agent-supplied target IP | `test_hop1_ignores_agent_supplied_target_address` |
+| 22 | Duplicated ID Across Hosts | Two hosts return same instance ID | `test_duplicated_instance_id_precedence` |
+| 23 | Non-Hex Instance ID | Agent returns malformed ID (`slug_123`) | `test_malformed_instance_id_rejected` |
+| 24 | Half-Close Clean Handling | Omit `writer.write_eof()` propagation | `test_tcp_half_close_propagated` |
+| 25 | Backpressure Bounded Buffers | Use unbounded `read()` without drain | `test_tcp_backpressure_memory_bounded` |
+| 26 | Host Selection Least Loaded | Invert capacity comparator (pick most loaded) | `test_host_scheduler_picks_least_loaded` |
+| 27 | Optimistic Slot Increment | Remove optimistic local slot counter | `test_concurrent_starts_optimistic_counter` |
+| 28 | Host Down 30s Failover | Don't mark failed host down for 30s | `test_host_scheduler_failover_on_unreachable` |
+| 29 | All Hosts Down Handling | Don't return 503 `no_capacity` on total outage | `test_host_scheduler_all_down_returns_503` |
+| 30 | Dead Host Route Expiry (30s) | Central router never purges dead host routes | `test_central_router_purges_dead_host_routes_after_30s` |
+| 31 | Per-Host Route Token Check | Use wrong token for Host 2 route poll | `test_per_host_route_tokens_enforced` |
+| 32 | Poisoned Agent Capacity Reply | Return negative or string `slots_used` from agent | `test_malformed_agent_capacity_rejected` |
+| 33 | Poisoned Agent Route Body | Return route with invalid types from agent | `test_malformed_agent_route_rejected` |
+| 34 | Idempotent Multi-Host Racing | Disable DB unique constraint on instance start | `test_concurrent_start_yields_single_instance` |
+| 35 | Pack Tool RAM Margin Guard | Remove free memory preflight check | `test_pack_tool_refuses_low_ram` |
+| 36 | Bootstrap Dry-Run Safety | Execute commands during `--dry-run` (tested via stub trap) | `test_bootstrap_dry_run_executes_nothing_stub_trap` |
+| 37 | Pwn Fixture Clean Flag Read | Return static flag instead of dynamic `$FLAG` | `test_tcp_fixture_returns_dynamic_flag` |
+| 38 | Prober Egress Detection | Permit outbound ping in prober network | `test_prober_detects_egress_violation` |
 
 ---
 
 ## 10. Milestone Roadmap & Execution Schedule
 
-- **M1 (Due 10 November):**
-  - Author and commit implementation plan `docs/superpowers/plans/2026-11-03-f-instancer-second-half.md`.
-  - F1: Build TCP port configuration, dynamic listeners, and bidirectional TCP relay in `services/instancer/router/`.
+- **Milestone 1 (Due 10 November):**
+  - Commit approved plan update incorporating `NOTE-F.md`.
+  - F1: Implement TCP port configuration (`INSTANCER_TCP_PORT_START`, `INSTANCER_TCP_PORT_COUNT`), `INSTANCER_INSTANCE_POOL` validation, per-IP cap (60), rate limiting (2 MB/s, 4 MB burst), dynamic listener lifecycle, port reuse clean slate, and bidirectional relay in `services/instancer/router/`.
   - F1: Build TCP pwn test fixture (`services/instancer/tests/fixtures/tcp/`).
   - F1: Write TCP unit test suite with mock streams and route poisoning checks.
   - F2: Build prober test fixture (`services/instancer/tests/fixtures/prober/`) and write `tests/integration/test_instances_isolation.py`.
   - Start Part 2 in `docs/handoff/instancer.md`.
-- **M2 (Due 14 November):**
-  - F3: Build single remote host agent mode and plugin capacity client.
+  - Push branch and verify CI checks.
+- **Milestone 2 (Due 14 November):**
+  - F3: Two-hop HTTP private forwarding on Central Router with 30s dead-host route purge.
+  - F3: Single remote host agent mode and plugin capacity client with optimistic counter.
   - F4: Author `deploy/compose/compose.challenge-host.yml`.
   - F5: Build `services/instancer/tools/pack_test.py` and run local benchmarks.
-  - Open draft pull request with green CI checks.
-- **M3 (Due 18 November):**
+  - Verify Draft PR #5 CI checks.
+- **Milestone 3 (Due 18 November):**
   - F3: Multi-host scheduler and 30s failover.
-  - F4: Author `deploy/challenge-host/bootstrap.sh` and `README.md`.
+  - F4: Author `deploy/challenge-host/bootstrap.sh` (with `iptables` rules and dry-run stub tests) and `README.md`.
   - F6: Update `docs/deploy/instancer.md`, `docs/deploy/instancer-traffic.md`, and `docs/security/instancer-threat-model.md`.
-  - Final review and handoff submission before 19 November hard stop.
+  - Final review, break-on-purpose audit, and handoff submission before 19 November hard stop.
