@@ -12,6 +12,8 @@ Verifies:
 """
 import calendar
 import datetime
+import json
+import os
 from unittest import mock
 
 import pytest
@@ -21,9 +23,51 @@ from sqlalchemy import event
 from CTFd.models import Teams, Users, db
 from CTFd.plugins.l3mon_core.models import Channel, Programme
 from CTFd.plugins.l3mon_story import store
-from CTFd.plugins.l3mon_story.tests.story_world import bundle, write_story
 from CTFd.utils import set_config
 from tests.helpers import create_ctfd, destroy_ctfd, gen_challenge, login_as_user, register_user
+
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90"><rect width="160" height="90" fill="#223"/><circle cx="80" cy="45" r="20" fill="#fc3"/></svg>'
+
+
+def bundle(slug="street", title="Moth Hour", panels=2, kicker=None):
+    return {
+        "v": 1,
+        "slug": slug,
+        "title": title,
+        "kicker": kicker or f"CH 01 · {slug.title()}",
+        "lang": "en",
+        "panels": [
+            {
+                "id": f"p{i + 1}",
+                "ms": 4000,
+                "enter": "static" if i == 0 else "slide",
+                "alt": f"Panel {i + 1}: a round sun over a dark field.",
+                "layers": [{"art": "sun", "x": 0, "y": 0, "w": 100, "h": 100, "z": 0}],
+                "bubbles": [
+                    {
+                        "kind": "say",
+                        "who": "Host",
+                        "text": f"Line {i + 1} & \"quoted\" it's fine.",
+                        "x": 8,
+                        "y": 8,
+                        "w": 40,
+                        "tail": "bl",
+                        "at": 500,
+                    }
+                ],
+                "sfx": [{"cue": "whoosh", "at": 0}],
+            }
+            for i in range(panels)
+        ],
+        "art": {"sun": SVG},
+    }
+
+
+def write_story(folder, slug, obj=None, **kw):
+    path = os.path.join(str(folder), f"{slug}.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(obj if obj is not None else bundle(slug, **kw), handle)
+    return path
 
 PASSWORD = "test-stories-password-123"
 T_START = calendar.timegm(datetime.datetime(2026, 11, 28, 3, 30, 0).timetuple())
