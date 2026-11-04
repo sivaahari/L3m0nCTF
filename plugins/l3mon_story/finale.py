@@ -12,8 +12,9 @@ every time and never waits for the kept answer.
 import time
 
 from CTFd.plugins.l3mon_board import guide
+from CTFd.plugins.l3mon_core import clock
 from CTFd.plugins.l3mon_core.clock import current_phase
-from CTFd.plugins.l3mon_core.settings import finale_open, story_air_target, story_meter
+from CTFd.plugins.l3mon_core.settings import finale_at, finale_open, story_air_target, story_meter
 from CTFd.plugins.l3mon_story.store import FINALE
 
 SLUG = FINALE
@@ -47,6 +48,9 @@ def is_open(who) -> bool:
     if current_phase().state == "before":
         return False
     if finale_open():
+        return True
+    auto_time = finale_at()
+    if auto_time is not None and clock.now() >= auto_time:
         return True
     if not story_meter() or not story_air_target():
         return False

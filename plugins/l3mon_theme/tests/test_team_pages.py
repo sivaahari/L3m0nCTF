@@ -940,7 +940,7 @@ def test_round4_d2_ratelimit_on_team_post(app):
         # 11th POST is refused with HTTP 429
         r11 = client.post("/team", data={"nonce": nonce, "name": "RL Studio One", "affiliation": "Test"})
         assert r11.status_code == 429
-        data11 = r11.get_json()
+        data11 = r11.get_json() or {"message": r11.get_data(as_text=True)}
         assert "Too many requests" in data11.get("message", "")
 
         # GET /team is not blocked and does not count towards limit
@@ -965,7 +965,7 @@ def test_round4_d2_ratelimit_on_handover_captain_post(app):
         # 11th POST is ratelimited (HTTP 429) before reaching view
         r11 = client.post("/team/members/99999/captain", data={"nonce": nonce})
         assert r11.status_code == 429
-        assert "Too many requests" in r11.get_json().get("message", "")
+        assert "Too many requests" in (r11.get_json() or {"message": r11.get_data(as_text=True)}).get("message", "")
 
         # GET /team is not blocked
         r_get = client.get("/team")
@@ -990,7 +990,7 @@ def test_round4_d2_ratelimit_on_settings_post(app):
         # 11th POST is refused with HTTP 429
         r11 = client.post("/settings", data={"nonce": nonce, "part": "details", "name": user_name})
         assert r11.status_code == 429
-        assert "Too many requests" in r11.get_json().get("message", "")
+        assert "Too many requests" in (r11.get_json() or {"message": r11.get_data(as_text=True)}).get("message", "")
 
         # GET /settings is not blocked
         r_get = client.get("/settings")

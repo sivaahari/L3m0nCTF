@@ -10,10 +10,11 @@
 CVE-2026-84782
 CVE-2026-75804
 #
-# Libraries in the nginx image that nginx itself never loads (2026-11-03): brotli-libs and libexpat are pulled in by the image's freetype, fontconfig
+# Libraries in the nginx image that nginx itself never loads (2026-11-03, and one more libexpat advisory on 2026-11-04): brotli-libs and libexpat are pulled in by the image's freetype, fontconfig
 # and curl packages, which serve the image-filter module and a command-line tool; our nginx binary links only musl, pcre2, OpenSSL and zlib and our
 # configuration loads no module (the health check uses wget, not curl). Fixed Alpine packages exist but are not in the image yet.
 CVE-2026-111497
 CVE-2026-92392
 CVE-2026-117610
 CVE-2026-118370
+CVE-2026-113351
