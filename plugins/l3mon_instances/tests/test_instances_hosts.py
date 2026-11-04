@@ -51,8 +51,15 @@ pytestmark = pytest.mark.skipif(not ctfd_available, reason="CTFd package require
 
 @pytest.fixture(autouse=True)
 def set_default_test_host_tokens(monkeypatch):
+    monkeypatch.setenv("FLAG_HMAC_SECRET", "test_flag_hmac_secret_for_tests")
     for h in ["H1", "H2", "H3", "H4"]:
         monkeypatch.setenv(f"INSTANCER_TOKEN_{h}", f"test_token_{h.lower()}")
+    if ctfd_available:
+        try:
+            import CTFd.plugins.l3mon_instances.api as api_mod
+            monkeypatch.setattr(api_mod, "get_flag_secret", lambda: "test_flag_hmac_secret_for_tests")
+        except Exception:
+            pass
 
 
 class MockAgentClient:
@@ -445,8 +452,14 @@ def test_route_probe_a_failed_start_marks_host_down_and_retries():
             r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
             assert r.status_code == 201, f"Expected 201, got {r.status_code}: {r.get_data(as_text=True)}"
             data = r.get_json()["data"]
-            assert data["host_name"] == "h2"
+            assert "inst_h2_" in data["url"]
             assert tracker.is_host_down("h1") is True
+            assert tracker.is_host_down("h2") is False
+
+            row = L3monInstance.query.filter_by(challenge_id=c_id).first()
+            assert row is not None
+            assert row.host_name == "h2"
+            assert row.instance_id.startswith("inst_h2_")
 
             # Subsequent start immediately selects h2 (h1 remains down)
             chosen = tracker.select_host_for_start()
@@ -458,6 +471,8 @@ def test_route_probe_a_failed_start_marks_host_down_and_retries():
 
 def test_route_probe_b_racing_starts_across_hosts_returns_existing_and_stops_orphan():
     """Probe B (Real Route): Two requests race across 2 hosts. Loser stops orphaned instance and returns 200."""
+    from sqlalchemy.exc import IntegrityError
+
     app = create_ctfd(user_mode="teams", enable_plugins=True)
     with app.app_context():
         c_id, alice, _ = _setup_route_world(app)
@@ -475,22 +490,48 @@ def test_route_probe_b_racing_starts_across_hosts_returns_existing_and_stops_orp
         set_host_tracker(tracker)
 
         try:
-            # 1. Winning request started on h1
-            r1 = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
-            assert r1.status_code == 201
-            win_data = r1.get_json()["data"]
-            win_id = win_data["id"]
+            # Force tracker to select h2 for request 2
+            tracker.select_host_for_start = lambda *args, **kwargs: hosts[1]
 
-            # 2. Racing request on h2: mock tracker to select h2
-            tracker.select_host_for_start = lambda: hosts[1]  # force h2
-            r2 = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
-            assert r2.status_code == 200
-            lose_data = r2.get_json()["data"]
+            real_commit = db.session.commit
+            lost = {"done": False}
 
-            # Returns existing winner instance
-            assert lose_data["id"] == win_id
-            # Orphan container on losing host h2 must have been stopped
+            def commit_race():
+                if not lost["done"] and any(isinstance(obj, L3monInstance) for obj in db.session.new):
+                    lost["done"] = True
+                    # Winning instance from h1 committed just before us
+                    win_row = L3monInstance(
+                        instance_id="inst_h1_winner",
+                        team_id=1,
+                        challenge_id=c_id,
+                        slug="chal-hosts",
+                        protocol="http",
+                        state="running",
+                        host_name="h1",
+                        url="http://inst_h1_winner.inst.l3m0nctf.xyz/",
+                        created_at=datetime.datetime.utcnow(),
+                        expires_at=datetime.datetime.utcnow() + datetime.timedelta(seconds=2700),
+                        active_key=f"1:{c_id}",
+                    )
+                    db.session.rollback()
+                    db.session.add(win_row)
+                    real_commit()
+                    # Now raise the collision on duplicate active_key
+                    raise IntegrityError("insert", {}, Exception("Duplicate entry for key 'active_key'"))
+                return real_commit()
+
+            with mock.patch.object(db.session, "commit", side_effect=commit_race):
+                r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
+
+            assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.get_data(as_text=True)}"
+            data = r.get_json()["data"]
+
+            # Returns existing winning instance
+            assert "inst_h1_winner" in data["url"]
+
+            # Orphaned container created on losing host h2 must have been stopped
             assert len(client_h2.stopped_instances) == 1
+            assert client_h2.stopped_instances[0].startswith("inst_h2_")
         finally:
             set_host_tracker(None)
             destroy_ctfd(app)
@@ -512,23 +553,28 @@ def test_route_probe_c_player_queries_down_host_reported_as_error():
             r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
             assert r.status_code == 201
 
-            # While host is healthy, state is running
-            r_get = alice.get(f"/api/v1/l3mon/instances/{c_id}")
-            assert r_get.status_code == 200
-            assert r_get.get_json()["data"]["state"] == "running"
+            # While host is healthy, GET /instances lists running state
+            r_list = alice.get("/api/v1/l3mon/instances")
+            assert r_list.status_code == 200
+            assert r_list.get_json()["data"]["instances"][0]["state"] == "running"
+
+            # And idempotent POST /instances returns running state
+            r_post = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
+            assert r_post.status_code == 200
+            assert r_post.get_json()["data"]["state"] == "running"
 
             # Host enters down penalty
             tracker.mark_host_down("h1")
 
-            # Route reports state="error"
-            r_down = alice.get(f"/api/v1/l3mon/instances/{c_id}")
-            assert r_down.status_code == 200
-            assert r_down.get_json()["data"]["state"] == "error"
+            # Route list reports state="error"
+            r_list_down = alice.get("/api/v1/l3mon/instances")
+            assert r_list_down.status_code == 200
+            assert r_list_down.get_json()["data"]["instances"][0]["state"] == "error"
 
-            # Route list also reports state="error"
-            r_list = alice.get("/api/v1/l3mon/instances")
-            assert r_list.status_code == 200
-            assert r_list.get_json()["data"][0]["state"] == "error"
+            # And idempotent POST /instances reports state="error"
+            r_post_down = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
+            assert r_post_down.status_code == 200
+            assert r_post_down.get_json()["data"]["state"] == "error"
         finally:
             set_host_tracker(None)
             destroy_ctfd(app)
@@ -567,49 +613,71 @@ def test_route_probe_d_admin_kill_all_dispatches_across_all_hosts():
 
 def test_route_probe_e_racing_starts_same_host_does_not_stop_winner():
     """Probe E (BLOCKING 2 & Real Route): Racing starts on SAME host does NOT stop the winner's instance."""
+    from sqlalchemy.exc import IntegrityError
+
     app = create_ctfd(user_mode="teams", enable_plugins=True)
     with app.app_context():
         c_id, alice, _ = _setup_route_world(app)
 
         client_h1 = MockAgentClient("h1", slots_total=50, slots_used=5)
-        hosts = [{"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz"}]
+        # On single host, manager returns the existing active instance to a concurrent second start request
+        client_h1.start_instance = lambda **kwargs: {
+            "id": "inst_h1_winner",
+            "team_id": 1,
+            "challenge_id": c_id,
+            "slug": "chal-hosts",
+            "state": "running",
+            "protocol": "http",
+            "url": "http://inst_h1_winner.inst.l3m0nctf.xyz/",
+            "created_at": 1000,
+            "expires_at": 3700,
+        }
+
+        hosts = [{"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz", "weight": 1.0, "max_slots": 50}]
         tracker = HostCapacityTracker(hosts=hosts)
         tracker.set_client_factory(lambda h, tok: client_h1)
         set_host_tracker(tracker)
 
         try:
-            # 1. Start winner instance on h1
-            r1 = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
-            assert r1.status_code == 201
-            win_data = r1.get_json()["data"]
-            win_id = win_data["id"]
+            real_commit = db.session.commit
+            lost = {"done": False}
 
-            # 2. On single host, manager returns the existing active instance to a second start request
-            client_h1.start_instance = lambda **kwargs: {
-                "id": win_id,
-                "team_id": 1,
-                "challenge_id": c_id,
-                "slug": "chal-hosts",
-                "state": "running",
-                "protocol": "http",
-                "url": f"http://{win_id}.inst.l3m0nctf.xyz/",
-                "created_at": time.time(),
-                "expires_at": time.time() + 2700,
-            }
+            def commit_race():
+                if not lost["done"] and any(isinstance(obj, L3monInstance) for obj in db.session.new):
+                    lost["done"] = True
+                    win_row = L3monInstance(
+                        instance_id="inst_h1_winner",
+                        team_id=1,
+                        challenge_id=c_id,
+                        slug="chal-hosts",
+                        protocol="http",
+                        state="running",
+                        host_name="h1",
+                        url="http://inst_h1_winner.inst.l3m0nctf.xyz/",
+                        created_at=datetime.datetime.utcnow(),
+                        expires_at=datetime.datetime.utcnow() + datetime.timedelta(seconds=2700),
+                        active_key=f"1:{c_id}",
+                    )
+                    db.session.rollback()
+                    db.session.add(win_row)
+                    real_commit()
+                    raise IntegrityError("insert", {}, Exception("Duplicate entry for key 'active_key'"))
+                return real_commit()
 
-            # Second racing request hits DB insert conflict
-            r2 = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
-            assert r2.status_code == 200
-            data2 = r2.get_json()["data"]
+            with mock.patch.object(db.session, "commit", side_effect=commit_race):
+                r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
+
+            assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.get_data(as_text=True)}"
+            data = r.get_json()["data"]
 
             # Must return the active instance
-            assert data2["id"] == win_id
+            assert "inst_h1_winner" in data["url"]
 
             # MUST NOT call stop_instance on the winner's instance!
             assert len(client_h1.stopped_instances) == 0, f"Winner's instance was stopped: {client_h1.stopped_instances}"
 
             # Instance is still active in DB
-            active = L3monInstance.query.filter_by(instance_id=win_id).first()
+            active = L3monInstance.query.filter_by(instance_id="inst_h1_winner").first()
             assert active is not None
             assert active.state == "running"
         finally:
