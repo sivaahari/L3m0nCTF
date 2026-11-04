@@ -141,25 +141,33 @@ def test_per_host_router_token_isolation(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_two_hop_end_to_end_forwarding():
-    """Client -> Central Router (Hop 1) -> Host Router (Hop 2) -> Instance Backend."""
+    """Client -> Central Router (Hop 1) -> Host Router (Hop 2 using real handle_client) -> Instance Backend."""
+    from services.instancer.router.main import handle_client
+
     # 1. Start Mock Instance Backend (returns HTTP 200)
     async def backend_cb(reader, writer):
-        req = await reader.read(4096)
-        writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 18\r\nConnection: close\r\n\r\nHello from backend")
-        await writer.drain()
-        writer.close()
-        await writer.wait_closed()
+        try:
+            req = await reader.read(4096)
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 18\r\nConnection: close\r\n\r\nHello from backend")
+            await writer.drain()
+        finally:
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+            except Exception:
+                pass
 
     backend_server = await asyncio.start_server(backend_cb, "127.0.0.1", 0)
     backend_port = backend_server.sockets[0].getsockname()[1]
 
     inst_id = "c" * 32
 
-    # 2. Start Hop 2 Router (Host Router)
+    # 2. Start Hop 2 Router (Host Router) using REAL handle_client server code
     hop2_router = InstanceRouter(
         instance_domain="inst.l3m0nctf.xyz",
         instance_pool="127.0.0.0/8",
         allow_loopback_for_tests=True,
+        trusted_forwarders=["127.0.0.1"],
     )
     hop2_router.update_routes([
         {
@@ -170,20 +178,7 @@ async def test_two_hop_end_to_end_forwarding():
         }
     ])
 
-    async def hop2_cb(reader, writer):
-        line = await reader.readline()
-        headers = []
-        while True:
-            hline = await reader.readline()
-            if not hline or hline == b"\r\n":
-                break
-            parts = hline.decode("utf-8").split(":", 1)
-            if len(parts) == 2:
-                headers.append((parts[0].strip(), parts[1].strip()))
-        method, path, _ = line.decode("utf-8").split()
-        await hop2_router.forward_stream(method, path, headers, b"", writer)
-
-    hop2_server = await asyncio.start_server(hop2_cb, "127.0.0.1", 0)
+    hop2_server = await asyncio.start_server(lambda r, w: handle_client(r, w, hop2_router), "127.0.0.1", 0)
     hop2_port = hop2_server.sockets[0].getsockname()[1]
 
     # 3. Start Hop 1 Router (Central Router)
@@ -221,5 +216,151 @@ async def test_two_hop_end_to_end_forwarding():
     finally:
         hop2_server.close()
         backend_server.close()
-        await hop2_server.wait_closed()
-        await backend_server.wait_closed()
+        try:
+            await asyncio.wait_for(hop2_server.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(backend_server.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_hop2_trusted_forwarder_preserves_per_player_limits():
+    """BLOCKING 8: 60 distinct players routed through Hop 1 are not refused by Hop 2's per-IP limit."""
+    from services.instancer.router.main import handle_client
+
+    async def backend_cb(reader, writer):
+        try:
+            req = await reader.read(4096)
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
+            await writer.drain()
+        finally:
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+            except Exception:
+                pass
+
+    backend_server = await asyncio.start_server(backend_cb, "127.0.0.1", 0)
+    backend_port = backend_server.sockets[0].getsockname()[1]
+    inst_id = "d" * 32
+
+    # Hop 2 with max_connections_per_ip = 50 and 127.0.0.1 configured as trusted forwarder
+    hop2_router = InstanceRouter(
+        instance_domain="inst.l3m0nctf.xyz",
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+        max_connections_per_ip=50,
+        trusted_forwarders=["127.0.0.1"],
+    )
+    hop2_router.update_routes([
+        {"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": backend_port}
+    ])
+
+    hop2_server = await asyncio.start_server(lambda r, w: handle_client(r, w, hop2_router), "127.0.0.1", 0)
+    hop2_port = hop2_server.sockets[0].getsockname()[1]
+
+    # Hop 1 Central Router
+    hop1_router = InstanceRouter(
+        hosts=[
+            {
+                "name": "h1",
+                "url": "http://127.0.0.1:8300",
+                "router_url": f"http://127.0.0.1:{hop2_port}",
+                "host": "h1.inst.l3m0nctf.xyz",
+            }
+        ],
+        instance_domain="inst.l3m0nctf.xyz",
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    hop1_router.update_host_routes(
+        "h1",
+        f"http://127.0.0.1:{hop2_port}",
+        [{"id": inst_id, "protocol": "http"}],
+        now_ts=1000.0,
+    )
+
+    try:
+        # Send 60 requests from 60 distinct simulated player IPs
+        for i in range(60):
+            player_ip = f"198.51.100.{i+1}"
+            status, _, body = await hop1_router.handle_http_request(
+                method="GET",
+                path=f"/player-{i}",
+                headers={"Host": f"{inst_id}.inst.l3m0nctf.xyz"},
+                body=b"",
+            )
+            assert status == 200, f"Request {i+1} from {player_ip} failed with status {status}: {body}"
+            assert body == b"OK"
+    finally:
+        hop2_server.close()
+        backend_server.close()
+        try:
+            await asyncio.wait_for(hop2_server.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(backend_server.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_hop2_untrusted_peer_cannot_spoof_client_ip():
+    """BLOCKING 8: Untrusted peer sending X-L3mon-Client-IP is ignored and tracked by peer IP."""
+    from services.instancer.router.main import handle_client
+
+    async def backend_cb(reader, writer):
+        try:
+            req = await reader.read(4096)
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
+            await writer.drain()
+        finally:
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+            except Exception:
+                pass
+
+    backend_server = await asyncio.start_server(backend_cb, "127.0.0.1", 0)
+    backend_port = backend_server.sockets[0].getsockname()[1]
+    inst_id = "e" * 32
+
+    # Hop 2 with 10.0.0.1 as trusted forwarder (so 127.0.0.1 is UNTRUSTED)
+    hop2_router = InstanceRouter(
+        instance_domain="inst.l3m0nctf.xyz",
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+        max_connections_per_ip=5,
+        trusted_forwarders=["10.0.0.1"],
+    )
+    hop2_router.update_routes([
+        {"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": backend_port}
+    ])
+
+    hop2_server = await asyncio.start_server(lambda r, w: handle_client(r, w, hop2_router), "127.0.0.1", 0)
+    hop2_port = hop2_server.sockets[0].getsockname()[1]
+
+    try:
+        # Untrusted client from 127.0.0.1 tries to spoof distinct IPs via X-L3mon-Client-IP
+        # Because 127.0.0.1 is not trusted, Hop 2 ignores the header and tracks by 127.0.0.1
+        resolved_ips = []
+        for i in range(3):
+            resolved = hop2_router.resolve_client_ip("127.0.0.1", [("X-L3mon-Client-IP", f"1.1.1.{i+1}")])
+            resolved_ips.append(resolved)
+
+        assert all(ip == "127.0.0.1" for ip in resolved_ips), "Untrusted peer header must be ignored"
+    finally:
+        hop2_server.close()
+        backend_server.close()
+        try:
+            await asyncio.wait_for(hop2_server.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
+        try:
+            await asyncio.wait_for(backend_server.wait_closed(), timeout=2.0)
+        except Exception:
+            pass

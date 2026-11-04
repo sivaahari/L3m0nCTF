@@ -25,7 +25,7 @@ if [[ $# -gt 0 ]]; then
     --help|-h)
       echo "Usage: $0 [--dry-run|--apply]"
       echo "  --dry-run (default): Inspect actions without applying changes"
-      echo "  --apply:             Apply configuration, install Docker, configure firewall"
+      echo "  --apply:             Configure kernel sysctls, Docker daemon pools, and firewall isolation chains"
       exit 0
       ;;
     *)
@@ -162,59 +162,83 @@ EOF
   write_file "${daemon_file}" "${daemon_json}" "0644"
 }
 
-# 6. DOCKER-USER and INPUT Firewall Rules
+# 6. Host environment configuration (/etc/l3mon/challenge-host.env)
+configure_env_file() {
+  echo "--- [6/8] Writing Challenge Host Environment (/etc/l3mon/challenge-host.env) ---"
+  local env_file="${L3MON_ENV_FILE:-/etc/l3mon/challenge-host.env}"
+  local env_content
+  env_content=$(cat <<EOF
+# L3m0nCTF Challenge Host Environment
+INSTANCER_INSTANCE_POOL="${INSTANCE_POOL}"
+INSTANCER_POOL_SUBNET_SIZE="${POOL_SUBNET_SIZE}"
+PLATFORM_VM_IP="${PLATFORM_VM_IP}"
+EOF
+)
+  write_file "${env_file}" "${env_content}" "0600"
+}
+
+# 7. L3MON-FIREWALL Isolation Chain in DOCKER-USER
 configure_firewall() {
-  echo "--- [6/7] Configuring Firewall (DOCKER-USER Isolation & Cloud Rules) ---"
+  echo "--- [7/8] Configuring Firewall (L3MON-FIREWALL Chain in DOCKER-USER) ---"
+
+  # Dedicated chain L3MON-FIREWALL jumped to from DOCKER-USER at position 1
+  if [[ "${MODE}" == "dry-run" ]]; then
+    echo "[DRY-RUN] iptables -N L3MON-FIREWALL 2>/dev/null || iptables -F L3MON-FIREWALL"
+    echo "[DRY-RUN] iptables -C DOCKER-USER -j L3MON-FIREWALL 2>/dev/null || iptables -I DOCKER-USER 1 -j L3MON-FIREWALL"
+  else
+    iptables -N L3MON-FIREWALL 2>/dev/null || iptables -F L3MON-FIREWALL
+    iptables -C DOCKER-USER -j L3MON-FIREWALL 2>/dev/null || \
+      iptables -I DOCKER-USER 1 -j L3MON-FIREWALL
+  fi
 
   # Rule 1: Always drop container access to cloud metadata address 169.254.169.254
   if [[ "${MODE}" == "dry-run" ]]; then
-    echo "[DRY-RUN] iptables -C DOCKER-USER -d 169.254.169.254 -j DROP || iptables -I DOCKER-USER 1 -d 169.254.169.254 -j DROP"
+    echo "[DRY-RUN] iptables -A L3MON-FIREWALL -d 169.254.169.254 -j DROP"
   else
-    iptables -C DOCKER-USER -d 169.254.169.254 -j DROP 2>/dev/null || \
-      iptables -I DOCKER-USER 1 -d 169.254.169.254 -j DROP
+    iptables -A L3MON-FIREWALL -d 169.254.169.254 -j DROP
   fi
 
   # Rule 2: Allow established and related traffic
   if [[ "${MODE}" == "dry-run" ]]; then
-    echo "[DRY-RUN] iptables -C DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT || iptables -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
+    echo "[DRY-RUN] iptables -A L3MON-FIREWALL -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT"
   else
-    iptables -C DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
-      iptables -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+    iptables -A L3MON-FIREWALL -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
   fi
 
-  # Rule 3: Allow router relay traffic into instance pool
+  # Rule 3: Drop inter-instance cross-talk within the instance pool
   if [[ "${MODE}" == "dry-run" ]]; then
-    echo "[DRY-RUN] iptables -C DOCKER-USER -d ${INSTANCE_POOL} -j ACCEPT || iptables -A DOCKER-USER -d ${INSTANCE_POOL} -j ACCEPT"
+    echo "[DRY-RUN] iptables -A L3MON-FIREWALL -s ${INSTANCE_POOL} -d ${INSTANCE_POOL} -j DROP"
   else
-    iptables -C DOCKER-USER -d "${INSTANCE_POOL}" -j ACCEPT 2>/dev/null || \
-      iptables -A DOCKER-USER -d "${INSTANCE_POOL}" -j ACCEPT
+    iptables -A L3MON-FIREWALL -s "${INSTANCE_POOL}" -d "${INSTANCE_POOL}" -j DROP
   fi
 
   # Rule 4: Drop any instance pool outbound traffic to private RFC1918 VPC networks
   for vpc_range in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
     if [[ "${MODE}" == "dry-run" ]]; then
-      echo "[DRY-RUN] iptables -C DOCKER-USER -s ${INSTANCE_POOL} -d ${vpc_range} -j DROP || iptables -A DOCKER-USER -s ${INSTANCE_POOL} -d ${vpc_range} -j DROP"
+      echo "[DRY-RUN] iptables -A L3MON-FIREWALL -s ${INSTANCE_POOL} -d ${vpc_range} -j DROP"
     else
-      iptables -C DOCKER-USER -s "${INSTANCE_POOL}" -d "${vpc_range}" -j DROP 2>/dev/null || \
-        iptables -A DOCKER-USER -s "${INSTANCE_POOL}" -d "${vpc_range}" -j DROP
+      iptables -A L3MON-FIREWALL -s "${INSTANCE_POOL}" -d "${vpc_range}" -j DROP
     fi
   done
 
-  # Rule 5: Restrict agent port 8300 to platform VM only
+  # Rule 5: Restrict agent port 8300 to platform VM only via conntrack original dst port in forward path
   if [[ "${MODE}" == "dry-run" ]]; then
-    echo "[DRY-RUN] iptables -C INPUT -p tcp --dport 8300 -s ${PLATFORM_VM_IP} -j ACCEPT || iptables -I INPUT 1 -p tcp --dport 8300 -s ${PLATFORM_VM_IP} -j ACCEPT"
-    echo "[DRY-RUN] iptables -C INPUT -p tcp --dport 8300 -j DROP || iptables -A INPUT -p tcp --dport 8300 -j DROP"
+    echo "[DRY-RUN] iptables -A L3MON-FIREWALL -p tcp -m conntrack --ctorigdstport 8300 ! -s ${PLATFORM_VM_IP} -j DROP"
   else
-    iptables -C INPUT -p tcp --dport 8300 -s "${PLATFORM_VM_IP}" -j ACCEPT 2>/dev/null || \
-      iptables -I INPUT 1 -p tcp --dport 8300 -s "${PLATFORM_VM_IP}" -j ACCEPT
-    iptables -C INPUT -p tcp --dport 8300 -j DROP 2>/dev/null || \
-      iptables -A INPUT -p tcp --dport 8300 -j DROP
+    iptables -A L3MON-FIREWALL -p tcp -m conntrack --ctorigdstport 8300 ! -s "${PLATFORM_VM_IP}" -j DROP
+  fi
+
+  # Rule 6: Return back to DOCKER-USER for legitimate traffic (e.g. router relaying into instances)
+  if [[ "${MODE}" == "dry-run" ]]; then
+    echo "[DRY-RUN] iptables -A L3MON-FIREWALL -j RETURN"
+  else
+    iptables -A L3MON-FIREWALL -j RETURN
   fi
 }
 
-# 7. Next Steps Output
+# 8. Next Steps Output
 print_next_steps() {
-  echo "--- [7/7] Bootstrap Complete ---"
+  echo "--- [8/8] Bootstrap Complete ---"
   echo "Next steps on challenge host:"
   echo "1. Place deployment tokens in /etc/l3mon/secrets (mode 0600, root-only)."
   echo "2. Populate /etc/l3mon/challenges.toml with challenge manifests."
@@ -228,5 +252,6 @@ check_time_sync
 configure_sysctls
 configure_user_and_dirs
 configure_docker_daemon
+configure_env_file
 configure_firewall
 print_next_steps

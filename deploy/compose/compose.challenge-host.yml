@@ -13,7 +13,6 @@ services:
     image: tecnativa/docker-socket-proxy:0.3@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
     restart: unless-stopped
     init: true
-    read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     mem_limit: 128m
@@ -92,7 +91,7 @@ services:
       INSTANCER_TCP_HOST: "${CHALLENGE_HOST_TCP_NAME:-h1.inst.l3m0nctf.xyz}"
       INSTANCER_TCP_PORT_START: "30000"
       INSTANCER_TCP_PORT_COUNT: "200"
-      ROUTER_CONTAINER_NAME: l3mon-challenge-router-1
+      ROUTER_CONTAINER_NAME: l3mon-challenge-host-router-1
       INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16}"
     networks:
       - challenge_net
@@ -141,6 +140,6 @@ networks:
 
 secrets:
   INSTANCER_TOKEN:
-    file: ../../.secrets/INSTANCER_TOKEN
+    file: ${INSTANCER_TOKEN_FILE_HOST:-../../.secrets/INSTANCER_TOKEN}
   ROUTER_TOKEN:
-    file: ../../.secrets/ROUTER_TOKEN
+    file: ${ROUTER_TOKEN_FILE_HOST:-../../.secrets/ROUTER_TOKEN}

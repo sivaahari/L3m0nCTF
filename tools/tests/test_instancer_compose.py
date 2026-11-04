@@ -67,7 +67,10 @@ def test_production_overlay_properties():
     data = render_compose(
         "production",
         ["instancer", "instancer-production"],
-        extra_env={"INSTANCE_DOMAIN": "instances.l3m0nctf.xyz"},
+        extra_env={
+            "INSTANCE_DOMAIN": "instances.l3m0nctf.xyz",
+            "INSTANCER_INSTANCE_POOL": "10.200.0.0/16",
+        },
     )
     services = data.get("services", {})
     instancer = services.get("instancer", {})
@@ -117,14 +120,34 @@ def test_production_overlay_fails_without_instance_domain():
         "-f", str(ROOT / "deploy" / "compose" / "compose.instancer.yml"),
         "-f", str(ROOT / "deploy" / "compose" / "compose.instancer-production.yml"),
     ]
-    env = {k: v for k, v in os.environ.items() if k != "INSTANCE_DOMAIN"}
+    env = {k: v for k, v in os.environ.items() if k not in ("INSTANCE_DOMAIN", "INSTANCER_INSTANCE_POOL")}
     env["INSTANCE_DOMAIN"] = ""
+    env["INSTANCER_INSTANCE_POOL"] = "10.200.0.0/16"
 
     cmd = ["docker", "compose", *files, "config", "--format", "json"]
     res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=60)
     assert res.returncode != 0, "Expected docker compose config to fail when INSTANCE_DOMAIN is empty"
     combined = res.stderr + res.stdout
     assert "INSTANCE_DOMAIN must be set" in combined, f"Expected error text not found in: {combined}"
+
+
+def test_production_overlay_fails_without_instance_pool():
+    """Rendering production overlay without INSTANCER_INSTANCE_POOL must fail loudly."""
+    files = [
+        "-f", str(ROOT / "deploy" / "compose" / "compose.base.yml"),
+        "-f", str(ROOT / "deploy" / "compose" / "compose.production.yml"),
+        "-f", str(ROOT / "deploy" / "compose" / "compose.instancer.yml"),
+        "-f", str(ROOT / "deploy" / "compose" / "compose.instancer-production.yml"),
+    ]
+    env = {k: v for k, v in os.environ.items() if k not in ("INSTANCE_DOMAIN", "INSTANCER_INSTANCE_POOL")}
+    env["INSTANCE_DOMAIN"] = "instances.l3m0nctf.xyz"
+    env["INSTANCER_INSTANCE_POOL"] = ""
+
+    cmd = ["docker", "compose", *files, "config", "--format", "json"]
+    res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=60)
+    assert res.returncode != 0, "Expected docker compose config to fail when INSTANCER_INSTANCE_POOL is empty"
+    combined = res.stderr + res.stdout
+    assert "INSTANCER_INSTANCE_POOL must be set in production" in combined, f"Expected error text not found in: {combined}"
 
 
 def test_challenge_host_compose_properties():
@@ -149,12 +172,13 @@ def test_challenge_host_compose_properties():
     assert agent.get("cap_drop") == ["ALL"]
     assert "no-new-privileges:true" in agent.get("security_opt", [])
     assert agent.get("environment", {}).get("INSTANCER_AGENT_MODE") == "1"
+    assert agent.get("environment", {}).get("ROUTER_CONTAINER_NAME") == "l3mon-challenge-host-router-1"
     assert int(agent.get("mem_limit")) == 268435456 or agent.get("mem_limit") == "256m"  # 256MB
     assert agent.get("pids_limit") == 128
 
-    # 2. Socket proxy image pinned by digest and hardened
+    # 2. Socket proxy image pinned by digest and hardened (must NOT be read_only due to haproxy runtime config)
     assert "@sha256:" in socket_proxy.get("image", "")
-    assert socket_proxy.get("read_only") is True
+    assert socket_proxy.get("read_only") is not True
     assert socket_proxy.get("cap_drop") == ["ALL"]
     assert socket_proxy.get("pids_limit") == 64
 

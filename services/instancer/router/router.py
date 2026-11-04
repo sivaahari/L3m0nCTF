@@ -109,9 +109,9 @@ DEFAULT_TCP_PORT_START = 30000
 DEFAULT_TCP_PORT_COUNT = 200
 DEFAULT_TCP_IDLE_TIMEOUT_SECONDS = 300.0
 DEFAULT_TCP_LIFETIME_CAP_SECONDS = 3600.0
-DEFAULT_TCP_MAX_CONNS_PER_INSTANCE = 5
+DEFAULT_TCP_MAX_CONNS_PER_INSTANCE = 10
 DEFAULT_TCP_MAX_CONNS_PER_IP = 60  # Campus NAT friendly (Lead Item 5)
-DEFAULT_TCP_MAX_TOTAL_CONNS = 500
+DEFAULT_TCP_MAX_TOTAL_CONNS = 2000
 DEFAULT_TCP_RATE_LIMIT_BPS = 2 * 1024 * 1024  # 2 MB/s
 DEFAULT_TCP_RATE_LIMIT_BURST = 4 * 1024 * 1024  # 4 MB
 DEFAULT_INSTANCE_POOL = "10.200.0.0/16"
@@ -123,11 +123,12 @@ def validate_route_target(
     target_port: int,
     pool: ipaddress.IPv4Network | ipaddress.IPv6Network | list[ipaddress.IPv4Network | ipaddress.IPv6Network],
     allow_loopback: bool = False,
+    pool_subnet_size: int = 24,
 ) -> bool:
     """Validate that target_ip:target_port is safe to connect to.
 
-    Target MUST lie strictly inside pool and NOT be the network address, gateway (.1),
-    or broadcast address. Refuses public IPs, metadata 169.254.169.254, loopback,
+    Target MUST lie strictly inside pool and NOT be the network address, gateway (.1 / +1),
+    or broadcast address for its subnet. Refuses public IPs, metadata 169.254.169.254, loopback,
     and private IPs outside pool (e.g. 10.0.0.5).
     """
     if not isinstance(target_port, int) or not (1 <= target_port <= 65535):
@@ -148,22 +149,30 @@ def validate_route_target(
     if matching_pool is None:
         return False
 
-    # Reject network address and broadcast address
+    # Reject overall pool network address and broadcast address
     if addr == matching_pool.network_address:
         return False
     if hasattr(matching_pool, "broadcast_address") and addr == matching_pool.broadcast_address:
         return False
 
-    # Reject host gateway (.1 in any IPv4 subnet) unless loopback test mode
-    # Subnet sizing note (A6.1):
-    # With Docker daemon default-address-pools of base size 24, each instance network is a /24
-    # whose network address is .0, gateway is .1, broadcast is .255, and usable host range is .2 to .254.
-    # Rejecting .0, .1, and .255 matches this /24 topology. If a different pool size is configured
-    # in daemon.json, the explicit network_address and broadcast_address checks above and gateway rules protect boundaries.
+    # Reject host gateway, subnet network address, and broadcast address in instance subnets
     if isinstance(addr, ipaddress.IPv4Address) and not (allow_loopback and addr.is_loopback):
-        if addr.packed[-1] == 1:
-            return False
-        if addr.packed[-1] in (0, 255):
+        # Compute specific subnet based on pool_subnet_size (e.g. /24, /28)
+        prefix = pool_subnet_size if (isinstance(pool_subnet_size, int) and 16 <= pool_subnet_size <= 30) else 24
+        try:
+            sub = ipaddress.ip_network(f"{addr}/{prefix}", strict=False)
+            gw = sub.network_address + 1
+            if addr == sub.network_address:
+                return False
+            if addr == gw:
+                return False
+            if addr == sub.broadcast_address:
+                return False
+        except Exception:
+            pass
+
+        # Fallback safeguard for /24 standard octets (.0, .1, .255)
+        if addr.packed[-1] in (0, 1, 255):
             return False
 
     # Reject loopback, multicast, link-local, unspecified
@@ -261,6 +270,8 @@ class InstanceRouter:
         tcp_connect_timeout: float = TCP_CONNECT_TIMEOUT_SECONDS,
         allow_loopback_for_tests: bool = False,
         hosts: Optional[list[dict]] = None,
+        pool_subnet_size: int = 24,
+        trusted_forwarders: Optional[list[str] | str] = None,
     ):
         if not (1024 <= tcp_port_start <= 65535):
             raise ValueError(f"INSTANCER_TCP_PORT_START must be between 1024 and 65535, got {tcp_port_start}")
@@ -332,8 +343,25 @@ class InstanceRouter:
         self.tcp_rate_limit_bps = tcp_rate_limit_bps
         self.tcp_rate_limit_burst = tcp_rate_limit_burst
         self.instance_pool = instance_pool
+        self.pool_subnet_size = pool_subnet_size
         self.tcp_connect_timeout = tcp_connect_timeout
         self.allow_loopback_for_tests = allow_loopback_for_tests
+
+        # Hop 2 trusted central router forwarders for X-L3mon-Client-IP extraction
+        self.trusted_forwarders: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+        fwd_raw = trusted_forwarders if trusted_forwarders is not None else os.getenv("INSTANCER_TRUSTED_FORWARDERS", "")
+        if isinstance(fwd_raw, str):
+            fwd_items = [x.strip() for x in fwd_raw.split(",") if x.strip()]
+        else:
+            fwd_items = list(fwd_raw)
+        for item in fwd_items:
+            try:
+                if "/" in item:
+                    self.trusted_forwarders.append(ipaddress.ip_network(item, strict=False))
+                else:
+                    self.trusted_forwarders.append(ipaddress.ip_network(f"{item}/32" if ":" not in item else f"{item}/128", strict=False))
+            except ValueError:
+                pass
 
         self.hosts = hosts or []
         self.is_central = bool(hosts)
@@ -370,8 +398,36 @@ class InstanceRouter:
         """Lookup route dictionary for a given instance ID."""
         return self._routes.get(inst_id)
 
+    def is_trusted_forwarder(self, peer_ip: str) -> bool:
+        """Check if peer_ip matches any configured trusted forwarder network."""
+        try:
+            addr = ipaddress.ip_address(peer_ip)
+            for net in self.trusted_forwarders:
+                if addr in net:
+                    return True
+        except ValueError:
+            pass
+        return False
+
     def resolve_client_ip(self, peer_ip: str, headers: list[tuple[str, str]]) -> str:
-        """If peer_ip is in Cloudflare's published IP ranges, trust CF-Connecting-IP."""
+        """Resolve real client IP.
+
+        1. If peer_ip is a configured trusted forwarder (central router), trust X-L3mon-Client-IP.
+        2. If peer_ip is in Cloudflare's published IP ranges, trust CF-Connecting-IP.
+        3. Otherwise, return peer_ip directly.
+        """
+        # Central router forwarding to Hop 2
+        if self.is_trusted_forwarder(peer_ip):
+            for k, v in headers:
+                if k.lower().strip() == "x-l3mon-client-ip":
+                    candidate = v.strip()
+                    try:
+                        ipaddress.ip_address(candidate)
+                        return candidate
+                    except ValueError:
+                        pass
+
+        # Cloudflare edge
         if is_cloudflare_ip(peer_ip):
             for k, v in headers:
                 if k.lower().strip() == "cf-connecting-ip":
@@ -381,6 +437,7 @@ class InstanceRouter:
                         return candidate
                     except ValueError:
                         pass
+
         return peer_ip
 
     async def acquire_client_connection(self, peer_ip: str) -> tuple[bool, int, str]:
@@ -900,17 +957,22 @@ class InstanceRouter:
         """Close all TCP listeners and abort all active connections."""
         for p, server in list(self._tcp_listeners.items()):
             server.close()
-            try:
-                await server.wait_closed()
-            except Exception:
-                pass
-        self._tcp_listeners.clear()
+
+        # Cancel all active relay tasks and await cancellation FIRST so sockets close
         for p, tasks in list(self._tcp_connections.items()):
             for t in tasks:
                 t.cancel()
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
         self._tcp_connections.clear()
+
+        # Bounded wait for server sockets to finish closing
+        for p, server in list(self._tcp_listeners.items()):
+            try:
+                await asyncio.wait_for(server.wait_closed(), timeout=2.0)
+            except Exception:
+                pass
+        self._tcp_listeners.clear()
         self._tcp_routes.clear()
 
     def get_tcp_metrics(self) -> dict:
@@ -964,6 +1026,7 @@ class InstanceRouter:
         body: bytes,
         client_writer: asyncio.StreamWriter,
         route: Optional[dict] = None,
+        client_ip: Optional[str] = None,
     ) -> None:
         """Stream client request to backend instance and stream backend response back to client."""
         if len(body) > MAX_BODY_BYTES:
@@ -1015,12 +1078,16 @@ class InstanceRouter:
                 )
                 backend_writer = writer
 
-                # Strip hop-by-hop and Content-Length from client headers to send exactly one Content-Length
+                # Strip hop-by-hop, Content-Length, and incoming X-L3mon-Client-IP
                 fwd_headers = []
                 for k, v in client_headers:
                     kl = k.lower().strip()
-                    if kl not in _HOP_BY_HOP and kl != "content-length":
+                    if kl not in _HOP_BY_HOP and kl != "content-length" and kl != "x-l3mon-client-ip":
                         fwd_headers.append((k.strip(), v.strip()))
+
+                # Central router forwarding to Hop 2 sets trusted X-L3mon-Client-IP
+                if self.is_central or (route and route.get("host_name")):
+                    fwd_headers.append(("X-L3mon-Client-IP", client_ip or "127.0.0.1"))
 
                 req_lines = [f"{method} {path} HTTP/1.1"]
                 for k, v in fwd_headers:

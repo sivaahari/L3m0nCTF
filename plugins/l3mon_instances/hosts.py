@@ -18,13 +18,7 @@ import time
 from typing import Callable, Optional
 import urllib.parse
 
-try:
-    from CTFd.plugins.l3mon_instances.client import InstancerClient, InstancerClientError, get_instancer_token, get_instancer_url
-except ImportError:
-    try:
-        from plugins.l3mon_instances.client import InstancerClient, InstancerClientError, get_instancer_token, get_instancer_url
-    except (ImportError, ModuleNotFoundError):
-        from client import InstancerClient, InstancerClientError, get_instancer_token, get_instancer_url
+from CTFd.plugins.l3mon_instances.client import InstancerClient, InstancerClientError, get_instancer_token, get_instancer_url
 
 _log = logging.getLogger("l3mon.instances.hosts")
 
@@ -34,14 +28,12 @@ _global_tracker: Optional[HostCapacityTracker] = None
 _tracker_lock = threading.RLock()
 
 
-def get_token_for_host(host_name: str) -> str:
+def get_token_for_host(host_name: str, allow_fallback: bool = False) -> str:
     """Retrieve the authentication token for a specific instancer host.
 
-    Order of precedence:
-    1. /run/secrets/INSTANCER_TOKEN_<NAME_UPPER>
-    2. Environment variable INSTANCER_TOKEN_<NAME_UPPER>
-    3. Global /run/secrets/INSTANCER_TOKEN
-    4. Global environment variable INSTANCER_TOKEN
+    In multi-host mode (allow_fallback=False), each host MUST have its own token
+    (INSTANCER_TOKEN_<NAME_UPPER>). Falling back to the global platform token is
+    refused to prevent token sharing across hosts.
     """
     clean_name = re.sub(r"[^A-Za-z0-9_]", "_", host_name.upper())
     specific_secret = f"/run/secrets/INSTANCER_TOKEN_{clean_name}"
@@ -57,6 +49,11 @@ def get_token_for_host(host_name: str) -> str:
     specific_env = os.getenv(f"INSTANCER_TOKEN_{clean_name}", "").strip()
     if specific_env:
         return specific_env
+
+    if not allow_fallback:
+        raise ValueError(
+            f"Missing per-host token for host '{host_name}': INSTANCER_TOKEN_{clean_name} must be set"
+        )
 
     return get_instancer_token()
 

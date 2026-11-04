@@ -36,6 +36,13 @@ from services.instancer.tests.fixtures.prober.prober import (
     try_tcp_connect,
 )
 from services.instancer.safety import assert_safe, ContainerSafetyError
+from tests.integration.test_instances import (
+    admin,
+    make_player,
+    post_json,
+    request_router,
+    world,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -65,6 +72,8 @@ def test_prober_reports_fully_isolated_when_all_targets_unreachable():
         "other_ip": "10.255.255.1",
         "gateway_ip": "10.255.255.1",
         "instancer_host": "unreachable.invalid",
+        "public_ip": "192.0.2.1",
+        "public_host": "nothing.invalid",
     })
     # Strict assertion: fully_isolated must be True (no weak field existence check)
     assert report["fully_isolated"] is True
@@ -189,8 +198,6 @@ def test_live_overlay_instance_isolation_proof(world):
     subprocess.run(["docker", "build", "-t", "l3mon-fixture/demo-web:dev", "services/instancer/tests/fixtures/web"], check=True)
     subprocess.run(["docker", "build", "-t", "l3mon-fixture/prober:dev", "services/instancer/tests/fixtures/prober"], check=True)
 
-    from tests.integration.test_instances import admin, make_player, post_json, request_router
-
     # 1. Create Target Challenge (demo-web) and Prober Challenge (demo-prober)
     status, out_t = admin("POST", "/api/v1/challenges", {
         "name": "Target Web Challenge",
@@ -247,11 +254,13 @@ def test_live_overlay_instance_isolation_proof(world):
     target_inst_id = urllib.parse.urlparse(target_url).netloc.split(".")[0]
 
     # Retrieve Target container IP and name via Docker inspect
-    target_cname = f"l3mon-inst-{target_inst_id}"
+    target_cname = target_inst_id
     inspect_target = subprocess.run(["docker", "inspect", target_cname], capture_output=True, text=True, check=True)
     target_info = json.loads(inspect_target.stdout)[0]
-    target_ip = target_info["NetworkSettings"]["IPAddress"] or list(target_info["NetworkSettings"]["Networks"].values())[0]["IPAddress"]
-    gateway_ip = list(target_info["NetworkSettings"]["Networks"].values())[0]["Gateway"]
+    networks = target_info.get("NetworkSettings", {}).get("Networks", {})
+    first_net = next(iter(networks.values())) if networks else {}
+    target_ip = first_net.get("IPAddress", "")
+    gateway_ip = first_net.get("Gateway", "")
 
     # 6. Start Prober Instance
     status, resp_p = post_json(session_prober, "/api/v1/l3mon/instances", {"challenge_id": chal_prober_id})
@@ -259,7 +268,7 @@ def test_live_overlay_instance_isolation_proof(world):
     prober_url = resp_p["data"]["url"]
     prober_host = urllib.parse.urlparse(prober_url).netloc
     prober_inst_id = prober_host.split(".")[0]
-    prober_cname = f"l3mon-inst-{prober_inst_id}"
+    prober_cname = prober_inst_id
 
     # Wait for router route propagation
     time.sleep(3)

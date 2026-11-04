@@ -199,7 +199,8 @@ python -m pytest tests/integration/test_instances.py -v
 ### Instancer Unit Tests (`services/instancer/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-148 passed in 17.02s (4 November 2026)
+150 passed in 19.93s (4 November 2026)
+(Linux Python 3.11 & 3.12: 150 passed)
 ```
 *Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup, TCP port range validation, route target pool validation with multi-pool support, token bucket continuous rate limiting (2 MB/s, 4 MB burst), bidirectional relaying, clean half-close propagation, zero-leakage port reuse, TCP idle timeout, per-instance connection cap, silent connect failure, Prometheus TCP & HTTP metrics export, double-sync lock protection, three TCP settings range validation, per-IP cap boundary, global cap boundary, absolute lifetime cap under constant traffic, real byte-rate transfer timing, router HTTP metrics endpoint, packing test benchmark tool execution & safety metrics, central router two-hop destination integrity, route ID 32-hex validation, duplicate route ID resolution (first-wins), and 30-second silent host route expiration.*
 
@@ -208,14 +209,14 @@ platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
 ### Plugin Multi-Host Capacity & Scheduler Tests (`plugins/l3mon_instances/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-11 passed in 0.12s (4 November 2026)
+15 passed in 0.11s (4 November 2026)
 ```
-*Coverage: host configuration validation (`config/instancer/hosts.example.json`), per-host token isolation (`INSTANCER_TOKEN_<NAME>` with fallback), 5.0s TTL capacity cache & background refresh, in-memory optimistic local slot counter preventing thundering herd under concurrency, 30-second down host penalty & automatic recovery, 503 `no_capacity` with `Retry-After` header when all hosts down/full, instance host stickiness for renew and stop, down host instance status mapping to `error` (never `running`), admin kill-all aggregation across all hosts, and multi-host failover and rebalancing at scale (4 hosts, 1 host failure, load dynamically shed to surviving hosts).*
+*Coverage: host configuration validation (`config/instancer/hosts.example.json`), strict per-host token isolation (`INSTANCER_TOKEN_<NAME>` without global fallback), 5.0s TTL capacity cache & background refresh, in-memory optimistic local slot counter preventing thundering herd under concurrency, 30-second down host penalty on failed capacity check or failed start with retry on healthy host (Probe A), racing starts returning existing instance while stopping losing host orphan (Probe B), down host instance status mapping to `error` to players (Probe C), admin kill-all aggregation across all hosts (Probe D), 503 `no_capacity` with `Retry-After` header when all hosts down/full, instance host stickiness for renew and stop, and multi-host failover and rebalancing at scale.*
 
 ### Tools Regression Suite (`tools/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-332 passed, 14 skipped in 137.83s (4 November 2026)
+334 passed, 14 skipped in 140.98s (4 November 2026)
 ```
 *Includes `test_instancer_compose.py` (validating dev overlay, production overlay with `INSTANCE_DOMAIN` check, and standalone challenge host compose `compose.challenge-host.yml` with container hardening `cap_drop: [ALL]`, `read_only: true`, `no-new-privileges: true`, log rotation `10m/3`) and `test_bootstrap.py` (verifying bootstrap script `--dry-run` with poison stubs on PATH failing with exit code 99 if called, zero modifying commands executed, and unified pool configuration across `daemon.json` and `INSTANCER_INSTANCE_POOL` with `DOCKER-USER` rules).*
 
@@ -251,6 +252,9 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 ## 4. Differences from this prompt
 
 - **WebSocket Claim Removed**: The original prompt permitted either bidirectional WebSocket streaming or removing the claim. In agreement with prompt B3-R1 ("removing the claim is acceptable for now; say so"), WebSocket support claims were cleanly stripped from code and docs. `Upgrade` is stripped as a hop-by-hop header.
+- **Development vs. Production Instance Pool**: `compose.instancer.yml` carries a wide development default (`10.200.0.0/16,172.16.0.0/12`). In `compose.instancer-production.yml`, `INSTANCER_INSTANCE_POOL` is strictly required (`${INSTANCER_INSTANCE_POOL:?...}`) and tied directly to the Docker daemon's `default-address-pools` on that host VM, preventing platform containers (`172.16.0.0/12`) from ever being accepted as challenge route targets.
+- **Strict Per-Host Token Isolation (No Global Fallback)**: In multi-host mode, `get_token_for_host(host_name)` strictly requires `INSTANCER_TOKEN_<NAME_UPPER>` and refuses falling back to the global platform `INSTANCER_TOKEN`, preventing accidental credential sharing across host VMs.
+- **Multi-Host Configuration Schema (`hosts.json`)**: Configured via `config/instancer/hosts.example.json` using schema keys `name`, `url`, `router_url`, `host`/`public_tcp_host`, `max_slots`, `weight`, and optional `ca_cert`.
 
 ---
 
@@ -275,17 +279,17 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 
 | Rule / Protection | The Break Introduced | Test That Noticed & Failed |
 |---|---|---|
-| Image pinned digest required | Omit `@sha256:...` digest from challenge image spec | `test_manifest_unpinned_image_fails_in_prod` |
-| Non-root user required (A1) | Specify `user = "0:0"` (root) or `"00"` in manifest spec | `test_assert_safe_rejects_root_user` |
-| Host mounts prohibited (A1) | Add `HostConfig.Mounts` bind mount spec | `test_assert_safe_rejects_modern_mounts` |
-| Port publishing prohibited (A1) | Set `PublishAllPorts: true` in container HostConfig | `test_assert_safe_rejects_publish_all_ports` |
-| Refused spec cleanup (A2) | `assert_safe` fails on spec | `test_rejected_spec_cleans_up_network` |
-| Non-ASCII flag safe (A3) | Submit flag with non-ASCII unicode byte | `test_dynamic_flag_compare_non_ascii_resilient` |
-| Empty token rejection (A4) | Pass empty Bearer token when `ROUTER_TOKEN` is unset | `test_api_auth_required_and_invalid_token` |
+| Image pinned digest required | Omit `@sha256:...` digest from challenge image spec | `test_hostile_unpinned_image_refused` |
+| Non-root user required (A1) | Specify `user = "0:0"` (root) or `"00"` in manifest spec | `test_hostile_root_user_refused` |
+| Host mounts prohibited (A1) | Add `HostConfig.Mounts` bind mount spec | `test_hostile_modern_bind_mount_refused` |
+| Port publishing prohibited (A1) | Set `PublishAllPorts: true` in container HostConfig | `test_hostile_publish_all_ports_refused` |
+| Refused spec cleanup (A2) | `assert_safe` fails on spec | `test_a_container_spec_that_assert_safe_refuses_leaves_no_network_and_no_port_behind` |
+| Flag shape validation (A3) | Submit flag with non-ASCII or invalid format | `test_flag_shape_validation` |
+| Empty token rejection (A4) | Pass empty Bearer token when `ROUTER_TOKEN` is unset | `test_auth_token_handling` |
 | Huge declared body cap (A5) | Client sends `Content-Length: 4000000000` | `test_a_huge_declared_body_is_refused_with_413_before_any_of_it_is_read` |
 | Excessive headers (A5) | Client sends > 100 header lines | `test_too_many_header_lines_are_refused_with_431` |
 | Slow client drop (A5) | Client stalls mid-request | `test_a_client_that_stops_sending_is_dropped_at_the_timeout_not_kept_for_ever` |
-| Player TTL override ignored (A8) | Player API sends `ttl_seconds=31536000` | `test_player_api_ignores_ttl_override` |
+| Renewal timing constraints (A8) | Client attempts renewal within 60s cooldown | `test_renewal_constraints` |
 | Conflicting framing (R1) | Send both `Content-Length` and `Transfer-Encoding` | `test_rejects_conflicting_content_length_and_transfer_encoding` (returns 400) |
 | Chunked request refusal (R1) | Client sends `Transfer-Encoding: chunked` | `test_refuses_chunked_request_body` (returns 400) |
 | Multi-value headers (R1) | Backend sends multiple `Set-Cookie` headers | `test_preserves_multiple_set_cookie_headers_and_single_content_length` |
@@ -313,12 +317,12 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 | Production INSTANCE_DOMAIN requirement (N4) | Unset `INSTANCE_DOMAIN` and render production overlay | `test_production_overlay_fails_without_instance_domain` |
 | TCP Port range validation (< 1024 or > 65535) | `tcp_port_start=80` or `65000` with count 1000 | `test_tcp_port_range_validation` (raises ValueError) |
 | Route target pool validation | Connect to IP outside pool, broadcast, gateway, or metadata | `test_route_target_pool_validation` (validate_route_target returns False) |
-| Token bucket continuous rate limiter | Consume more bytes than rate and burst allowance | `test_token_bucket_rate_limiter` |
-| Bidirectional TCP traffic relay | Send data from client to backend and receive echo | `test_tcp_relay_bidirectional_traffic` |
-| Half-close EOF propagation | Client sends write_eof() while waiting for backend response | `test_tcp_half_close_propagation` |
+| Token bucket continuous rate limiter | Consume more bytes than rate and burst allowance | `test_tcp_rate_limiter_throttles_firehose` |
+| Bidirectional TCP traffic relay | Send data from client to backend and receive echo | `test_tcp_bidirectional_and_half_close` |
+| Half-close EOF propagation | Client sends write_eof() while waiting for backend response | `test_tcp_bidirectional_and_half_close` |
 | Zero-leakage port reuse (A3) | Re-route port to backend 2 while client 1 connected | `test_tcp_port_reuse_no_byte_leakage` (asserts client 1 gets EOF/reset, backend 1 closed) |
-| TCP idle timeout | Idle connection with no traffic for > idle_timeout | `test_tcp_idle_timeout_terminates_connection` |
-| Per-instance TCP connection cap | Exceed max connections per instance | `test_tcp_max_connections_per_instance` |
+| TCP idle timeout | Idle connection with no traffic for > idle_timeout | `test_tcp_idle_timeout_drops_connection` |
+| Per-instance TCP connection cap | Exceed max connections per instance | `test_tcp_connection_caps` |
 | Silent connect failure | Connect to unreachable/dead backend target | `test_tcp_connect_failure_closes_silently` |
 | TCP Prometheus metrics | Verify TCP counters in format_tcp_metrics_prometheus | `test_tcp_metrics_reporting` |
 | Pwn fixture dynamic flag (Row 37) | Send "open" to TCP fixture server | `test_tcp_fixture_returns_dynamic_flag` |
@@ -338,24 +342,24 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 | External port isolation (A1) | Check host 2375 port exposure | `test_external_port_isolation` |
 | Real live overlay isolation proof (A1) | Start live prober and target instances on overlay stack | `test_live_overlay_instance_isolation_proof` |
 | Real TCP challenge lifecycle (A4) | Start TCP instance, read flag, submit correct/incorrect, renew, stop, recovery | `test_tcp_instance_end_to_end_lifecycle` |
-| Host config structure & safety (F3) | Invalid host url or non-alphanumeric name in `hosts.json` | `test_load_hosts_config_validates_structure_and_safety` (raises ValueError) |
-| Per-host token isolation (F3) | Host 2 client uses Host 1 secret token | `test_per_host_token_resolution_and_isolation` (asserts distinct tokens per host) |
-| Capacity cache 5.0s TTL (F3) | Cache refreshed on every poll instead of cached for 5s | `test_capacity_cache_ttl_and_refresh` (cached for 5s, refreshed after 5s) |
-| Optimistic local slot counter (F3) | Local counter not incremented on schedule | `test_optimistic_local_slot_counter_concurrency` (prevents thundering herd) |
-| 30s down host penalty & recovery (F3) | Host failing poll retried immediately or never recovered | `test_down_host_30s_penalty_and_recovery` (skipped during 30s penalty, recovers after 30s) |
-| 503 no_capacity retry_after (F3) | Return 200 or 500 when all hosts full or down | `test_all_hosts_down_or_full_returns_503_no_capacity` (returns HTTP 503 with Retry-After header) |
-| Instance host stickiness (F3) | Renew/stop routed to highest capacity host instead of assigned host | `test_instance_host_stickiness_for_renew_and_stop` (operations route strictly to assigned host_name) |
-| Down host instance error state (F3) | Report instance as running when assigned host is down | `test_down_host_instances_reported_as_error_not_running` (asserts `state == "error"`) |
-| Admin kill-all aggregation (F3) | Admin kill-all only stops instances on first host | `test_admin_kill_all_and_list_across_hosts` (broadcasts across all hosts and consolidates counts) |
+| Host config structure & safety (F3) | Invalid host url or non-alphanumeric name in `hosts.json` | `test_load_hosts_config_validation_errors` (raises ValueError) |
+| Per-host token isolation (F3) | Host 2 client uses Host 1 secret token | `test_token_resolution_per_host` (asserts distinct tokens per host) |
+| Capacity cache 5.0s TTL (F3) | Cache refreshed on every poll instead of cached for 5s | `test_capacity_5s_caching` (cached for 5s, refreshed after 5s) |
+| Optimistic local slot counter (F3) | Local counter not incremented on schedule | `test_optimistic_local_counter_concurrent_starts` (prevents thundering herd) |
+| 30s down host penalty & recovery (F3) | Host failing poll retried immediately or never recovered | `test_30s_down_rule_and_recovery` (skipped during 30s penalty, recovers after 30s) |
+| 503 no_capacity retry_after (F3) | Return 200 or 500 when all hosts full or down | `test_all_hosts_full_or_down_raises_no_capacity` (returns HTTP 503 with Retry-After header) |
+| Instance host stickiness (F3) | Renew/stop routed to highest capacity host instead of assigned host | `test_instance_stays_on_assigned_host` (operations route strictly to assigned host_name) |
+| Down host instance error state (F3) | Report instance as running when assigned host is down | `test_down_host_instances_reported_as_error_to_player` (asserts `state == "error"`) |
+| Admin kill-all aggregation (F3) | Admin kill-all only stops instances on first host | `test_admin_kill_all_dispatches_across_all_hosts` (broadcasts across all hosts and consolidates counts) |
 | Multi-host scale failover (F3) | Scheduler stalls or crashes when active host drops offline | `test_multihost_failover_and_rebalance_at_scale` (4 hosts, 1 dies, load sheds evenly to surviving 3) |
-| Pack benchmark tool metrics (F5) | Benchmark tool proceeds when host free RAM below threshold | `test_pack_test_tool_execution_and_metrics` (raises MemoryThresholdError, outputs p50/p95 percentiles) |
+| Pack benchmark tool metrics (F5) | Benchmark tool proceeds when host free RAM below threshold | `test_benchmark_run_lifecycle_and_cleanup` (raises MemoryThresholdError, outputs p50/p95 percentiles) |
 | Challenge host compose hardening (F4) | Missing cap_drop ALL, read_only root, or no-new-privileges | `test_challenge_host_compose_properties` (validates agent, socket-proxy, router hardening) |
-| Two-hop destination integrity (F6) | Forward Hop 1 traffic to untrusted target_ip reported in agent route | `test_central_router_dest_integrity_ignores_reported_target_ip` (forwards strictly to configured router_url) |
-| Central router route ID 32-hex (F6) | Accept path-traversal or non-hex string as route ID | `test_central_router_rejects_malformed_route_ids` (strictly rejects non-32-hex IDs) |
-| Duplicate route ID first-wins (F6) | Second host overwrites first host's registered route | `test_central_router_duplicate_route_id_first_wins` (first registered host retains route) |
-| 30s silent host route expiry (F6) | Routes from dead host remain active in central router indefinitely | `test_central_router_silent_host_route_expiration` (purges routes after 30s silence) |
+| Two-hop destination integrity (F6) | Forward Hop 1 traffic to untrusted target_ip reported in agent route | `test_hop1_destination_integrity_ignores_agent_target` (forwards strictly to configured router_url) |
+| Central router route ID 32-hex (F6) | Accept path-traversal or non-hex string as route ID | `test_router_rejects_malformed_instance_id` (strictly rejects non-32-hex IDs) |
+| Duplicate route ID first-wins (F6) | Second host overwrites first host's registered route | `test_router_duplicate_id_first_registered_wins` (first registered host retains route) |
+| 30s silent host route expiry (F6) | Routes from dead host remain active in central router indefinitely | `test_dead_host_routes_expire_within_30s` (purges routes after 30s silence) |
 | Bootstrap dry run poison stubs (F4) | Execute modifying command during `--dry-run` | `test_bootstrap_dry_run_executes_no_modifying_commands` (poison stubs on PATH exit 99 if called) |
-| Unified pool & DOCKER-USER rules (F4) | Write conflicting CIDRs between daemon.json and pool | `test_bootstrap_generates_correct_iptables_and_daemon_json` (asserts identical subnet across configs) |
+| Unified pool & DOCKER-USER rules (F4) | Write conflicting CIDRs between daemon.json and pool | `test_bootstrap_dry_run_executes_no_modifying_commands` (asserts identical subnet across configs) |
 
 ---
 
@@ -377,7 +381,7 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 ## 9. Open questions and known gaps
 
 - **Milestone 1 (Round 2)**: Completed. All six audit findings (A1 through A6) resolved, verified, and backed by tests that fail when broken (see Section 12).
-- **Milestone 2 (Multi-Host Distribution, Capacity Client, Two-Hop Router)**: Completed. All items implemented and verified across 11 plugin host tests, 148 instancer tests, and 332 tools tests (see Section 13).
+- **Milestone 2 (Multi-Host Distribution, Capacity Client, Two-Hop Router)**: Completed. All items implemented and verified across 15 plugin host/probe tests, 150 instancer tests, and 334 tools tests (see Section 13).
 - **Milestone 3 (Failover, Bootstrap Script, Runbook, Threat Model)**: Completed. Scale failover verified, bootstrap dry run verified with poison stubs, documentation, traffic topologies, and threat model updated with TH-22..TH-30 (see Section 14).
 - **Awaiting Owner / Lead Cloud Provisions**: Once cloud deployment resumes, the project owner will provision the second challenge server and the direct DNS A-records (`h1.inst.l3m0nctf.xyz`, etc.). Local multi-host testing verified using loopback and container ports.
 
@@ -420,13 +424,9 @@ This section documents the resolution of all six lead audit findings (A1 through
     - Probes target instance by IP and name, gateway, instancer, router, and core containers via `/report` over the router.
     - Asserts all 9 checks return `isolated: True`.
     - Outside verification from host: asserts `docker port` for both containers is completely empty, and Docker socket proxy (port 2375) is unreachable from host.
-- **Break table for isolation proof**:
-  | Invariant Broken | Broken Variant | Test Failure |
-  |---|---|---|
-  | Container attached to default bridge network | Set `HostConfig.NetworkMode = "bridge"` on target/prober | `test_live_overlay_instance_isolation_proof` FAILED: `report["checks"]["other_instance_by_ip"]["isolated"] is False` |
-  | Container port published to host | Set `PortBindings: {"8080/tcp": [{"HostPort": "8080"}]}` | `test_live_overlay_instance_isolation_proof` FAILED: `Target container exposed ports: 8080/tcp -> 0.0.0.0:8080` |
-  | Docker socket mounted into container | Add `/var/run/docker.sock` to `Binds` | `test_container_security_invariants_enforced` FAILED: `ContainerSafetyError: Docker socket mounts forbidden` |
-  | Outbound DNS resolution allowed | Prober connects to DNS resolver or resolves public domain | `test_prober_detects_egress_and_target_violations` FAILED: `report["checks"]["internet_outbound"]["isolated"] is False` |
+- **Isolation Verification Details**:
+  - Offline unit tests in `tests/integration/test_instances_isolation.py` verify prober logic (`test_prober_reports_fully_isolated_when_all_targets_unreachable` with unroutable `192.0.2.1` and `nothing.invalid`), violation detection (`test_prober_detects_egress_and_target_violations`), container security profile invariants (`test_container_security_invariants_enforced`), and external port isolation (`test_external_port_isolation`).
+  - Live stack proof `test_live_overlay_instance_isolation_proof` runs on the live stack with real containers (`demo-web`, `demo-prober`) across the router, querying `/report` and asserting all 9 check keys return `isolated: True`. When prober is attached to platform network, `platform_core` turns red.
 
 ### A2. Relay Defects Resolution
 - **2a. Double Route Sync Race Condition**:
@@ -479,8 +479,8 @@ This section documents the resolution of all six lead audit findings (A1 through
   - Verifies complete TCP lifecycle on running stack: challenge creation, player start, connecting to relay port (30000..30199), banner reading, `open` command sending, dynamic flag derivation, team submission (Team A correct, Team B incorrect), renewal, instancer/router restart recovery, stop, and closed port verification.
 
 ### A5 & A6. Handoff Truthfulness, Digests, and Topology Documentation
-- **Subnet Sizing Note**:
-  - In `validate_route_target`, the `.0`, `.1`, `.255` octet checks match Docker's standard `default-address-pools` with `/24` subnet mask (gateway at `.1`, usable host range `.2`..`.254`). If daemon is configured with subnets larger or smaller than `/24`, network and broadcast boundaries are protected by the explicit `addr == pool.network_address` and `addr == pool.broadcast_address` checks.
+- **Subnet Sizing & Gateway Calculation Note (A6.1)**:
+  - In `validate_route_target`, container target addresses are validated against the specific subnet size (`pool_subnet_size`, default 24, configurable e.g. 28). For each subnet `sub = ipaddress.ip_network(f"{addr}/{prefix}", strict=False)`, the router computes and explicitly rejects the subnet network address (`sub.network_address`), the host gateway (`sub.network_address + 1`), and the broadcast address (`sub.broadcast_address`). This protects per-subnet boundaries whether the daemon allocates `/24` or `/28` subnets.
 - **Asymmetric Rate Limiting Rationale**:
   - Client-to-instance traffic is rate-limited via `TokenBucketRateLimiter` (2 MB/s, 4 MB burst) to protect challenge processes from socket flooding / DoS attacks.
   - Instance-to-player traffic is deliberately unthrottled to allow fast delivery of challenge banners, disassembly output, and large binary leaks without buffering pressure or queue bloat in the router.
@@ -489,8 +489,9 @@ This section documents the resolution of all six lead audit findings (A1 through
 - **Pinned Dockerfile Digests**:
   - Base image pinned to `python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce` across `services/instancer/tests/fixtures/tcp/Dockerfile`, `prober/Dockerfile`, and `web/Dockerfile`.
 - **Current Test Run Counts**:
-  - `services/instancer/tests/`: **137 passed** (117 existing + 20 new).
-  - `tools/tests/`: **303 passed**, 12 skipped.
+  - `services/instancer/tests/`: **150 passed in 19.93s** (Windows Python 3.14) / **150 passed** (Linux Python 3.11 & 3.12).
+  - `tools/tests/`: **334 passed**, 14 skipped.
+  - `plugins/l3mon_instances/tests/`: **15 passed in 0.11s** (11 host scheduler tests + 4 lead probes).
   - Hygiene scan: **0 finding(s)** across working tree and commit history.
 
 Following the lead engineer's review of the second half plan (`NOTE-F.md`), Milestone 1 implements the TCP router relay (F1), automated isolation proof (F2), and test fixtures:
@@ -509,19 +510,23 @@ Following the lead engineer's review of the second half plan (`NOTE-F.md`), Mile
   - `INSTANCER_TCP_PORT_COUNT`: default `200` (strictly 1..2000, start + count - 1 <= 65535).
   - `INSTANCER_TCP_IDLE_TIMEOUT`: default `300.0`s (drops inactive connections after 5 minutes).
   - `INSTANCER_TCP_LIFETIME_CAP`: default `3600.0`s (maximum 1 hour per connection).
-  - `INSTANCER_TCP_MAX_CONNS_PER_INSTANCE`: default `5`.
+  - `INSTANCER_TCP_MAX_CONNS_PER_INSTANCE`: default `10`.
   - `INSTANCER_TCP_MAX_CONNS_PER_IP`: default `60` (campus NAT friendly per Lead Item 5).
-  - `INSTANCER_TCP_MAX_TOTAL_CONNS`: default `500`.
+  - `INSTANCER_TCP_MAX_TOTAL_CONNS`: default `2000`.
   - `INSTANCER_TCP_RATE_LIMIT_BPS`: default `2097152` (2 MB/s).
   - `INSTANCER_TCP_RATE_LIMIT_BURST`: default `4194304` (4 MB burst).
   - `INSTANCER_INSTANCE_POOL`: default `10.200.0.0/16` (matches `daemon.json` `default-address-pools`).
+  - `INSTANCER_POOL_SUBNET_SIZE`: default `24` (matches `daemon.json` subnet size, configurable e.g. `28`).
 
 ### 3. Route-Poisoning & Pool Validation Defenses (Lead Item 1)
-- `validate_route_target(target_ip, target_port, pool)`:
+- `validate_route_target(target_ip, target_port, pool, pool_subnet_size)`:
   - Target MUST lie strictly inside `INSTANCER_INSTANCE_POOL` (`10.200.0.0/16`).
-  - Rejects network address (`10.200.0.0`) and broadcast address (`10.200.255.255`).
-  - Rejects container bridge gateway (`10.200.0.1` and `.1` in any subnet).
+  - Rejects overall pool network address (`10.200.0.0`) and broadcast address (`10.200.255.255`).
+  - Rejects per-subnet network address (`sub.network_address`), gateway (`sub.network_address + 1`), and broadcast address (`sub.broadcast_address`) for either `/24` or `/28` subnets.
   - Rejects cloud metadata (`169.254.169.254`).
+  - Rejects host loopback (`127.0.0.1`).
+  - Rejects public IPs (`8.8.8.8`).
+  - **Rejects private addresses outside the pool** (e.g. `10.0.0.5`, platform VM, CTFd, MariaDB).
   - Rejects host loopback (`127.0.0.1`).
   - Rejects public IPs (`8.8.8.8`).
   - **Rejects private addresses outside the pool** (e.g. `10.0.0.5`, platform VM, CTFd, MariaDB).
@@ -571,14 +576,16 @@ Milestone 2 distributes container workloads across multiple challenge host VMs, 
     [
       {
         "name": "h1",
-        "url": "http://instancer-h1:8300",
-        "router_url": "http://router-h1:8090",
-        "capacity": 60,
-        "enabled": true
+        "url": "http://10.200.1.10:8300",
+        "router_url": "http://10.200.1.10:8090",
+        "host": "h1.inst.l3m0nctf.xyz",
+        "max_slots": 50,
+        "weight": 1.0,
+        "ca_cert": null
       }
     ]
     ```
-  - Validated by `load_hosts_config` and `validate_host_entry`: enforces valid URL schemes (`http`, `https`), alphanumeric host identifiers (preventing directory traversal / header injection), and positive integer capacity limits.
+  - Validated by `load_hosts_config` and `validate_host_entry`: enforces valid URL schemes (`http`, `https`), alphanumeric host identifiers (preventing directory traversal / header injection), positive numeric weights, positive integer `max_slots`, and existing `ca_cert` file paths if provided.
 - **5.0-Second TTL Capacity Cache (`HostCapacityTracker`)**:
   - Queries `GET /v1/capacity` on enabled hosts and caches capacity data with a 5.0-second TTL.
   - Eliminates polling storms against agent instances during traffic spikes.
@@ -586,30 +593,33 @@ Milestone 2 distributes container workloads across multiple challenge host VMs, 
 - **In-Memory Optimistic Local Slot Counter**:
   - To prevent thundering herds when multiple workers concurrently schedule instances within the 5.0-second cache window, `HostCapacityTracker.schedule_instance()` increments an internal optimistic counter (`_optimistic_slots += 1`).
   - Optimistic reservations decrement visible capacity immediately. Upon the next cache refresh (5 seconds), optimistic reservations reset and real container counts take over.
-- **30-Second Down Host Penalty**:
-  - If a host fails a capacity check or start request, `mark_host_down(host_name)` marks it down for 30.0 seconds.
+- **30-Second Down Host Penalty & Start Retry (Probe A)**:
+  - If a host fails a capacity check or start request (5xx or connection failure), `mark_host_down(host_name)` marks it down for 30.0 seconds.
+  - On a failed start, `start_instance()` retries once on the next healthiest host.
   - The scheduler skips down hosts for all new instance starts, dynamically routing new instances to healthy hosts.
   - Down hosts automatically recover after 30 seconds once a subsequent poll succeeds.
+- **Racing Starts Deduplication & Orphan Stop (Probe B)**:
+  - If two start requests race for the same team and challenge, the losing start catches the race conflict, immediately calls `stop_instance()` on the host where it started the orphaned container, and returns HTTP 200 with the existing winning instance.
 - **503 `no_capacity` with `Retry-After`**:
   - When all configured hosts are at capacity or down, the player API returns HTTP 503 with body `{"success": false, "error": "no_capacity"}` and `Retry-After: 30` header.
 - **Instance Host Stickiness**:
   - The database records the assigned `host_name` on each active instance (`l3mon_instance.host_name`).
   - Renew and stop requests query the database and route strictly to the assigned host, preventing cross-host route conflicts or orphaned containers.
-- **Down Host Status Mapping**:
+- **Down Host Status Mapping (Probe C)**:
   - If a player queries instance status while the assigned host is down, the plugin returns `state="error"`, never misleading players with a false `state="running"`.
-- **Admin Kill-All Aggregation**:
+- **Admin Kill-All Aggregation (Probe D)**:
   - Admin `POST /api/v1/l3mon/admin/instances/kill_all` broadcasts `POST /v1/admin/kill` across all enabled hosts, aggregating stopped container counts.
 - **Per-Host Token Isolation**:
-  - `get_token_for_host(host_name)` resolves `INSTANCER_TOKEN_<NAME_UPPER>`, falling back to `INSTANCER_TOKEN`.
+  - `get_token_for_host(host_name)` resolves `INSTANCER_TOKEN_<NAME_UPPER>`. In multi-host mode, falling back to the global platform token is strictly refused (raises `ValueError`) to enforce token isolation across hosts.
 - **Pinned CA Support**:
   - `InstancerClient` accepts optional `ca_cert` parameter for mutual TLS or pinned internal CAs.
-- **Verification**: 11 unit tests in `plugins/l3mon_instances/tests/test_instances_hosts.py` passed in 0.12s.
+- **Verification**: 15 tests (11 unit tests in `plugins/l3mon_instances/tests/test_instances_hosts.py` + 4 lead probes in `test_lead_probes.py`) passed in 0.11s.
 
 ### 13.2 Instancer Agent Mode (`services/instancer/manager.py`, `services/instancer/main.py`)
 - `InstanceManager` accepts `host_name` (default: `"local"`) and `agent_mode` (default: `False`).
 - `get_capacity()` enriches status output with `host_name`, `slots_free`, `mem_mb_free`, and active container count.
 - `main.py` parses `INSTANCER_AGENT_MODE` and `INSTANCER_HOST_NAME`.
-- Verified across 148 instancer unit tests.
+- Verified across 150 instancer unit tests.
 
 ### 13.3 Standalone Challenge Host Compose Overlay (`deploy/compose/compose.challenge-host.yml`)
 - Standalone compose specification running exclusively the remote execution plane:

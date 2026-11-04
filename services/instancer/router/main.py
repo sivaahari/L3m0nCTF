@@ -1,4 +1,6 @@
 import asyncio
+import hmac
+import json
 import logging
 import os
 import sys
@@ -30,6 +32,73 @@ def _read_secret(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def parse_router_config(env: dict | None = None) -> dict:
+    """Read and validate Instance Router configuration from environment."""
+    e = os.environ if env is None else env
+
+    def _get_int(key: str, default: int) -> int:
+        val = e.get(key)
+        if val is None or not str(val).strip():
+            return default
+        try:
+            return int(str(val).strip())
+        except ValueError:
+            raise ValueError(f"{key} must be an integer, got '{val}'")
+
+    def _get_float(key: str, default: float) -> float:
+        val = e.get(key)
+        if val is None or not str(val).strip():
+            return default
+        try:
+            return float(str(val).strip())
+        except ValueError:
+            raise ValueError(f"{key} must be a number, got '{val}'")
+
+    port = _get_int("ROUTER_HTTP_PORT", 8090)
+    if not (1 <= port <= 65535):
+        raise ValueError(f"ROUTER_HTTP_PORT must be between 1 and 65535, got {port}")
+
+    instance_domain = e.get("INSTANCE_DOMAIN", "localhost:8090").strip()
+    instancer_url = e.get("INSTANCER_URL", "http://instancer:8300").strip()
+    poll_interval = _get_float("POLL_INTERVAL", 2.0)
+    if poll_interval <= 0:
+        raise ValueError(f"POLL_INTERVAL must be positive, got {poll_interval}")
+
+    tcp_port_start = _get_int("INSTANCER_TCP_PORT_START", 30000)
+    tcp_port_count = _get_int("INSTANCER_TCP_PORT_COUNT", 200)
+    tcp_idle_timeout = _get_float("INSTANCER_TCP_IDLE_TIMEOUT", 300.0)
+    tcp_lifetime_cap = _get_float("INSTANCER_TCP_LIFETIME_CAP", 3600.0)
+    tcp_max_conns_per_instance = _get_int("INSTANCER_TCP_MAX_CONNS_PER_INSTANCE", 10)
+    tcp_max_conns_per_ip = _get_int("INSTANCER_TCP_MAX_CONNS_PER_IP", 60)
+    tcp_max_total_conns = _get_int("INSTANCER_TCP_MAX_TOTAL_CONNS", 2000)
+    tcp_rate_limit_bps = _get_int("INSTANCER_TCP_RATE_LIMIT_BPS", 2 * 1024 * 1024)
+    tcp_rate_limit_burst = _get_int("INSTANCER_TCP_RATE_LIMIT_BURST", 4 * 1024 * 1024)
+    pool_subnet_size = _get_int("INSTANCER_POOL_SUBNET_SIZE", 24)
+    instance_pool = e.get("INSTANCER_INSTANCE_POOL", "10.200.0.0/16").strip()
+    trusted_forwarders = e.get("INSTANCER_TRUSTED_FORWARDERS", "").strip()
+    hosts_path = e.get("ROUTER_HOSTS_PATH", "").strip() or None
+
+    return {
+        "port": port,
+        "instance_domain": instance_domain,
+        "instancer_url": instancer_url,
+        "poll_interval": poll_interval,
+        "tcp_port_start": tcp_port_start,
+        "tcp_port_count": tcp_port_count,
+        "tcp_idle_timeout": tcp_idle_timeout,
+        "tcp_lifetime_cap": tcp_lifetime_cap,
+        "tcp_max_conns_per_instance": tcp_max_conns_per_instance,
+        "tcp_max_conns_per_ip": tcp_max_conns_per_ip,
+        "tcp_max_total_conns": tcp_max_total_conns,
+        "tcp_rate_limit_bps": tcp_rate_limit_bps,
+        "tcp_rate_limit_burst": tcp_rate_limit_burst,
+        "pool_subnet_size": pool_subnet_size,
+        "instance_pool": instance_pool,
+        "trusted_forwarders": trusted_forwarders,
+        "hosts_path": hosts_path,
+    }
+
+
 def _read_int_env(name: str, default: int) -> int:
     val = os.getenv(name)
     if val is None or not val.strip():
@@ -55,6 +124,7 @@ async def _refuse(writer: asyncio.StreamWriter, status: int, text: str) -> None:
     status_text = (
         "OK" if status == 200
         else "Bad Request" if status == 400
+        else "Unauthorized" if status == 401
         else "Not Found" if status == 404
         else "Request Timeout" if status == 408
         else "Payload Too Large" if status == 413
@@ -163,6 +233,23 @@ async def _serve_one(reader, writer, router, header_timeout, body_timeout, clien
             await writer.drain()
             return client_ip
         if method == "GET" and path == "/metrics":
+            # Require router token authentication on metrics endpoint
+            auth_val = ""
+            for hk, hv in headers_list:
+                if hk.lower() == "authorization":
+                    auth_val = hv
+                    break
+            expected_token = router.router_token
+            authorized = False
+            if expected_token and auth_val.startswith("Bearer "):
+                token_sent = auth_val[7:].strip()
+                if hmac.compare_digest(token_sent, expected_token):
+                    authorized = True
+
+            if not authorized:
+                await _refuse(writer, 401, "Unauthorized: Router token required\n")
+                return client_ip
+
             body = router.format_metrics_prometheus().encode("utf-8")
             head = f"HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4; charset=utf-8\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
             writer.write(head.encode("ascii") + body)
@@ -201,7 +288,7 @@ async def _serve_one(reader, writer, router, header_timeout, body_timeout, clien
         finally:
             await router.release_reading_budget(content_length)
 
-    await router.forward_stream(method, path, headers_list, body, writer, route=route)
+    await router.forward_stream(method, path, headers_list, body, writer, route=route, client_ip=client_ip)
     return client_ip
 
 
@@ -250,21 +337,9 @@ async def main():
     if not router_token:
         _log.warning("ROUTER_TOKEN is not set or empty. Route polling will operate without token.")
 
-    instance_domain = os.getenv("INSTANCE_DOMAIN", "localhost:8090")
-    instancer_url = os.getenv("INSTANCER_URL", "http://instancer:8300")
-    port = _read_int_env("ROUTER_HTTP_PORT", 8090)
-    tcp_port_start = _read_int_env("INSTANCER_TCP_PORT_START", 30000)
-    tcp_port_count = _read_int_env("INSTANCER_TCP_PORT_COUNT", 200)
-    tcp_idle_timeout = _read_float_env("INSTANCER_TCP_IDLE_TIMEOUT", 300.0)
-    tcp_lifetime_cap = _read_float_env("INSTANCER_TCP_LIFETIME_CAP", 3600.0)
-    tcp_max_conns_per_instance = _read_int_env("INSTANCER_TCP_MAX_CONNS_PER_INSTANCE", 10)
-    tcp_max_conns_per_ip = _read_int_env("INSTANCER_TCP_MAX_CONNS_PER_IP", 60)
-    tcp_max_total_conns = _read_int_env("INSTANCER_TCP_MAX_TOTAL_CONNS", 2000)
-    tcp_rate_limit_bps = _read_int_env("INSTANCER_TCP_RATE_LIMIT_BPS", 2 * 1024 * 1024)
-    tcp_rate_limit_burst = _read_int_env("INSTANCER_TCP_RATE_LIMIT_BURST", 4 * 1024 * 1024)
-    instance_pool = os.getenv("INSTANCER_INSTANCE_POOL", "10.200.0.0/16")
+    cfg = parse_router_config()
 
-    hosts_path = os.getenv("ROUTER_HOSTS_PATH")
+    hosts_path = cfg["hosts_path"]
     if not hosts_path:
         for candidate in ("/etc/l3mon/hosts.json", "config/instancer/hosts.json"):
             if os.path.isfile(candidate):
@@ -274,7 +349,6 @@ async def main():
     hosts = None
     if hosts_path and os.path.isfile(hosts_path):
         try:
-            import json
             with open(hosts_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and data:
@@ -284,19 +358,21 @@ async def main():
             _log.warning("Failed to load hosts config from %s: %s", hosts_path, e)
 
     router = InstanceRouter(
-        instance_domain=instance_domain,
-        instancer_url=instancer_url,
+        instance_domain=cfg["instance_domain"],
+        instancer_url=cfg["instancer_url"],
         router_token=router_token,
-        tcp_port_start=tcp_port_start,
-        tcp_port_count=tcp_port_count,
-        tcp_idle_timeout=tcp_idle_timeout,
-        tcp_lifetime_cap=tcp_lifetime_cap,
-        tcp_max_connections_per_instance=tcp_max_conns_per_instance,
-        tcp_max_connections_per_ip=tcp_max_conns_per_ip,
-        tcp_max_total_connections=tcp_max_total_conns,
-        tcp_rate_limit_bps=tcp_rate_limit_bps,
-        tcp_rate_limit_burst=tcp_rate_limit_burst,
-        instance_pool=instance_pool,
+        tcp_port_start=cfg["tcp_port_start"],
+        tcp_port_count=cfg["tcp_port_count"],
+        tcp_idle_timeout=cfg["tcp_idle_timeout"],
+        tcp_lifetime_cap=cfg["tcp_lifetime_cap"],
+        tcp_max_connections_per_instance=cfg["tcp_max_conns_per_instance"],
+        tcp_max_connections_per_ip=cfg["tcp_max_conns_per_ip"],
+        tcp_max_total_connections=cfg["tcp_max_total_conns"],
+        tcp_rate_limit_bps=cfg["tcp_rate_limit_bps"],
+        tcp_rate_limit_burst=cfg["tcp_rate_limit_burst"],
+        instance_pool=cfg["instance_pool"],
+        pool_subnet_size=cfg["pool_subnet_size"],
+        trusted_forwarders=cfg["trusted_forwarders"],
         hosts=hosts,
     )
 
@@ -309,9 +385,12 @@ async def main():
     server = await asyncio.start_server(
         lambda r, w: handle_client(r, w, router),
         "0.0.0.0",
-        port,
+        cfg["port"],
     )
-    _log.info("Instance Router listening for HTTP on 0.0.0.0:%d (domain: %s)", port, instance_domain)
+    _log.info("Instance Router listening for HTTP on 0.0.0.0:%d (domain: %s)", cfg["port"], cfg["instance_domain"])
+
+    async with server:
+        await server.serve_forever()
 
     async with server:
         await server.serve_forever()

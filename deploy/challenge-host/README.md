@@ -20,17 +20,21 @@ A **challenge host** is a dedicated Linux VM (Debian 12 / Ubuntu 22.04+) running
 
 ## 2. Machine Sizing Guide (From Packing Benchmarks)
 
-Based on our empirical packing benchmarks using `services/instancer/tools/pack_test.py`:
-- **Average memory per idle web/pwn challenge instance:** ~15–25 MB RSS.
-- **Average startup latency:** ~0.25–0.45s (p50), ~0.65s (p95).
-- **Socket proxy + router + agent baseline overhead:** ~120 MB total.
+Hardware capacity planning must be determined empirically rather than estimated. Challenge instance memory consumption varies widely depending on whether challenges run lightweight compiled binaries (e.g. pwn/rev) or full web runtimes (Python/Node/JVM).
 
-### Recommended VM Sizing Tiers:
-| Host Tier | vCPUs | RAM | Disk | Recommended Capacity (`max_slots`) |
-|---|---|---|---|---|
-| **Small (Dev / Staging)** | 2 | 4 GB | 30 GB SSD | 50–75 instances |
-| **Standard (Production)** | 4 | 8 GB | 60 GB SSD | 150–200 instances |
-| **Large (High Density)** | 8 | 16 GB | 100 GB SSD | 300–400 instances |
+Operators must run the packing benchmark tool on the target machine before sizing production slots:
+```bash
+python services/instancer/tools/pack_test.py --slug <challenge-slug> --concurrency 20
+```
+
+### Capacity Sizing Baseline Guidelines:
+- **Host Infrastructure Overhead:** Agent daemon + socket proxy + router + Linux kernel baseline consumes ~200–300 MB RAM.
+- **Per-Container Allocation:** Budget RAM based on the declared `mem_limit` in `challenges.toml` (e.g. 128m or 256m) plus 20–30% safety headroom for kernel networking buffers and conntrack table overhead.
+- **Port Relays:** Ensure `INSTANCER_TCP_PORT_COUNT` does not exceed the target host's available ephemeral port range and file descriptor limits (`nofile >= 65535`).
+- **Conservative Slot Ceilings:**
+  - 4 GB RAM VM: 20–30 concurrent instances (at 128 MB `mem_limit`).
+  - 8 GB RAM VM: 50–70 concurrent instances (at 128 MB `mem_limit`).
+  - 16 GB RAM VM: 100–150 concurrent instances (at 128 MB `mem_limit`).
 
 ---
 
@@ -66,8 +70,9 @@ INSTANCER_INSTANCE_POOL="10.200.0.0/16" PLATFORM_VM_IP="10.0.0.1" ./deploy/chall
 ```
 
 ### Step 2: Configure Deployment Secrets
-Create `/etc/l3mon/secrets` (mode 0700, root-only):
+Tokens can be placed either in `/etc/l3mon/secrets` or in repository `.secrets/`.
 ```bash
+# Example using system directory /etc/l3mon/secrets
 mkdir -p /etc/l3mon/secrets
 chmod 0700 /etc/l3mon/secrets
 
@@ -78,14 +83,21 @@ chmod 0600 /etc/l3mon/secrets/*
 ```
 
 ### Step 3: Start Challenge Host Services
+Define `HOST_PRIVATE_BIND_IP` with the host's private cloud VPC IP address (e.g. `10.0.1.10`) so the platform VM can reach the agent (port 8300) and router (port 8090). Do not leave this at default `127.0.0.1` unless testing locally on the same host.
+
+Point secret file environment variables to the token locations:
 ```bash
+export HOST_PRIVATE_BIND_IP="10.0.1.10"
+export INSTANCER_TOKEN_FILE_HOST="/etc/l3mon/secrets/INSTANCER_TOKEN"
+export ROUTER_TOKEN_FILE_HOST="/etc/l3mon/secrets/ROUTER_TOKEN"
+
 docker compose -f deploy/compose/compose.challenge-host.yml up -d
 ```
 
-Verify services are healthy:
+Verify services are running and healthy:
 ```bash
 docker compose -f deploy/compose/compose.challenge-host.yml ps
-curl -s -H "Authorization: Bearer $(cat /etc/l3mon/secrets/INSTANCER_TOKEN)" http://127.0.0.1:8300/v1/capacity
+curl -s -H "Authorization: Bearer $(cat /etc/l3mon/secrets/INSTANCER_TOKEN)" http://${HOST_PRIVATE_BIND_IP}:8300/v1/capacity
 ```
 
 ---

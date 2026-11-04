@@ -17,6 +17,7 @@ services:
       - ${INSTANCER_MANIFEST_FILE:-/etc/l3mon/challenges.toml}:/etc/instancer/challenges.toml:ro
     environment:
       INSTANCER_DEV: "0"
+      INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:?INSTANCER_INSTANCE_POOL must be set in production}"
 
   router:
     ports: !override
@@ -24,6 +25,7 @@ services:
       - "${ROUTER_BIND_HOST:-0.0.0.0}:30000-30199:30000-30199"
     environment:
       INSTANCE_DOMAIN: "${INSTANCE_DOMAIN:?INSTANCE_DOMAIN must be set}"
+      INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:?INSTANCER_INSTANCE_POOL must be set in production}"
     volumes:
       - ${ROUTER_TLS_DIR:-/etc/l3mon/router-tls}:/etc/router/tls:ro
 

@@ -22,37 +22,60 @@ from unittest import mock
 import pytest
 
 import sys
+import types
 from pathlib import Path
 
-_PLUGIN_DIR = str(Path(__file__).resolve().parents[1])
-if _PLUGIN_DIR not in sys.path:
-    sys.path.insert(0, _PLUGIN_DIR)
+_REPO_ROOT = str(Path(__file__).resolve().parents[3])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
-try:
-    from CTFd.plugins.l3mon_instances.client import InstancerClient, InstancerClientError
-    from CTFd.plugins.l3mon_instances.hosts import (
-        HostCapacityTracker,
-        get_token_for_host,
-        load_hosts_config,
-        validate_host_entry,
-    )
-except (ImportError, ModuleNotFoundError):
-    try:
-        from plugins.l3mon_instances.client import InstancerClient, InstancerClientError
-        from plugins.l3mon_instances.hosts import (
-            HostCapacityTracker,
-            get_token_for_host,
-            load_hosts_config,
-            validate_host_entry,
-        )
-    except (ImportError, ModuleNotFoundError):
-        from client import InstancerClient, InstancerClientError
-        from hosts import (
-            HostCapacityTracker,
-            get_token_for_host,
-            load_hosts_config,
-            validate_host_entry,
-        )
+if "CTFd" not in sys.modules:
+    _ctfd_mod = types.ModuleType("CTFd")
+    _ctfd_mod.__path__ = []
+    _ctfd_plugins_mod = types.ModuleType("CTFd.plugins")
+    _ctfd_plugins_mod.__path__ = []
+    _ctfd_flags_mod = types.ModuleType("CTFd.plugins.flags")
+    _ctfd_flags_mod.FLAG_CLASSES = {}
+    _ctfd_core_mod = types.ModuleType("CTFd.plugins.l3mon_core")
+    _ctfd_versions_mod = types.ModuleType("CTFd.plugins.l3mon_core.versions")
+    _ctfd_versions_mod.check_ctfd_version = lambda: None
+    _ctfd_migrations_mod = types.ModuleType("CTFd.plugins.migrations")
+    _ctfd_migrations_mod.upgrade = lambda **kwargs: None
+    _ctfd_models_mod = types.ModuleType("CTFd.models")
+    _ctfd_utils_mod = types.ModuleType("CTFd.utils")
+    _ctfd_mod.plugins = _ctfd_plugins_mod
+
+    sys.modules["CTFd"] = _ctfd_mod
+    sys.modules["CTFd.plugins"] = _ctfd_plugins_mod
+    sys.modules["CTFd.plugins.flags"] = _ctfd_flags_mod
+    sys.modules["CTFd.plugins.l3mon_core"] = _ctfd_core_mod
+    sys.modules["CTFd.plugins.l3mon_core.versions"] = _ctfd_versions_mod
+    sys.modules["CTFd.plugins.migrations"] = _ctfd_migrations_mod
+    sys.modules["CTFd.models"] = _ctfd_models_mod
+    sys.modules["CTFd.utils"] = _ctfd_utils_mod
+
+    import plugins.l3mon_instances as _inst_pkg
+    sys.modules["CTFd.plugins.l3mon_instances"] = _inst_pkg
+
+    import plugins.l3mon_instances.client as _client_pkg
+    sys.modules["CTFd.plugins.l3mon_instances.client"] = _client_pkg
+
+    import plugins.l3mon_instances.hosts as _hosts_pkg
+    sys.modules["CTFd.plugins.l3mon_instances.hosts"] = _hosts_pkg
+
+from CTFd.plugins.l3mon_instances.client import InstancerClient, InstancerClientError
+from CTFd.plugins.l3mon_instances.hosts import (
+    HostCapacityTracker,
+    get_token_for_host,
+    load_hosts_config,
+    validate_host_entry,
+)
+
+
+@pytest.fixture(autouse=True)
+def set_default_test_host_tokens(monkeypatch):
+    for h in ["H1", "H2", "H3", "H4"]:
+        monkeypatch.setenv(f"INSTANCER_TOKEN_{h}", f"test_token_{h.lower()}")
 
 
 class MockAgentClient:
@@ -63,6 +86,10 @@ class MockAgentClient:
         self.should_fail = should_fail
         self.capacity_probe_count = 0
         self.killed_count = 0
+        self.stopped_instances: list[str] = []
+
+    def stop_instance(self, instance_id: str) -> None:
+        self.stopped_instances.append(instance_id)
 
     def get_capacity(self) -> dict:
         self.capacity_probe_count += 1
@@ -156,6 +183,8 @@ def test_load_hosts_config_validation_errors():
 
 
 def test_token_resolution_per_host(monkeypatch):
+    monkeypatch.delenv("INSTANCER_TOKEN_H1", raising=False)
+    monkeypatch.delenv("INSTANCER_TOKEN_H2", raising=False)
     monkeypatch.setenv("INSTANCER_TOKEN", "global_shared_secret")
     monkeypatch.setenv("INSTANCER_TOKEN_H1", "secret_host_1_only")
 
@@ -163,9 +192,12 @@ def test_token_resolution_per_host(monkeypatch):
     token_h1 = get_token_for_host("h1")
     assert token_h1 == "secret_host_1_only"
 
-    # Host h2 falls back to global token
-    token_h2 = get_token_for_host("h2")
-    assert token_h2 == "global_shared_secret"
+    # Multi-host mode refuses host h2 without its own token (no fallback to global)
+    with pytest.raises(ValueError, match="INSTANCER_TOKEN_H2"):
+        get_token_for_host("h2", allow_fallback=False)
+
+    # With explicit allow_fallback=True (single-host/dev mode), falls back to global
+    assert get_token_for_host("h2", allow_fallback=True) == "global_shared_secret"
 
 
 def test_capacity_5s_caching():
@@ -291,71 +323,43 @@ def test_all_hosts_full_or_down_raises_no_capacity():
 
 
 def test_instance_stays_on_assigned_host():
-    """An instance assigned to host h2 remains on h2 for renew/stop operations."""
+    """An instance assigned to host h2 remains on h2 for renew/stop operations,
+    even when host h1 has vastly more available capacity.
+    """
     current_time = 1000.0
-    client_h1 = MockAgentClient("h1")
-    client_h2 = MockAgentClient("h2")
+    client_h1 = MockAgentClient("h1", slots_total=100, slots_used=10)  # 90 free
+    client_h2 = MockAgentClient("h2", slots_total=20, slots_used=20)   # 0 free
     clients = {"h1": client_h1, "h2": client_h2}
     hosts = [
-        {"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz"},
-        {"name": "h2", "url": "http://10.0.1.11:8300", "router_url": "http://10.0.1.11:8090", "host": "h2.xyz"},
+        {"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz", "weight": 1.0, "max_slots": 100},
+        {"name": "h2", "url": "http://10.0.1.11:8300", "router_url": "http://10.0.1.11:8090", "host": "h2.xyz", "weight": 1.0, "max_slots": 20},
     ]
     tracker = HostCapacityTracker(hosts=hosts, time_provider=lambda: current_time)
     tracker.set_client_factory(lambda h, tok: clients[h["name"]])
 
-    # Calling get_client_for_host for h2 returns client with h2's URL and token
-    client = tracker.get_client_for_host("h2")
-    assert client.host_name == "h2"
+    # A new start selects h1 due to capacity
+    best = tracker.select_host_for_start()
+    assert best["name"] == "h1"
+
+    # But an existing instance row on h2 dispatches renew and stop strictly to h2!
+    instance_host_name = "h2"
+    client = tracker.get_client_for_host(instance_host_name)
+    client.stop_instance("inst-xyz-42")
+
+    assert "inst-xyz-42" in client_h2.stopped_instances
+    assert len(client_h1.stopped_instances) == 0
 
 
 def test_down_host_instances_reported_as_error_to_player():
-    """When a host is marked DOWN, instances on that host report state as 'error'."""
-    current_time = 1000.0
-    tracker = HostCapacityTracker(
-        hosts=[{"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz"}],
-        time_provider=lambda: current_time,
-    )
-    # Healthy host
-    assert tracker.is_host_down("h1") is False
-
-    # Mark host DOWN
-    tracker.mark_host_down("h1", now_ts=current_time)
-    assert tracker.is_host_down("h1", now_ts=current_time) is True
-
-    # Check simulated instance status mapping
-    instance_state_in_db = "running"
-    instance_host = "h1"
-    player_facing_state = "error" if tracker.is_host_down(instance_host, now_ts=current_time) else instance_state_in_db
-    assert player_facing_state == "error"
-
-    # After 31 seconds, host down window expires
-    current_time = 1031.0
-    assert tracker.is_host_down("h1", now_ts=current_time) is False
-    recovered_state = "error" if tracker.is_host_down(instance_host, now_ts=current_time) else instance_state_in_db
-    assert recovered_state == "running"
+    """Probe C: Player instances on a host marked DOWN report state='error'."""
+    from probes.test_lead_probes import test_probe_c_down_host_instances_reported_as_error_to_player as probe_c
+    probe_c()
 
 
 def test_admin_kill_all_dispatches_across_all_hosts():
-    """Admin kill-all broadcasts across every configured host and aggregates stopped count."""
-    client_h1 = MockAgentClient("h1")
-    client_h2 = MockAgentClient("h2")
-    clients = {"h1": client_h1, "h2": client_h2}
-
-    hosts = [
-        {"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz"},
-        {"name": "h2", "url": "http://10.0.1.11:8300", "router_url": "http://10.0.1.11:8090", "host": "h2.xyz"},
-    ]
-    tracker = HostCapacityTracker(hosts=hosts)
-    tracker.set_client_factory(lambda h, tok: clients[h["name"]])
-
-    total_killed = 0
-    for h in tracker.get_hosts():
-        client = tracker.get_client_for_host(h["name"])
-        total_killed += client.kill_instances()
-
-    assert total_killed == 6  # 3 from h1 + 3 from h2
-    assert client_h1.killed_count == 3
-    assert client_h2.killed_count == 3
+    """Probe D: Admin kill-all dispatches to all configured hosts and aggregates stopped counts."""
+    from probes.test_lead_probes import test_probe_d_admin_kill_all_dispatches_across_all_hosts as probe_d
+    probe_d()
 
 
 def test_multihost_failover_and_rebalance_at_scale():

@@ -96,10 +96,21 @@ def test_route_target_pool_validation():
     assert validate_route_target("10.200.0.1", 8080, pool) is False
     assert validate_route_target("10.200.1.1", 8080, pool) is False
 
-    # Subnet boundaries (.0 and .255) rejected
-    assert validate_route_target("10.200.0.0", 8080, pool) is False
-    assert validate_route_target("10.200.0.255", 8080, pool) is False
-    assert validate_route_target("10.200.255.255", 8080, pool) is False
+    # Subnet boundaries (.0 and .255) rejected for /24
+    assert validate_route_target("10.200.0.0", 8080, pool, pool_subnet_size=24) is False
+    assert validate_route_target("10.200.0.255", 8080, pool, pool_subnet_size=24) is False
+    assert validate_route_target("10.200.255.255", 8080, pool, pool_subnet_size=24) is False
+
+    # Subnet boundary and gateway validation for /28 subnets (BLOCKING 5)
+    # Subnet 1 (10.200.0.16/28): net .16, gw .17, usable .18..30, bcast .31
+    assert validate_route_target("10.200.0.16", 8080, pool, pool_subnet_size=28) is False  # network
+    assert validate_route_target("10.200.0.17", 8080, pool, pool_subnet_size=28) is False  # gateway
+    assert validate_route_target("10.200.0.18", 8080, pool, pool_subnet_size=28) is True   # usable
+    assert validate_route_target("10.200.0.31", 8080, pool, pool_subnet_size=28) is False  # broadcast
+    # Subnet 2 (10.200.0.32/28): net .32, gw .33, usable .34..46, bcast .47
+    assert validate_route_target("10.200.0.32", 8080, pool, pool_subnet_size=28) is False  # network
+    assert validate_route_target("10.200.0.33", 8080, pool, pool_subnet_size=28) is False  # gateway
+    assert validate_route_target("10.200.0.34", 8080, pool, pool_subnet_size=28) is True   # usable
 
     # Row 14: Cloud metadata 169.254.169.254 rejected
     assert validate_route_target("169.254.169.254", 80, pool) is False
@@ -399,7 +410,10 @@ async def test_tcp_bidirectional_and_half_close():
     finally:
         await router.close_all_tcp_listeners()
         backend_srv.close()
-        await backend_srv.wait_closed()
+        try:
+            await asyncio.wait_for(backend_srv.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -419,6 +433,12 @@ async def test_tcp_idle_timeout_drops_connection():
                     break
         except Exception:
             pass
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
 
     backend_srv = await asyncio.start_server(quiet_backend_cb, "127.0.0.1", backend_port)
 
@@ -460,7 +480,10 @@ async def test_tcp_idle_timeout_drops_connection():
     finally:
         await router.close_all_tcp_listeners()
         backend_srv.close()
-        await backend_srv.wait_closed()
+        try:
+            await asyncio.wait_for(backend_srv.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -533,7 +556,10 @@ async def test_tcp_connection_caps():
     finally:
         await router.close_all_tcp_listeners()
         backend_srv.close()
-        await backend_srv.wait_closed()
+        try:
+            await asyncio.wait_for(backend_srv.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -831,18 +857,52 @@ def test_router_tcp_settings_validation():
 
 
 def test_router_main_env_reading():
-    from services.instancer.router.main import _read_int_env, _read_float_env
-    # Default fallback
-    assert _read_int_env("NON_EXISTENT_VAR", 42) == 42
-    assert _read_float_env("NON_EXISTENT_FLOAT", 3.14) == 3.14
+    from services.instancer.router.main import parse_router_config
 
-    # Invalid values raise naming variable
-    os.environ["BAD_INT_VAR"] = "notanumber"
-    try:
-        with pytest.raises(ValueError, match="BAD_INT_VAR must be an integer"):
-            _read_int_env("BAD_INT_VAR", 10)
-    finally:
-        os.environ.pop("BAD_INT_VAR", None)
+    # 1. Defaults verification
+    defaults = parse_router_config({})
+    assert defaults["port"] == 8090
+    assert defaults["tcp_port_start"] == 30000
+    assert defaults["tcp_port_count"] == 200
+    assert defaults["tcp_idle_timeout"] == 300.0
+    assert defaults["tcp_lifetime_cap"] == 3600.0
+    assert defaults["tcp_max_conns_per_instance"] == 10
+    assert defaults["tcp_max_conns_per_ip"] == 60
+    assert defaults["tcp_max_total_conns"] == 2000
+    assert defaults["tcp_rate_limit_bps"] == 2097152
+    assert defaults["tcp_rate_limit_burst"] == 4194304
+    assert defaults["pool_subnet_size"] == 24
+    assert defaults["instance_pool"] == "10.200.0.0/16"
+
+    # 2. Custom env values
+    custom = parse_router_config({
+        "ROUTER_HTTP_PORT": "8088",
+        "INSTANCER_TCP_MAX_CONNS_PER_INSTANCE": "25",
+        "INSTANCER_TCP_MAX_TOTAL_CONNS": "5000",
+        "INSTANCER_TCP_RATE_LIMIT_BURST": "8388608",
+        "INSTANCER_POOL_SUBNET_SIZE": "28",
+    })
+    assert custom["port"] == 8088
+    assert custom["tcp_max_conns_per_instance"] == 25
+    assert custom["tcp_max_total_conns"] == 5000
+    assert custom["tcp_rate_limit_burst"] == 8388608
+    assert custom["pool_subnet_size"] == 28
+
+    # 3. Invalid values for real environment variables raise ValueError naming the variable
+    with pytest.raises(ValueError, match="INSTANCER_TCP_MAX_CONNS_PER_INSTANCE must be an integer"):
+        parse_router_config({"INSTANCER_TCP_MAX_CONNS_PER_INSTANCE": "notanumber"})
+
+    with pytest.raises(ValueError, match="INSTANCER_TCP_MAX_TOTAL_CONNS must be an integer"):
+        parse_router_config({"INSTANCER_TCP_MAX_TOTAL_CONNS": "abc"})
+
+    with pytest.raises(ValueError, match="INSTANCER_TCP_RATE_LIMIT_BURST must be an integer"):
+        parse_router_config({"INSTANCER_TCP_RATE_LIMIT_BURST": "invalid"})
+
+    with pytest.raises(ValueError, match="POLL_INTERVAL must be positive"):
+        parse_router_config({"POLL_INTERVAL": "0"})
+
+    with pytest.raises(ValueError, match="ROUTER_HTTP_PORT must be between 1 and 65535"):
+        parse_router_config({"ROUTER_HTTP_PORT": "99999"})
 
 
 # ---------------------------------------------------------------------------
@@ -902,7 +962,10 @@ async def test_tcp_per_ip_cap_boundary():
     finally:
         await router.close_all_tcp_listeners()
         backend_srv.close()
-        await backend_srv.wait_closed()
+        try:
+            await asyncio.wait_for(backend_srv.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -958,7 +1021,10 @@ async def test_tcp_global_cap_boundary():
     finally:
         await router.close_all_tcp_listeners()
         backend_srv.close()
-        await backend_srv.wait_closed()
+        try:
+            await asyncio.wait_for(backend_srv.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
@@ -1118,13 +1184,29 @@ async def test_router_http_metrics_endpoint():
         port,
     )
     try:
+        # 1. Unauthenticated request should be refused with 401 Unauthorized
+        r_unauth, w_unauth = await asyncio.open_connection("127.0.0.1", port)
+        w_unauth.write(b"GET /metrics HTTP/1.1\r\nHost: router\r\nConnection: close\r\n\r\n")
+        await w_unauth.drain()
+        resp_unauth = await r_unauth.read()
+        w_unauth.close()
+        try:
+            await asyncio.wait_for(w_unauth.wait_closed(), timeout=1.0)
+        except Exception:
+            pass
+        assert "HTTP/1.1 401 Unauthorized" in resp_unauth.decode("utf-8", errors="replace")
+
+        # 2. Authenticated request with Bearer secret returns 200 OK
         r, w = await asyncio.open_connection("127.0.0.1", port)
-        req = b"GET /metrics HTTP/1.1\r\nHost: router\r\nConnection: close\r\n\r\n"
+        req = b"GET /metrics HTTP/1.1\r\nHost: router\r\nAuthorization: Bearer secret\r\nConnection: close\r\n\r\n"
         w.write(req)
         await w.drain()
         resp = await r.read()
         w.close()
-        await w.wait_closed()
+        try:
+            await asyncio.wait_for(w.wait_closed(), timeout=1.0)
+        except Exception:
+            pass
 
         resp_text = resp.decode("utf-8", errors="replace")
         assert "HTTP/1.1 200 OK" in resp_text
@@ -1135,6 +1217,9 @@ async def test_router_http_metrics_endpoint():
         assert "instancer_router_http_active_connections" in resp_text
     finally:
         http_srv.close()
-        await http_srv.wait_closed()
+        try:
+            await asyncio.wait_for(http_srv.wait_closed(), timeout=2.0)
+        except Exception:
+            pass
         await router.close_all_tcp_listeners()
 

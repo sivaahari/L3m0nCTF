@@ -99,12 +99,14 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
     }
 
     # 4. Internet outbound probe: public TCP connect AND DNS lookup
-    tcp_pub_reachable, tcp_pub_err = try_tcp_connect("1.1.1.1", 53, timeout=timeout)
+    pub_ip = params.get("public_ip") or os.environ.get("PROBE_PUBLIC_IP", "1.1.1.1")
+    pub_host = params.get("public_host") or os.environ.get("PROBE_PUBLIC_HOST", "example.com")
+    tcp_pub_reachable, tcp_pub_err = try_tcp_connect(pub_ip, 53, timeout=timeout)
     dns_resolved = False
     dns_err = "none"
     try:
-        # Standard public domain DNS resolution attempt
-        socket.getaddrinfo("example.com", 80)
+        # Public domain DNS resolution attempt
+        socket.getaddrinfo(pub_host, 80)
         dns_resolved = True
         dns_err = "resolved"
     except Exception as e:
