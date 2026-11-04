@@ -72,6 +72,7 @@ def block(challenge, solves, team, phase) -> dict:
         "first_blood_open": solves == 0, "tries_left": tries_left(challenge, team),
         "score": int(team.get_score(admin=True) or 0) if team is not None else None,
         "phase": {"state": phase.state, "frozen": phase.frozen},
+        "story": programme.story or "",
     }
 
 

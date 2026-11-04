@@ -27,8 +27,11 @@ pytestmark = pytest.mark.skipif(not URL.startswith("mysql"), reason="needs a rea
 
 FIRST = "7a41c0d2b1e3"
 SECOND = "b3d95f0a6c12"
-REVISION = "c5e2a7b9d104"  # the head: the second revision adds the audit table, the third the difficulty and the delivery of a programme
+THIRD = "c5e2a7b9d104"
+FOURTH = "d8f3a1b4e205"
+REVISION = "d8f3a1b4e205"  # the head: the fourth revision adds the story column of a programme
 THIRD_COLUMNS = ("difficulty", "delivery")
+FOURTH_COLUMNS = ("story",)
 THIRD_CHECKS = {"ck_l3mon_programme_difficulty", "ck_l3mon_programme_delivery"}
 VERSION_KEY = "l3mon_core_alembic_version"
 MODELS = {m.__tablename__: m for m in (models.Channel, models.Programme, models.Void, models.Bonus, models.Note, models.Audit)}
@@ -56,6 +59,11 @@ def audit_module():
 def third_module():
     """The third revision (the difficulty and the delivery of a programme)."""
     return _load("c5e2a7b9d104_add_difficulty_and_delivery_to_programmes.py", "l3mon_third_revision")
+
+
+def fourth_module():
+    """The fourth revision (the story column of a programme)."""
+    return _load("d8f3a1b4e205_add_story_to_programmes.py", "l3mon_fourth_revision")
 
 
 def programme_columns():
@@ -352,9 +360,62 @@ def test_two_workers_adding_the_two_columns_at_the_same_moment_both_succeed():
 def test_a_database_at_the_second_revision_gets_the_columns_at_the_next_start():
     app = create_ctfd(enable_plugins=True, user_mode="teams")
     with app.app_context():
+        run_on_connection(lambda op: fourth_module().downgrade(op=op))
         run_on_connection(lambda op: third_module().downgrade(op=op))
         set_config("l3mon_core_alembic_version", SECOND)
         assert current("l3mon_core") == SECOND
         upgrade(plugin_name="l3mon_core")
-        assert current("l3mon_core") == REVISION and set(THIRD_COLUMNS) <= programme_columns() and THIRD_CHECKS <= programme_checks()
+        assert current("l3mon_core") == REVISION and set(THIRD_COLUMNS) <= programme_columns() and THIRD_CHECKS <= programme_checks() and set(FOURTH_COLUMNS) <= programme_columns()
+    destroy_ctfd(app)
+
+
+def test_the_fourth_revision_adds_the_story_column_keeps_the_rows_and_a_second_run_changes_nothing():
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context():
+        assert set(FOURTH_COLUMNS) <= programme_columns()
+        ch = models.Channel(slug="street", name="Street")
+        db.session.add(ch)
+        db.session.commit()
+        a = gen_challenge(db, name="a")
+        db.session.add(models.Programme(challenge_id=a.id, channel_id=ch.id, cell=0, number=1, slug="alpha", story="A cold story."))
+        db.session.commit()
+        run_on_connection(lambda op: fourth_module().downgrade(op=op))
+        assert not (set(FOURTH_COLUMNS) & programme_columns()), "the downgrade removes the story column"
+        assert db.session.execute(text("SELECT slug FROM l3mon_programme")).scalar() == "alpha", "and keeps the row"
+        db.session.rollback()
+        run_on_connection(lambda op: fourth_module().downgrade(op=op))  # a second downgrade is harmless
+        run_on_connection(lambda op: fourth_module().upgrade(op=op))
+        run_on_connection(lambda op: fourth_module().upgrade(op=op))  # and so is a second upgrade
+        assert set(FOURTH_COLUMNS) <= programme_columns()
+        row = db.session.execute(text("SELECT story FROM l3mon_programme WHERE slug = 'alpha'")).scalar()
+        assert row == "", "a row from before the revision gets the server default empty string"
+    destroy_ctfd(app)
+
+
+def test_two_workers_adding_the_story_column_at_the_same_moment_both_succeed():
+    app = create_ctfd(enable_plugins=True, user_mode="teams")
+    with app.app_context():
+        module = fourth_module()
+        for round_number in range(5):
+            run_on_connection(lambda op: module.downgrade(op=op))
+            assert not (set(FOURTH_COLUMNS) & programme_columns())
+            barrier, errors = threading.Barrier(2), []
+
+            def worker():
+                try:
+                    with app.app_context():
+                        with db.engine.begin() as conn:
+                            op = Operations(MigrationContext.configure(conn))
+                            barrier.wait()
+                            module.upgrade(op=op)
+                except Exception as e:  # noqa: BLE001
+                    errors.append(repr(e))
+
+            threads = [threading.Thread(target=worker) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            assert not errors, f"round {round_number}: {errors}"
+            assert set(FOURTH_COLUMNS) <= programme_columns(), f"round {round_number}"
     destroy_ctfd(app)

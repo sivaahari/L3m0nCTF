@@ -378,7 +378,7 @@ def programme_detail(programme, data, who):
         for h in Hints.query.filter_by(challenge_id=challenge.id).order_by(Hints.id).all()
     ]
     return {
-        "description": challenge.description, "author": block.get("author") or challenge.attribution, "story": "", "sponsor": (block.get("sponsor") or {}).get("name"),
+        "description": challenge.description, "author": block.get("author") or challenge.attribution, "story": block.get("story") or "", "sponsor": (block.get("sponsor") or {}).get("name"),
         "decay": bool(block.get("decay")), "start": block.get("start"), "floor": block.get("floor"), "first_blood_open": block.get("first_blood_open"),
         "tries_left": block.get("tries_left"), "phase": data["phase"], "score": block.get("score"), "files": files, "hints": hints,
         "instance": _instance_view(team, challenge.id) if team is not None and block.get("live") else None,

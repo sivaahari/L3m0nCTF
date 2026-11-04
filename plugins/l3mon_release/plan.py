@@ -19,7 +19,7 @@ from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.airing import entry_on_air, to_epoch
 from CTFd.plugins.l3mon_core.clock import current_phase, ist_text, window
 from CTFd.plugins.l3mon_core.models import DELIVERIES, DIFFICULTIES, Channel, Programme
-from CTFd.plugins.l3mon_core.text import UNSAFE_MESSAGE, UNSAFE_TEXT, plain_text  # noqa: F401  (the rule moved to core; the names stay importable from here)
+from CTFd.plugins.l3mon_core.text import UNSAFE_MESSAGE, UNSAFE_TEXT, crew_text, plain_text  # noqa: F401  (the rule moved to core; the names stay importable from here)
 
 MAX_CHANGES = 200
 MAX_CHANNELS = 20
@@ -33,7 +33,7 @@ MODES = {"release": "released", "withhold": "withheld", "schedule": "scheduled"}
 KINDS = ("standard", "sponsored")
 
 CHANNEL_FIELDS = {"slug", "name", "synopsis", "accent", "picture_key", "position", "kind", "sponsor_name", "sponsor_logo"}
-PROGRAMME_FIELDS = {"challenge_id", "challenge_name", "channel", "cell", "number", "slug", "difficulty", "delivery"}
+PROGRAMME_FIELDS = {"challenge_id", "challenge_name", "channel", "cell", "number", "slug", "difficulty", "delivery", "story"}
 PROGRAMME_WORDS = (("difficulty", DIFFICULTIES), ("delivery", DELIVERIES))  # the words the author kit uses; a field that is not sent is not changed
 
 
@@ -291,6 +291,12 @@ def validate_plan(body):
                     out[key] = item[key]
                 else:
                     problems.add(f"{where}.{key}", "must be one of: " + ", ".join(words))
+        if "story" in item:
+            clean_story, prob = crew_text(item["story"], 280, required=False)
+            if prob:
+                problems.add(f"{where}.story", prob)
+            else:
+                out["story"] = clean_story
         clean_programmes.append(out)
 
     if not problems:
@@ -346,6 +352,8 @@ def apply_plan(clean):
         row = existing.get(item["challenge_id"])
         want = {"channel_id": by_slug[item["channel"]].id, "cell": item["cell"], "number": item["number"], "slug": item["slug"]}
         want.update({key: item[key] for key, _ in PROGRAMME_WORDS if key in item})
+        if "story" in item:
+            want["story"] = item["story"]
         if row is None:
             db.session.add(Programme(challenge_id=item["challenge_id"], release_state="withheld", **want))
             counts["programmes"]["created"] += 1
@@ -390,7 +398,7 @@ def release_view(t):
             on_air_total += 1 if on else 0
             items.append({
                 "id": p.id, "challenge_id": p.challenge_id, "name": chal_names.get(p.challenge_id, ""), "slug": p.slug,
-                "number": p.number, "cell": p.cell, "difficulty": p.difficulty, "delivery": p.delivery, **_entry(p.release_state, p.release_at),
+                "number": p.number, "cell": p.cell, "difficulty": p.difficulty, "delivery": p.delivery, "story": p.story or "", **_entry(p.release_state, p.release_at),
                 "on_air": on, "visible": bool(on and states.get(p.challenge_id) == "visible"),
             })
         channels.append({

@@ -5,6 +5,7 @@ backups and its admin API).
     l3mon_story_meter        the story meter in the Guide (reels and "on air"). ON unless switched off
     l3mon_story_air_target   how many solves of all studios fill the "on air" meter; 0 (unset) leaves the meter at 0
     l3mon_finale_open        the crew's trigger for the finale story: OFF unless switched on (the meter at 100 percent opens it too)
+    l3mon_finale_at          the automatic opening time for the finale (UTC epoch seconds); unset/empty for no automatic time
 
 There is no freeze switch here on purpose. CTFd freezes its own standings and team pages whenever its `freeze` setting holds a
 time, and a second flag of ours could say "not frozen" while CTFd's scoreboard is. The freeze is therefore that one time
@@ -16,6 +17,12 @@ SHOW_COMING_KEY = "l3mon_show_coming_count"
 METER_KEY = "l3mon_story_meter"
 AIR_TARGET_KEY = "l3mon_story_air_target"
 FINALE_KEY = "l3mon_finale_open"
+FINALE_AT_KEY = "l3mon_finale_at"
+
+# 2020-01-01 00:00:00 UTC
+MIN_FINALE_AT = 1_577_836_800
+# Year 2049 bound: prevents negative, overflow, or absurdly far values
+MAX_FINALE_AT = 2_500_000_000
 
 _ON = ("1", "true", "yes", "on")
 
@@ -51,4 +58,18 @@ def story_air_target() -> int:
     except (TypeError, ValueError):
         return 0
     return number if 0 < number <= 10_000_000 else 0
+
+
+def finale_at() -> int | None:
+    """The automatic opening time for the finale as a whole number of UTC seconds since 1970,
+    or None when it is unset, not a whole number, a bool, before 2020 or absurdly far in the future."""
+    value = get_config(FINALE_AT_KEY)
+    if isinstance(value, bool):
+        return None
+    try:
+        seconds = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return seconds if MIN_FINALE_AT <= seconds <= MAX_FINALE_AT else None
+
 
