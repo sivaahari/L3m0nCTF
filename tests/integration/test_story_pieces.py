@@ -125,8 +125,7 @@ def purge():
     for spec in (FIRST, SECOND):
         status, out = r.admin("GET", f"/api/v1/challenges?view=admin&field=name&q={spec['name'].split()[0]}")
         for row in (out["data"] if status == 200 else []):
-            if row["name"] == spec["name"]:
-                r.admin("DELETE", f"/api/v1/challenges/{row['id']}")
+            r.admin("DELETE", f"/api/v1/challenges/{row['id']}")
 
 
 def recreate(env: dict | None = None):
@@ -449,7 +448,8 @@ def test_05_e4_themed_rate_limit_slate_and_json(world):
     assert hit.status == 429
     assert any(k.lower() == "retry-after" for k in hit.headers)
     html = hit.read().decode("utf-8", "replace")
-    assert "Too many requests" in html or "Wait a moment before trying again" in html
+    assert "Please stand by" in html
+    assert hit.headers["Content-Type"].startswith("text/html")
     clean(html)
 
     # Accept: application/json returns raw CTFd JSON

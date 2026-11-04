@@ -128,8 +128,11 @@ def test_rate_limit_api_prefix_path_never_converted():
     from unittest.mock import MagicMock
     from CTFd.plugins.l3mon_theme.pages.errors import EXCLUDED_PREFIXES, _is_page_request
 
+    expected_prefixes = {"/api/", "/events", "/themes/", "/files/", "/story/", "/admin/"}
+    assert set(EXCLUDED_PREFIXES) == expected_prefixes
+
     resp = MagicMock(is_json=True, get_json=lambda silent=True: {"code": 429, "message": "Too many requests"})
-    for prefix in EXCLUDED_PREFIXES:
+    for prefix in ("/api/", "/events", "/themes/", "/files/", "/story/", "/admin/"):
         req = MagicMock(method="POST", path=f"{prefix}something", accept_mimetypes=None, headers={}, content_type="")
         assert _is_page_request(req, resp) is False, f"prefix {prefix} should not be treated as a page request"
 
