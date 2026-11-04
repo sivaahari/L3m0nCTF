@@ -296,6 +296,7 @@ async def test_hop2_trusted_forwarder_preserves_per_player_limits(monkeypatch):
         instance_pool="127.0.0.0/8",
         allow_loopback_for_tests=True,
         max_connections_per_instance=100,
+        max_connections_per_ip=100,
     )
     hop1_router.update_host_routes(
         "h1",
