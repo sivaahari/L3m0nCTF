@@ -1,9 +1,8 @@
 """Automated isolation proof for challenge instances (F2).
 
 Verifies:
-1. Internal Prober Logic: Prober correctly detects network boundaries, blocking of
-   metadata (169.254.169.254), platform core (CTFd, MariaDB, Redis), Docker socket,
-   and inter-instance communication.
+1. Prober Logic Unit Verification: Prober correctly validates boundaries and reports
+   full isolation when unroutable, and flags violations when a mock listener connects.
 2. Container Security Profile & Invariants:
    - Non-root execution (UID 10001)
    - Read-only root filesystem
@@ -12,15 +11,24 @@ Verifies:
    - Bounded tmpfs with noexec, nosuid, nodev
    - Per-instance isolated bridge networks (ICC disabled)
 3. External Port Isolation:
-   - Only router ports (8090, 30000+) are published.
-   - Internal ports, Docker socket, and instancer private API (8300/8301) are not exposed externally.
+   - Only router ports (8090, 30000-30199) are published.
+   - Instance private container ports are not published (docker port is empty).
+   - Docker socket proxy port (2375) is unreachable from host.
+4. Live Stack Overlay Isolation Proof:
+   - Starts a real prober instance (demo-prober) and real target instance (demo-web) on the running stack.
+   - Probes other instance (by IP and name), gateway, internet outbound (TCP + DNS), cloud metadata,
+     Docker API, instancer API, router control, and platform core services.
+   - Enforces exact set of expected probe checks and asserts every check reports "isolated".
 """
 from __future__ import annotations
 
 import json
 import os
+import secrets as pysecrets
 import socket
 import subprocess
+import time
+import urllib.parse
 import pytest
 
 from services.instancer.tests.fixtures.prober.prober import (
@@ -31,30 +39,43 @@ from services.instancer.safety import assert_safe, ContainerSafetyError
 
 pytestmark = pytest.mark.integration
 
+EXPECTED_PROBER_CHECKS = {
+    "other_instance_by_ip",
+    "other_instance_by_name",
+    "host_gateway",
+    "internet_outbound",
+    "cloud_metadata",
+    "docker_api",
+    "instancer_api",
+    "router_control",
+    "platform_core",
+}
+
+PROGRAMMES_API = "/api/v1/l3mon/admin/programmes"
+RELEASE_API = "/api/v1/l3mon/admin/release"
+
 
 # ---------------------------------------------------------------------------
-# 1. Prober Logic Verification (Break-Matrix Row 38)
+# 1. Prober Logic Unit Verification (Offline)
 # ---------------------------------------------------------------------------
 
 def test_prober_reports_fully_isolated_when_all_targets_unreachable():
-    """When external/internal targets are unreachable, prober reports fully isolated."""
-    # Run with default unroutable/unreachable targets
+    """Unit test: when external/internal targets are unreachable, prober reports fully isolated."""
     report = run_isolation_probes({
         "other_ip": "10.255.255.1",
         "gateway_ip": "10.255.255.1",
         "instancer_host": "unreachable.invalid",
     })
-    assert "fully_isolated" in report
-    assert "checks" in report
-    assert "docker_socket" in report["checks"]
-    # Docker socket should not exist in normal unprivileged environment
-    if not os.path.exists("/var/run/docker.sock"):
-        assert report["checks"]["docker_socket"]["isolated"] is True
+    # Strict assertion: fully_isolated must be True (no weak field existence check)
+    assert report["fully_isolated"] is True
+    # Assert exact set of checks: a probe that silently disappears fails the test
+    assert set(report["checks"].keys()) == EXPECTED_PROBER_CHECKS
+    for check_name, check_data in report["checks"].items():
+        assert check_data["isolated"] is True, f"Check {check_name} failed: {check_data}"
 
 
 def test_prober_detects_egress_and_target_violations():
-    """If a probe target connects (e.g. mock listener), prober flags violation."""
-    # Start a temporary local listener simulating a leaked service
+    """Unit test: if a probe target connects (e.g. mock listener), prober flags violation."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         s.listen(1)
@@ -71,7 +92,7 @@ def test_prober_detects_egress_and_target_violations():
 
 
 # ---------------------------------------------------------------------------
-# 2. Container Spec & Isolation Invariants
+# 2. Container Spec & Isolation Invariants (Offline)
 # ---------------------------------------------------------------------------
 
 def test_container_security_invariants_enforced():
@@ -141,44 +162,136 @@ def test_container_security_invariants_enforced():
 
 
 # ---------------------------------------------------------------------------
-# 3. External Network & Port Isolation
+# 3. External Network & Port Isolation (Offline)
 # ---------------------------------------------------------------------------
 
 def test_external_port_isolation():
-    """Verify that Docker daemon port 2375 and internal instancer API are not publicly open."""
-    # Check 127.0.0.1:2375 (Docker TCP without TLS)
+    """Verify that Docker daemon port 2375 is not publicly open on host."""
     d_reachable, _ = try_tcp_connect("127.0.0.1", 2375, timeout=0.2)
-    assert not d_reachable, "Security violation: Docker daemon TCP port 2375 is publicly accessible"
+    assert not d_reachable, "Security violation: Docker daemon TCP port 2375 is accessible on host"
 
 
 # ---------------------------------------------------------------------------
-# 4. Live Stack Isolation Proof (when running in Docker environment)
+# 4. Live Stack Isolation Proof (F2 Real Proof with Live Instances)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.overlays
-def test_running_instance_isolation_stack():
-    """End-to-end verification of isolation on the running overlay stack."""
-    # Verify instancer container labels and isolation settings via docker cli
+def test_live_overlay_instance_isolation_proof(world):
+    """Real isolation proof: start target and prober instances on overlay stack and read report."""
     try:
-        out = subprocess.run(
-            ["docker", "ps", "--filter", "name=l3mon-router", "--format", "{{.ID}}"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if out.returncode != 0 or not out.stdout.strip():
-            pytest.skip("Docker stack not available in current environment")
+        ps = subprocess.run(["docker", "ps", "-q"], capture_output=True, text=True, timeout=5)
+        if ps.returncode != 0:
+            pytest.skip("Docker daemon not accessible")
     except Exception:
-        pytest.skip("Docker executable not accessible")
+        pytest.skip("Docker CLI not available")
 
-    # If stack is active, verify router container is running and healthy
-    router_id = out.stdout.strip().splitlines()[0]
-    inspect_out = subprocess.run(
-        ["docker", "inspect", router_id],
-        capture_output=True,
-        text=True,
-        timeout=5,
-    )
-    assert inspect_out.returncode == 0
-    info = json.loads(inspect_out.stdout)[0]
-    assert info["State"]["Running"] is True
+    # Ensure required fixture images are built
+    subprocess.run(["docker", "build", "-t", "l3mon-fixture/demo-web:dev", "services/instancer/tests/fixtures/web"], check=True)
+    subprocess.run(["docker", "build", "-t", "l3mon-fixture/prober:dev", "services/instancer/tests/fixtures/prober"], check=True)
+
+    from tests.integration.test_instances import admin, make_player, post_json, request_router
+
+    # 1. Create Target Challenge (demo-web) and Prober Challenge (demo-prober)
+    status, out_t = admin("POST", "/api/v1/challenges", {
+        "name": "Target Web Challenge",
+        "category": "Web",
+        "description": "Target instance for isolation check",
+        "value": 100,
+        "state": "visible",
+        "type": "standard",
+    })
+    assert status == 200, out_t
+    chal_target_id = out_t["data"]["id"]
+
+    status, out_p = admin("POST", "/api/v1/challenges", {
+        "name": "Prober Challenge",
+        "category": "Internal",
+        "description": "Prober instance for isolation proof",
+        "value": 100,
+        "state": "visible",
+        "type": "standard",
+    })
+    assert status == 200, out_p
+    chal_prober_id = out_p["data"]["id"]
+
+    # 2. Add Dynamic Flags
+    admin("POST", "/api/v1/flags", {"challenge_id": chal_target_id, "content": "", "type": "l3mon_dynamic", "data": ""})
+    admin("POST", "/api/v1/flags", {"challenge_id": chal_prober_id, "content": "", "type": "l3mon_dynamic", "data": ""})
+
+    # 3. Create Programmes for both challenges
+    chan_slug = f"chan-iso-{pysecrets.token_hex(4)}"
+    status, _ = admin("PUT", PROGRAMMES_API, {
+        "channels": [{"slug": chan_slug, "name": "Isolation Channel", "position": 1}],
+        "programmes": [
+            {"challenge_id": chal_target_id, "channel": chan_slug, "cell": 0, "number": 301, "slug": "demo-web", "delivery": "live_single"},
+            {"challenge_id": chal_prober_id, "channel": chan_slug, "cell": 1, "number": 302, "slug": "demo-prober", "delivery": "live_single"},
+        ],
+    })
+    assert status == 200
+
+    status, view = admin("GET", RELEASE_API)
+    assert status == 200
+    chan_id = view["data"]["channels"][0]["id"]
+    for prog in view["data"]["channels"][0]["programmes"]:
+        admin("PUT", RELEASE_API, {"changes": [{"kind": "programme", "id": prog["id"], "mode": "release"}]})
+    admin("PUT", RELEASE_API, {"changes": [{"kind": "channel", "id": chan_id, "mode": "release"}]})
+
+    # 4. Create Players (Team Target and Team Prober)
+    session_target, _, _ = make_player(f"user_target_{pysecrets.token_hex(4)}")
+    session_prober, _, _ = make_player(f"user_prober_{pysecrets.token_hex(4)}")
+
+    # 5. Start Target Instance
+    status, resp_t = post_json(session_target, "/api/v1/l3mon/instances", {"challenge_id": chal_target_id})
+    assert status == 201, resp_t
+    target_url = resp_t["data"]["url"]
+    target_inst_id = urllib.parse.urlparse(target_url).netloc.split(".")[0]
+
+    # Retrieve Target container IP and name via Docker inspect
+    target_cname = f"l3mon-inst-{target_inst_id}"
+    inspect_target = subprocess.run(["docker", "inspect", target_cname], capture_output=True, text=True, check=True)
+    target_info = json.loads(inspect_target.stdout)[0]
+    target_ip = target_info["NetworkSettings"]["IPAddress"] or list(target_info["NetworkSettings"]["Networks"].values())[0]["IPAddress"]
+    gateway_ip = list(target_info["NetworkSettings"]["Networks"].values())[0]["Gateway"]
+
+    # 6. Start Prober Instance
+    status, resp_p = post_json(session_prober, "/api/v1/l3mon/instances", {"challenge_id": chal_prober_id})
+    assert status == 201, resp_p
+    prober_url = resp_p["data"]["url"]
+    prober_host = urllib.parse.urlparse(prober_url).netloc
+    prober_inst_id = prober_host.split(".")[0]
+    prober_cname = f"l3mon-inst-{prober_inst_id}"
+
+    # Wait for router route propagation
+    time.sleep(3)
+
+    # 7. Query Prober /report endpoint through Router with real target parameters
+    params = urllib.parse.urlencode({
+        "other_ip": target_ip,
+        "other_name": target_cname,
+        "gateway_ip": gateway_ip,
+        "instancer_host": "instancer",
+        "router_host": "router",
+    })
+    status_code, report_bytes = request_router(prober_host, f"/report?{params}")
+    assert status_code == 200, f"Prober returned status {status_code}: {report_bytes.decode('utf-8', 'replace')}"
+
+    report = json.loads(report_bytes.decode("utf-8"))
+
+    # Assert every probe in prompt's F2 list reads "isolated"
+    assert report["fully_isolated"] is True, f"Isolation failure in live prober report: {report}"
+    assert set(report["checks"].keys()) == EXPECTED_PROBER_CHECKS
+
+    for check_name in EXPECTED_PROBER_CHECKS:
+        cdata = report["checks"][check_name]
+        assert cdata["isolated"] is True, f"Check '{check_name}' failed isolation: {cdata}"
+
+    # 8. Outside verification from host:
+    # Instance's own container ports are NOT published
+    port_t = subprocess.run(["docker", "port", target_cname], capture_output=True, text=True)
+    assert port_t.stdout.strip() == "", f"Target container exposed ports: {port_t.stdout}"
+    port_p = subprocess.run(["docker", "port", prober_cname], capture_output=True, text=True)
+    assert port_p.stdout.strip() == "", f"Prober container exposed ports: {port_p.stdout}"
+
+    # Socket proxy port is not reachable from host
+    sp_reachable, _ = try_tcp_connect("127.0.0.1", 2375, timeout=0.5)
+    assert not sp_reachable, "Socket proxy port 2375 is reachable from host runner"

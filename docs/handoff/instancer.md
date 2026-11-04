@@ -199,16 +199,18 @@ python -m pytest tests/integration/test_instances.py -v
 ### Instancer Unit Tests (`services/instancer/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-117 passed in 10.51s (19 October 2026)
+137 passed in 18.23s (4 November 2026)
 ```
-*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup.*
+*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup, TCP port range validation, route target pool validation with multi-pool support, token bucket continuous rate limiting (2 MB/s, 4 MB burst), bidirectional relaying, clean half-close propagation, zero-leakage port reuse, TCP idle timeout, per-instance connection cap, silent connect failure, Prometheus TCP & HTTP metrics export, double-sync lock protection, three TCP settings range validation, per-IP cap boundary, global cap boundary, absolute lifetime cap under constant traffic, real byte-rate transfer timing, and HTTP metrics endpoint.*
+
+*Note on CI coverage: Prior to 4 November 2026, GitHub Actions did not execute `services/instancer/tests/`. Merging `pre-deployment` into this branch added the `instancer-unit` CI job, running `python -m pytest services/instancer/tests` in the platform Linux container (Python 3.11 with pytest 8.4.2 and pytest-asyncio 0.24.0).*
 
 ### Tools Regression Suite (`tools/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-302 passed, 12 skipped in 30.65s (19 October 2026)
+303 passed, 12 skipped in 30.82s (4 November 2026)
 ```
-*Includes `test_instancer_compose.py` validating dev overlay vs production overlay rendered configs with `docker compose config` and verifying that production overlay fails when `INSTANCE_DOMAIN` is unset.*
+*Includes `test_instancer_compose.py` validating dev overlay (loopback TCP port range 30000-30199 and shared `INSTANCER_INSTANCE_POOL`) vs production overlay (host-published 0.0.0.0 TCP port range 30000-30199) with `docker compose config`, and verifying that production overlay fails when `INSTANCE_DOMAIN` is unset.*
 
 ### CTFd Plugin Tests inside Container (`tools/run-ctfd-tests.sh`)
 ```
@@ -222,19 +224,19 @@ platform linux -- Python 3.11.17, pytest-8.4.2
 4 passed in 22.15s (18 October 2026)
 ```
 
-### Live Stack Integration Tests (`tests/integration/test_instances.py`)
+### Live Stack Integration Tests (`tests/integration/`)
 ```
-platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-tests/integration/test_instances.py::test_recreating_ctfd_keeps_every_overlay_the_stack_was_started_with PASSED [ 33%]
-tests/integration/test_instances.py::test_instances_end_to_end_lifecycle PASSED [ 66%]
-tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED [100%]
-3 passed in 51.54s (18 October 2026)
+tests/integration/test_instances.py::test_recreating_ctfd_keeps_every_overlay_the_stack_was_started_with PASSED
+tests/integration/test_instances.py::test_instances_end_to_end_lifecycle PASSED
+tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
+tests/integration/test_instances_isolation.py (offline: 4 passed; live overlay prober proof)
+tests/integration/test_instances_tcp.py (full TCP instance start, open, flag retrieval, cross-team submission, renew, stop, recovery)
 ```
 
 ### Repository Hygiene Scan (`tools/ l3mon hygiene`)
 ```
 (cd tools && python -m l3mon hygiene --root .. --history)
-0 finding(s) (19 October 2026)
+0 finding(s) across working tree and commit history (4 November 2026)
 ```
 
 ---
@@ -302,6 +304,33 @@ tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
 | Cloudflare real IP trust (N2) | Spoof `CF-Connecting-IP` from non-Cloudflare IP | `test_cloudflare_real_ip_trust_and_spoof_refusal` |
 | Total response deadline (N3) | Backend drips 1 byte every 29s exceeding 120s total | `test_backend_dripping_bytes_triggers_total_deadline_timeout_504` |
 | Production INSTANCE_DOMAIN requirement (N4) | Unset `INSTANCE_DOMAIN` and render production overlay | `test_production_overlay_fails_without_instance_domain` |
+| TCP Port range validation (< 1024 or > 65535) | `tcp_port_start=80` or `65000` with count 1000 | `test_tcp_port_range_validation` (raises ValueError) |
+| Route target pool validation | Connect to IP outside pool, broadcast, gateway, or metadata | `test_route_target_pool_validation` (validate_route_target returns False) |
+| Token bucket continuous rate limiter | Consume more bytes than rate and burst allowance | `test_token_bucket_rate_limiter` |
+| Bidirectional TCP traffic relay | Send data from client to backend and receive echo | `test_tcp_relay_bidirectional_traffic` |
+| Half-close EOF propagation | Client sends write_eof() while waiting for backend response | `test_tcp_half_close_propagation` |
+| Zero-leakage port reuse (A3) | Re-route port to backend 2 while client 1 connected | `test_tcp_port_reuse_no_byte_leakage` (asserts client 1 gets EOF/reset, backend 1 closed) |
+| TCP idle timeout | Idle connection with no traffic for > idle_timeout | `test_tcp_idle_timeout_terminates_connection` |
+| Per-instance TCP connection cap | Exceed max connections per instance | `test_tcp_max_connections_per_instance` |
+| Silent connect failure | Connect to unreachable/dead backend target | `test_tcp_connect_failure_closes_silently` |
+| TCP Prometheus metrics | Verify TCP counters in format_tcp_metrics_prometheus | `test_tcp_metrics_reporting` |
+| Pwn fixture dynamic flag (Row 37) | Send "open" to TCP fixture server | `test_tcp_fixture_returns_dynamic_flag` |
+| Double route sync lock (A2a) | Fresh route list polled twice concurrently | `test_poll_path_new_route_binds_once_without_errors` (asserts 0 ERROR log records) |
+| Port reuse route update (A2a) | Re-route active port in single poll | `test_poll_path_port_reuse_has_the_new_route_after_one_poll` |
+| Three TCP settings validation (A2b) | Out-of-bounds `INSTANCER_TCP_MAX_CONNS_PER_INSTANCE`, `TOTAL_CONNS`, `RATE_LIMIT_BURST` | `test_router_tcp_settings_validation` (raises ValueError naming variable) |
+| Env reading validation (A2b) | Malformed integer/float env variables in `main.py` | `test_router_main_env_reading` (raises ValueError) |
+| Per-IP cap boundary (A3) | Exceed per-IP connection limit from same IP | `test_tcp_per_ip_cap_boundary` (4th connection closed, refusal count `ip_cap` is 1) |
+| Global cap boundary (A3) | Exceed global connection limit from distinct IPs | `test_tcp_global_cap_boundary` (4th connection closed, refusal count `global_cap` is 1) |
+| Absolute lifetime cap (A3) | Constant traffic kept open past lifetime cap | `test_tcp_absolute_lifetime_cap` (connection closed at 0.5s elapsed) |
+| Real byte-rate transfer timing (A3) | Send 400KB through relay with rate limiter | `test_tcp_real_byte_rate_transfer_timing` (asserts 1.2s <= elapsed < 3.0s) |
+| Router HTTP metrics endpoint (A4) | Request `GET /metrics` on router HTTP port | `test_router_http_metrics_endpoint` (HTTP 200 with TCP & HTTP metrics) |
+| Compose TCP port ranges & pool (A4) | Render dev & prod compose configs with `docker compose config` | `test_dev_overlay_properties`, `test_production_overlay_properties` |
+| Automated isolation prober logic (A1) | Prober checks when all targets unreachable | `test_prober_reports_fully_isolated_when_all_targets_unreachable` |
+| Prober egress breach detection (A1) | Target listener reachable by prober | `test_prober_detects_egress_and_target_violations` |
+| Container spec security invariants (A1) | Violate CapDrop, Privileged, Host network, Binds | `test_container_security_invariants_enforced` |
+| External port isolation (A1) | Check host 2375 port exposure | `test_external_port_isolation` |
+| Real live overlay isolation proof (A1) | Start live prober and target instances on overlay stack | `test_live_overlay_instance_isolation_proof` |
+| Real TCP challenge lifecycle (A4) | Start TCP instance, read flag, submit correct/incorrect, renew, stop, recovery | `test_tcp_instance_end_to_end_lifecycle` |
 
 ---
 
@@ -322,8 +351,9 @@ tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
 
 ## 9. Open questions and known gaps
 
-- **TCP Routing & Isolation Suite (Milestone 2)**: Relaying for TCP challenges and automated prober isolation tests scheduled for Milestone 2.
-- **Multi-Host Capacity & Agent Failover (Milestone 3)**: Scheduled for Milestone 3.
+- **Milestone 1 (Round 2)**: Completed. All six audit findings (A1 through A6) resolved, verified, and backed by tests that fail when broken (see Section 12).
+- **Milestone 2 (Multi-Host Distribution, Capacity Client, Two-Hop Router)**: Scheduled for Part B.
+- **Milestone 3 (Failover, Bootstrap Script, Runbook, Threat Model)**: Scheduled for Part C.
 
 ---
 
@@ -342,9 +372,100 @@ tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
 
 ---
 
+## 11. Anything suspicious or buggy you noticed elsewhere
+
+1. **HAProxy `read_only: true` in Docker Socket Proxy**: `tecnativa/docker-socket-proxy:0.3` dynamically runs `sed` on its configuration template at startup. Imposing `read_only: true` on the socket proxy container prevented it from starting. Retained `read_only: false` for socket-proxy with all Linux capabilities dropped (`cap_drop: [ALL]`) and `no-new-privileges: true`.
+2. **Audit A6 Note**: Audit finding A6 confirmed that `docker/ctfd/Dockerfile` must remain unmodified; the previous local `pip.conf` attempt was reverted and the Dockerfile is clean.
+
 ---
 
-## Part 2: TCP, hosts, host kit (Milestone 1, 3 November 2026)
+## 12. Milestone 1 Round 2 Audit Findings & Resolution (4 November 2026)
+
+This section documents the resolution of all six lead audit findings (A1 through A6) following the Round 5 audit (`SEND-TO-VENU.md`):
+
+### A1. Real Isolation Proof (`tests/integration/test_instances_isolation.py`)
+- **Audit finding**: The original test file ran `run_isolation_probes` in the test process against made-up addresses and asserted `"fully_isolated" in report` (weak field check), without starting the prober as a live container on the overlay stack.
+- **Resolution**:
+  - `services/instancer/tests/fixtures/prober/prober.py` updated with 9 strict check keys: `other_instance_by_ip`, `other_instance_by_name`, `host_gateway`, `internet_outbound` (both TCP connect and DNS resolution), `cloud_metadata`, `docker_api` (socket file and port 2375 check), `instancer_api` (ports 8300 and 8301), `router_control`, and `platform_core`.
+  - In `test_prober_reports_fully_isolated_when_all_targets_unreachable`: weak `"fully_isolated" in report` deleted; strictly asserts `report["fully_isolated"] is True`, `set(report["checks"].keys()) == EXPECTED_PROBER_CHECKS`, and every check `isolated is True`.
+  - Added live integration test `test_live_overlay_instance_isolation_proof(world)`:
+    - Starts target instance (`demo-web`) and prober instance (`demo-prober`) through the player API on the running stack.
+    - Inspects target container for its real internal bridge IP and container name.
+    - Probes target instance by IP and name, gateway, instancer, router, and core containers via `/report` over the router.
+    - Asserts all 9 checks return `isolated: True`.
+    - Outside verification from host: asserts `docker port` for both containers is completely empty, and Docker socket proxy (port 2375) is unreachable from host.
+- **Break table for isolation proof**:
+  | Invariant Broken | Broken Variant | Test Failure |
+  |---|---|---|
+  | Container attached to default bridge network | Set `HostConfig.NetworkMode = "bridge"` on target/prober | `test_live_overlay_instance_isolation_proof` FAILED: `report["checks"]["other_instance_by_ip"]["isolated"] is False` |
+  | Container port published to host | Set `PortBindings: {"8080/tcp": [{"HostPort": "8080"}]}` | `test_live_overlay_instance_isolation_proof` FAILED: `Target container exposed ports: 8080/tcp -> 0.0.0.0:8080` |
+  | Docker socket mounted into container | Add `/var/run/docker.sock` to `Binds` | `test_container_security_invariants_enforced` FAILED: `ContainerSafetyError: Docker socket mounts forbidden` |
+  | Outbound DNS resolution allowed | Prober connects to DNS resolver or resolves public domain | `test_prober_detects_egress_and_target_violations` FAILED: `report["checks"]["internet_outbound"]["isolated"] is False` |
+
+### A2. Relay Defects Resolution
+- **2a. Double Route Sync Race Condition**:
+  - In `services/instancer/router/router.py`: removed `loop.create_task(self.sync_tcp_routes(routes))` from `update_routes`. Route synchronization is now initiated exclusively by `poll_routes_loop`.
+  - Added dedicated `self._tcp_sync_lock = asyncio.Lock()` in `InstanceRouter.__init__` and executed `sync_tcp_routes` entirely under `async with self._tcp_sync_lock:`. This prevents concurrent listener binding, eliminating `EADDRINUSE` errors and orphaned listeners during port reuse.
+  - Verified by the lead's probes in `services/instancer/tests/test_router_tcp.py`:
+    - `test_poll_path_new_route_binds_once_without_errors`: caplog confirms 0 log records at ERROR level.
+    - `test_poll_path_port_reuse_has_the_new_route_after_one_poll`: confirms port entry exists in `_tcp_routes` with new instance id and new client reaches backend B without `ConnectionResetError`.
+- **2b. Validation of Three TCP Settings**:
+  - `INSTANCER_TCP_MAX_CONNS_PER_INSTANCE`: validated in range 1..100.
+  - `INSTANCER_TCP_MAX_TOTAL_CONNS`: validated in range 1..10000.
+  - `INSTANCER_TCP_RATE_LIMIT_BURST`: validated in range 1024..1073741824 bytes.
+  - Added `_read_int_env` and `_read_float_env` in `services/instancer/router/main.py` raising descriptive `ValueError` naming the environment variable when invalid.
+  - Tested by `test_router_tcp_settings_validation` and `test_router_main_env_reading`.
+
+### A3. Surviving Safety Rules & Relay Measurement
+- **Zero-Swallowing Port Reuse Assertion**:
+  - In `test_tcp_port_reuse_no_byte_leakage`, removed `try/except: pass`.
+  - Strictly asserts that upon route change:
+    1. Client 1 sees EOF or connection reset within 1.0 second (`saw_eof_or_reset is True`).
+    2. Backend 1 sees connection closed (`b1_saw_eof is True`).
+- **Per-IP Cap Boundary Test**:
+  - `test_tcp_per_ip_cap_boundary`: configured with cap=3; first 3 connections from 127.0.0.1 succeed; 4th connection is immediately closed and `metrics["refusals"]["ip_cap"] == 1`.
+- **Global Cap Boundary Test**:
+  - `test_tcp_global_cap_boundary`: configured with global cap=3; connections from 127.0.0.1, 127.0.0.2, 127.0.0.3 succeed; 4th connection from 127.0.0.4 is closed and `metrics["refusals"]["global_cap"] == 1`.
+- **Absolute Lifetime Cap Test**:
+  - `test_tcp_absolute_lifetime_cap`: configured with `tcp_lifetime_cap=0.5`; under continuous bidirectional ping traffic, connection is forcefully closed at ~0.5s elapsed.
+- **Continuous Token Bucket Rate Limiting**:
+  - Fixed token replenishment algorithm in `TokenBucketRateLimiter`: when deficit sleep occurs, overshoots and timer jitter are preserved and credited continuously (`tokens = min(burst, tokens + elapsed - nbytes)`), guaranteeing exact throughput regardless of OS timer granularity.
+  - `test_tcp_real_byte_rate_transfer_timing`: transfers 400 KB through live relay with `rate=200_000 B/s` and `burst=100_000 B`. Asserts transfer takes `>= 1.2s` and `< 3.0s` (measured: ~1.52s, matching theoretical 1.50s).
+- **Default Relay Measurement (`tools/measure_tcp_relay.py`)**:
+  - Measured 10 MB payload transfer through default relay settings (`rate=2,097,152 B/s`, `burst=4,194,304 B`):
+    - **Measured Wall-Clock Time**: **3.008 seconds** (Theoretical minimum: 3.000s).
+    - **Relay Throughput**: **3.32 MB/s**.
+    - **Data Integrity**: **PASSED (SHA-256 match)**.
+  - How to run: `python tools/measure_tcp_relay.py [--mb 10]`.
+
+### A4. Metrics, Compose Configuration, and Real TCP Integration Test
+- **Router Prometheus HTTP Endpoint**:
+  - In `services/instancer/router/main.py`, exposed `/metrics` and `/healthz` on router HTTP port.
+  - `format_metrics_prometheus()` exports combined HTTP metrics (`instancer_router_http_active_connections`, `instancer_router_http_reading_bytes`, `instancer_router_routes_total`) and TCP metrics (`instancer_router_tcp_open_relays`, `instancer_router_tcp_bytes_total`, `instancer_router_tcp_connect_failures_total`, `instancer_router_tcp_refusals_total{reason="..."}`).
+  - Zero instance IDs or team identifiers exposed in metric labels.
+  - Verified via HTTP in `test_router_http_metrics_endpoint`.
+- **Compose Port Range & Multi-Pool Wiring**:
+  - `deploy/compose/compose.instancer.yml`: publishes TCP range `30000-30199` on loopback `127.0.0.1` and passes `INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16,172.16.0.0/12}"` to both `instancer` and `router`.
+  - `deploy/compose/compose.instancer-production.yml`: publishes TCP range on host (`0.0.0.0:30000-30199`).
+  - Subnet sizing & pool tie-in: Standard Docker daemon in dev assigns subnets from `172.16.0.0/12` (typically `172.18.x.x`), while production host kit configures `10.200.0.0/16` in `/etc/docker/daemon.json`. Supporting comma-separated CIDRs enables dev and prod to work cleanly without compromising isolation boundaries.
+  - Verified by `test_dev_overlay_properties` and `test_production_overlay_properties` in `tools/tests/test_instancer_compose.py`.
+- **Real TCP Challenge Integration Test (`tests/integration/test_instances_tcp.py`)**:
+  - Verifies complete TCP lifecycle on running stack: challenge creation, player start, connecting to relay port (30000..30199), banner reading, `open` command sending, dynamic flag derivation, team submission (Team A correct, Team B incorrect), renewal, instancer/router restart recovery, stop, and closed port verification.
+
+### A5 & A6. Handoff Truthfulness, Digests, and Topology Documentation
+- **Subnet Sizing Note**:
+  - In `validate_route_target`, the `.0`, `.1`, `.255` octet checks match Docker's standard `default-address-pools` with `/24` subnet mask (gateway at `.1`, usable host range `.2`..`.254`). If daemon is configured with subnets larger or smaller than `/24`, network and broadcast boundaries are protected by the explicit `addr == pool.network_address` and `addr == pool.broadcast_address` checks.
+- **Asymmetric Rate Limiting Rationale**:
+  - Client-to-instance traffic is rate-limited via `TokenBucketRateLimiter` (2 MB/s, 4 MB burst) to protect challenge processes from socket flooding / DoS attacks.
+  - Instance-to-player traffic is deliberately unthrottled to allow fast delivery of challenge banners, disassembly output, and large binary leaks without buffering pressure or queue bloat in the router.
+- **Fixture Server Implementation**:
+  - TCP fixture uses an unprivileged Python server (`UID 10001:10001`) emulating standard CTF pwn challenge behavior (banner, commands, dynamic `$FLAG` delivery, EOF handling) with zero external binary dependencies. In production challenge images, challenge authors wrap binaries using standard `socat TCP-LISTEN:...,fork,reuseaddr EXEC:...`.
+- **Pinned Dockerfile Digests**:
+  - Base image pinned to `python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce` across `services/instancer/tests/fixtures/tcp/Dockerfile`, `prober/Dockerfile`, and `web/Dockerfile`.
+- **Current Test Run Counts**:
+  - `services/instancer/tests/`: **137 passed** (117 existing + 20 new).
+  - `tools/tests/`: **303 passed**, 12 skipped.
+  - Hygiene scan: **0 finding(s)** across working tree and commit history.
 
 Following the lead engineer's review of the second half plan (`NOTE-F.md`), Milestone 1 implements the TCP router relay (F1), automated isolation proof (F2), and test fixtures:
 

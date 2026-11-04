@@ -48,10 +48,19 @@ def test_dev_overlay_properties():
     vol_sources = [v.get("source", "") for v in volumes]
     assert any("challenges.example.toml" in src for src in vol_sources), f"Expected example manifest in dev, got {vol_sources}"
 
-    # Dev router published on loopback 127.0.0.1
+    # Dev router published on loopback 127.0.0.1 for HTTP and all TCP ports
     ports = router.get("ports", [])
-    assert len(ports) > 0
-    assert ports[0].get("host_ip") == "127.0.0.1"
+    assert len(ports) == 201, f"Expected 201 published ports (1 HTTP + 200 TCP), got {len(ports)}"
+    assert all(p.get("host_ip") == "127.0.0.1" for p in ports)
+    published_ports = {int(p.get("target")) for p in ports}
+    assert 8090 in published_ports
+    assert 30000 in published_ports
+    assert 30199 in published_ports
+
+    # Both instancer and router receive the same INSTANCER_INSTANCE_POOL
+    inst_pool = instancer.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
+    router_pool = router.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
+    assert inst_pool is not None and inst_pool == router_pool
 
 
 def test_production_overlay_properties():
@@ -80,14 +89,23 @@ def test_production_overlay_properties():
         sec_names = [s.get("source") if isinstance(s, dict) else s for s in secrets_list]
         assert "PRESET_ADMIN_TOKEN" not in sec_names, f"Service {sname} received PRESET_ADMIN_TOKEN in production!"
 
-    # 4. Router published on 0.0.0.0 (not 127.0.0.1)
+    # 4. Router published on 0.0.0.0 (not 127.0.0.1) for HTTP and TCP range
     ports = router.get("ports", [])
-    assert len(ports) > 0
-    assert ports[0].get("host_ip") == "0.0.0.0"
+    assert len(ports) == 201, f"Expected 201 published ports (1 HTTP + 200 TCP), got {len(ports)}"
+    assert all(p.get("host_ip") == "0.0.0.0" for p in ports)
+    published_ports = {int(p.get("target")) for p in ports}
+    assert 8090 in published_ports
+    assert 30000 in published_ports
+    assert 30199 in published_ports
 
     # 5. INSTANCE_DOMAIN configured
     router_env = router.get("environment", {})
     assert router_env.get("INSTANCE_DOMAIN") == "instances.l3m0nctf.xyz"
+
+    # 6. Both instancer and router receive the same INSTANCER_INSTANCE_POOL
+    inst_pool = instancer.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
+    router_pool = router.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
+    assert inst_pool is not None and inst_pool == router_pool
 
 
 

@@ -30,6 +30,26 @@ def _read_secret(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+def _read_int_env(name: str, default: int) -> int:
+    val = os.getenv(name)
+    if val is None or not val.strip():
+        return default
+    try:
+        return int(val.strip())
+    except ValueError:
+        raise ValueError(f"{name} must be an integer, got '{val}'")
+
+
+def _read_float_env(name: str, default: float) -> float:
+    val = os.getenv(name)
+    if val is None or not val.strip():
+        return default
+    try:
+        return float(val.strip())
+    except ValueError:
+        raise ValueError(f"{name} must be a number, got '{val}'")
+
+
 async def _refuse(writer: asyncio.StreamWriter, status: int, text: str) -> None:
     body = (text + "\n").encode("utf-8")
     status_text = (
@@ -136,6 +156,19 @@ async def _serve_one(reader, writer, router, header_timeout, body_timeout, clien
 
     inst_id = extract_instance_id(host_header, router.instance_domain)
     if not inst_id:
+        if method == "GET" and path == "/healthz":
+            body = b'{"status":"ok"}\n'
+            head = f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+            writer.write(head.encode("ascii") + body)
+            await writer.drain()
+            return client_ip
+        if method == "GET" and path == "/metrics":
+            body = router.format_metrics_prometheus().encode("utf-8")
+            head = f"HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4; charset=utf-8\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+            writer.write(head.encode("ascii") + body)
+            await writer.drain()
+            return client_ip
+
         await _refuse(writer, 404, "Instance not found or invalid host\n")
         return client_ip
 
@@ -219,13 +252,16 @@ async def main():
 
     instance_domain = os.getenv("INSTANCE_DOMAIN", "localhost:8090")
     instancer_url = os.getenv("INSTANCER_URL", "http://instancer:8300")
-    port = int(os.getenv("ROUTER_HTTP_PORT", "8090"))
-    tcp_port_start = int(os.getenv("INSTANCER_TCP_PORT_START", "30000"))
-    tcp_port_count = int(os.getenv("INSTANCER_TCP_PORT_COUNT", "200"))
-    tcp_idle_timeout = float(os.getenv("INSTANCER_TCP_IDLE_TIMEOUT", "300"))
-    tcp_lifetime_cap = float(os.getenv("INSTANCER_TCP_LIFETIME_CAP", "3600"))
-    tcp_max_conns_per_ip = int(os.getenv("INSTANCER_TCP_MAX_CONNS_PER_IP", "60"))
-    tcp_rate_limit_bps = int(os.getenv("INSTANCER_TCP_RATE_LIMIT_BPS", str(2 * 1024 * 1024)))
+    port = _read_int_env("ROUTER_HTTP_PORT", 8090)
+    tcp_port_start = _read_int_env("INSTANCER_TCP_PORT_START", 30000)
+    tcp_port_count = _read_int_env("INSTANCER_TCP_PORT_COUNT", 200)
+    tcp_idle_timeout = _read_float_env("INSTANCER_TCP_IDLE_TIMEOUT", 300.0)
+    tcp_lifetime_cap = _read_float_env("INSTANCER_TCP_LIFETIME_CAP", 3600.0)
+    tcp_max_conns_per_instance = _read_int_env("INSTANCER_TCP_MAX_CONNS_PER_INSTANCE", 10)
+    tcp_max_conns_per_ip = _read_int_env("INSTANCER_TCP_MAX_CONNS_PER_IP", 60)
+    tcp_max_total_conns = _read_int_env("INSTANCER_TCP_MAX_TOTAL_CONNS", 2000)
+    tcp_rate_limit_bps = _read_int_env("INSTANCER_TCP_RATE_LIMIT_BPS", 2 * 1024 * 1024)
+    tcp_rate_limit_burst = _read_int_env("INSTANCER_TCP_RATE_LIMIT_BURST", 4 * 1024 * 1024)
     instance_pool = os.getenv("INSTANCER_INSTANCE_POOL", "10.200.0.0/16")
 
     router = InstanceRouter(
@@ -236,8 +272,11 @@ async def main():
         tcp_port_count=tcp_port_count,
         tcp_idle_timeout=tcp_idle_timeout,
         tcp_lifetime_cap=tcp_lifetime_cap,
+        tcp_max_connections_per_instance=tcp_max_conns_per_instance,
         tcp_max_connections_per_ip=tcp_max_conns_per_ip,
+        tcp_max_total_connections=tcp_max_total_conns,
         tcp_rate_limit_bps=tcp_rate_limit_bps,
+        tcp_rate_limit_burst=tcp_rate_limit_burst,
         instance_pool=instance_pool,
     )
 

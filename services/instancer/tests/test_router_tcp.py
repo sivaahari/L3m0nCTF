@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import logging
 import os
 import socket
 import time
@@ -293,17 +294,29 @@ async def test_tcp_port_reuse_no_byte_leakage():
             {"id": "inst_new", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend2_port}
         ])
 
-        # Client 1 connection should be terminated (reading returns EOF or error)
+        # Client 1 connection must be terminated: see EOF or reset within 1.0s (no swallowing)
+        saw_eof_or_reset = False
         try:
             read_rest = await asyncio.wait_for(c1_r.read(100), timeout=1.0)
-            assert read_rest == b""
-        except Exception:
-            pass
+            if read_rest == b"":
+                saw_eof_or_reset = True
+        except (ConnectionResetError, asyncio.IncompleteReadError):
+            saw_eof_or_reset = True
+        assert saw_eof_or_reset, "Old client did not see EOF or reset after route changed"
         c1_w.close()
+        await c1_w.wait_closed()
+
+        # Old backend must see its connection closed
+        assert len(backend1_conns) == 1
+        b1_r, b1_w = backend1_conns[0]
+        b1_saw_eof = False
         try:
-            await c1_w.wait_closed()
-        except Exception:
-            pass
+            b1_rest = await asyncio.wait_for(b1_r.read(100), timeout=1.0)
+            if b1_rest == b"":
+                b1_saw_eof = True
+        except (ConnectionResetError, asyncio.IncompleteReadError):
+            b1_saw_eof = True
+        assert b1_saw_eof, "Old backend did not see EOF after route changed"
 
         # Connect as Client 2 to the reused port
         c2_r, c2_w = await asyncio.open_connection("127.0.0.1", port)
@@ -631,3 +644,497 @@ async def test_tcp_fixture_returns_dynamic_flag():
     finally:
         server.close()
         await server.wait_closed()
+
+
+# ---------------------------------------------------------------------------
+# Lead Audit A2a: Double-Sync Probes & Poll Path
+# ---------------------------------------------------------------------------
+
+async def poll_like(router, routes):
+    """Exactly what poll_routes_loop does with a fresh route list."""
+    async with router._lock:
+        router.update_routes(routes)
+    await router.sync_tcp_routes(routes)
+
+
+@pytest.mark.asyncio
+async def test_poll_path_new_route_binds_once_without_errors(caplog):
+    port = get_free_port()
+    backend_port = get_free_port()
+
+    async def backend_cb(reader, writer):
+        data = await reader.read(100)
+        writer.write(b"ACK:" + data)
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    srv = await asyncio.start_server(backend_cb, "127.0.0.1", backend_port)
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=port,
+        tcp_port_count=10,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    try:
+        route_a = {
+            "id": "inst_a",
+            "protocol": "tcp",
+            "port": port,
+            "target_ip": "127.0.0.1",
+            "target_port": backend_port,
+        }
+        with caplog.at_level(logging.ERROR):
+            await poll_like(router, [route_a])
+            await asyncio.sleep(0.5)
+
+        # Assert no log record at ERROR level (single bind, no EADDRINUSE race)
+        error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert len(error_records) == 0, f"Found unexpected ERROR logs: {error_records}"
+
+        # A client connecting to the relay port reaches backend A
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(b"probe-payload\n")
+        await w.drain()
+        reply = await asyncio.wait_for(r.readline(), timeout=2.0)
+        assert reply == b"ACK:probe-payload\n"
+        w.close()
+        await w.wait_closed()
+    finally:
+        await router.close_all_tcp_listeners()
+        srv.close()
+        await srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_poll_path_port_reuse_has_the_new_route_after_one_poll():
+    port = get_free_port()
+    backend_a_port = get_free_port()
+    backend_b_port = get_free_port()
+
+    async def backend_a_cb(reader, writer):
+        await reader.read(100)
+        writer.write(b"hello-from-A\n")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async def backend_b_cb(reader, writer):
+        await reader.read(100)
+        writer.write(b"hello-from-B\n")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    srv_a = await asyncio.start_server(backend_a_cb, "127.0.0.1", backend_a_port)
+    srv_b = await asyncio.start_server(backend_b_cb, "127.0.0.1", backend_b_port)
+
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=port,
+        tcp_port_count=10,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    try:
+        route_a = {"id": "inst_a", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend_a_port}
+        await poll_like(router, [route_a])
+        await asyncio.sleep(0.3)
+
+        # Client talks to A (this connection is what exposes port reuse races)
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        w.write(b"hi\n")
+        await w.drain()
+        reply_a = await asyncio.wait_for(r.readline(), timeout=2.0)
+        assert reply_a == b"hello-from-A\n"
+        w.close()
+        await w.wait_closed()
+
+        # Re-route same port to B in a single poll
+        route_b = {"id": "inst_b", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend_b_port}
+        await poll_like(router, [route_b])
+        await asyncio.sleep(0.6)
+
+        # Assert router._tcp_routes[port]["id"] is B's id AND a new client reaches B (never ConnectionResetError)
+        assert port in router._tcp_routes
+        assert router._tcp_routes[port]["id"] == "inst_b"
+
+        r2, w2 = await asyncio.open_connection("127.0.0.1", port)
+        w2.write(b"hi\n")
+        await w2.drain()
+        reply_b = await asyncio.wait_for(r2.readline(), timeout=2.0)
+        assert reply_b == b"hello-from-B\n"
+        w2.close()
+        await w2.wait_closed()
+    finally:
+        await router.close_all_tcp_listeners()
+        srv_a.close()
+        await srv_a.wait_closed()
+        srv_b.close()
+        await srv_b.wait_closed()
+
+
+# ---------------------------------------------------------------------------
+# Lead Audit A2b: Three Settings Range Validation & main.py Validation
+# ---------------------------------------------------------------------------
+
+def test_router_tcp_settings_validation():
+    # Valid explicit boundaries
+    r = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_max_connections_per_instance=5,
+        tcp_max_connections_per_ip=60,
+        tcp_max_total_connections=500,
+        tcp_rate_limit_bps=2 * 1024 * 1024,
+        tcp_rate_limit_burst=4 * 1024 * 1024,
+        tcp_idle_timeout=300.0,
+        tcp_lifetime_cap=3600.0,
+        instance_pool="10.200.0.0/16,172.16.0.0/12",
+    )
+    assert r.tcp_max_connections_per_instance == 5
+    assert r.tcp_max_connections_per_ip == 60
+    assert r.tcp_max_total_connections == 500
+    assert r.tcp_rate_limit_bps == 2 * 1024 * 1024
+    assert r.tcp_rate_limit_burst == 4 * 1024 * 1024
+    assert len(r.pool_networks) == 2
+
+    # Reject out of bounds INSTANCER_TCP_MAX_CONNS_PER_INSTANCE
+    with pytest.raises(ValueError, match="INSTANCER_TCP_MAX_CONNS_PER_INSTANCE"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", tcp_max_connections_per_instance=0)
+    with pytest.raises(ValueError, match="INSTANCER_TCP_MAX_CONNS_PER_INSTANCE"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", tcp_max_connections_per_instance=101)
+
+    # Reject out of bounds INSTANCER_TCP_MAX_TOTAL_CONNS
+    with pytest.raises(ValueError, match="INSTANCER_TCP_MAX_TOTAL_CONNS"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", tcp_max_total_connections=0)
+    with pytest.raises(ValueError, match="INSTANCER_TCP_MAX_TOTAL_CONNS"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", tcp_max_total_connections=10001)
+
+    # Reject out of bounds INSTANCER_TCP_RATE_LIMIT_BURST
+    with pytest.raises(ValueError, match="INSTANCER_TCP_RATE_LIMIT_BURST"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", tcp_rate_limit_burst=512)
+    with pytest.raises(ValueError, match="INSTANCER_TCP_RATE_LIMIT_BURST"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", tcp_rate_limit_burst=2 * 1024 * 1024 * 1024)
+
+    # Reject empty or invalid pool
+    with pytest.raises(ValueError, match="INSTANCER_INSTANCE_POOL"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", instance_pool="   ")
+    with pytest.raises(ValueError, match="Invalid INSTANCER_INSTANCE_POOL entry"):
+        InstanceRouter(instance_domain="example.com", instancer_url="http://127.0.0.1:8300", instance_pool="not-a-cidr")
+
+
+def test_router_main_env_reading():
+    from services.instancer.router.main import _read_int_env, _read_float_env
+    # Default fallback
+    assert _read_int_env("NON_EXISTENT_VAR", 42) == 42
+    assert _read_float_env("NON_EXISTENT_FLOAT", 3.14) == 3.14
+
+    # Invalid values raise naming variable
+    os.environ["BAD_INT_VAR"] = "notanumber"
+    try:
+        with pytest.raises(ValueError, match="BAD_INT_VAR must be an integer"):
+            _read_int_env("BAD_INT_VAR", 10)
+    finally:
+        os.environ.pop("BAD_INT_VAR", None)
+
+
+# ---------------------------------------------------------------------------
+# Lead Audit A3: Surviving Safety Rules Made Able to Fail
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_tcp_per_ip_cap_boundary():
+    port = get_free_port()
+    backend_port = get_free_port()
+
+    async def backend_cb(reader, writer):
+        while True:
+            chunk = await reader.read(1024)
+            if not chunk:
+                break
+        writer.close()
+        await writer.wait_closed()
+
+    backend_srv = await asyncio.start_server(backend_cb, "127.0.0.1", backend_port)
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=port,
+        tcp_port_count=10,
+        tcp_max_connections_per_ip=3,
+        tcp_max_connections_per_instance=10,
+        tcp_max_total_connections=100,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    try:
+        await router.sync_tcp_routes([
+            {"id": "inst_ip_cap", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend_port}
+        ])
+        # Open 3 connections from 127.0.0.1 -> all 3 succeed
+        c1_r, c1_w = await asyncio.open_connection("127.0.0.1", port)
+        c2_r, c2_w = await asyncio.open_connection("127.0.0.1", port)
+        c3_r, c3_w = await asyncio.open_connection("127.0.0.1", port)
+        await asyncio.sleep(0.1)
+
+        # 4th connection from same IP must be closed immediately
+        c4_r, c4_w = await asyncio.open_connection("127.0.0.1", port)
+        data = await asyncio.wait_for(c4_r.read(100), timeout=1.0)
+        assert data == b"", "4th connection was not refused by per-IP cap"
+        c4_w.close()
+        await c4_w.wait_closed()
+
+        metrics = router.get_tcp_metrics()
+        assert metrics["refusals"].get("ip_cap", 0) == 1
+
+        c1_w.close()
+        c2_w.close()
+        c3_w.close()
+        await asyncio.gather(c1_w.wait_closed(), c2_w.wait_closed(), c3_w.wait_closed())
+    finally:
+        await router.close_all_tcp_listeners()
+        backend_srv.close()
+        await backend_srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_global_cap_boundary():
+    port = get_free_port()
+    backend_port = get_free_port()
+
+    async def backend_cb(reader, writer):
+        while True:
+            chunk = await reader.read(1024)
+            if not chunk:
+                break
+        writer.close()
+        await writer.wait_closed()
+
+    backend_srv = await asyncio.start_server(backend_cb, "127.0.0.1", backend_port)
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=port,
+        tcp_port_count=10,
+        tcp_max_total_connections=3,
+        tcp_max_connections_per_ip=10,
+        tcp_max_connections_per_instance=10,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    try:
+        await router.sync_tcp_routes([
+            {"id": "inst_glob_cap", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend_port}
+        ])
+        # Open 3 connections from distinct IP addresses (127.0.0.1, 127.0.0.2, 127.0.0.3)
+        c1_r, c1_w = await asyncio.open_connection("127.0.0.1", port, local_addr=("127.0.0.1", 0))
+        c2_r, c2_w = await asyncio.open_connection("127.0.0.1", port, local_addr=("127.0.0.2", 0))
+        c3_r, c3_w = await asyncio.open_connection("127.0.0.1", port, local_addr=("127.0.0.3", 0))
+        await asyncio.sleep(0.1)
+
+        # 4th connection from 127.0.0.4 must be refused
+        c4_r, c4_w = await asyncio.open_connection("127.0.0.1", port, local_addr=("127.0.0.4", 0))
+        data = await asyncio.wait_for(c4_r.read(100), timeout=1.0)
+        assert data == b"", "4th connection exceeded global cap but was not refused"
+        c4_w.close()
+        await c4_w.wait_closed()
+
+        metrics = router.get_tcp_metrics()
+        assert metrics["refusals"].get("global_cap", 0) == 1
+
+        c1_w.close()
+        c2_w.close()
+        c3_w.close()
+        await asyncio.gather(c1_w.wait_closed(), c2_w.wait_closed(), c3_w.wait_closed())
+    finally:
+        await router.close_all_tcp_listeners()
+        backend_srv.close()
+        await backend_srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_absolute_lifetime_cap():
+    port = get_free_port()
+    backend_port = get_free_port()
+
+    async def echo_cb(reader, writer):
+        try:
+            while True:
+                data = await reader.read(1024)
+                if not data:
+                    break
+                writer.write(data)
+                await writer.drain()
+        except Exception:
+            pass
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    srv = await asyncio.start_server(echo_cb, "127.0.0.1", backend_port)
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=port,
+        tcp_port_count=10,
+        tcp_idle_timeout=10.0,
+        tcp_lifetime_cap=0.5,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    try:
+        await router.sync_tcp_routes([
+            {"id": "inst_lifetime", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend_port}
+        ])
+        c_r, c_w = await asyncio.open_connection("127.0.0.1", port)
+        start_time = time.perf_counter()
+        closed = False
+        while time.perf_counter() - start_time < 2.0:
+            c_w.write(b"ping\n")
+            try:
+                await c_w.drain()
+                resp = await asyncio.wait_for(c_r.readline(), timeout=0.2)
+                if not resp:
+                    closed = True
+                    break
+            except (ConnectionResetError, asyncio.IncompleteReadError, asyncio.TimeoutError):
+                closed = True
+                break
+            await asyncio.sleep(0.05)
+
+        elapsed = time.perf_counter() - start_time
+        assert closed is True, "Connection remained open past lifetime cap"
+        assert 0.45 <= elapsed <= 1.5, f"Connection closed at unexpected elapsed time: {elapsed:.2f}s"
+        c_w.close()
+        await c_w.wait_closed()
+    finally:
+        await router.close_all_tcp_listeners()
+        srv.close()
+        await srv.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_tcp_real_byte_rate_transfer_timing():
+    port = get_free_port()
+    backend_port = get_free_port()
+
+    async def echo_cb(reader, writer):
+        try:
+            while True:
+                data = await reader.read(65536)
+                if not data:
+                    break
+                writer.write(data)
+                await writer.drain()
+        except Exception:
+            pass
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    srv = await asyncio.start_server(echo_cb, "127.0.0.1", backend_port)
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=port,
+        tcp_port_count=10,
+        tcp_rate_limit_bps=200_000,
+        tcp_rate_limit_burst=100_000,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    try:
+        await router.sync_tcp_routes([
+            {"id": "inst_rate", "protocol": "tcp", "port": port, "target_ip": "127.0.0.1", "target_port": backend_port}
+        ])
+
+        payload = b"X" * 400_000
+        c_r, c_w = await asyncio.open_connection("127.0.0.1", port)
+
+        start = time.perf_counter()
+
+        async def send():
+            c_w.write(payload)
+            await c_w.drain()
+
+        async def recv():
+            received = b""
+            while len(received) < len(payload):
+                chunk = await c_r.read(min(65536, len(payload) - len(received)))
+                if not chunk:
+                    break
+                received += chunk
+            return received
+
+        _, received = await asyncio.gather(send(), recv())
+        elapsed = time.perf_counter() - start
+
+        assert len(received) == 400_000
+        assert received == payload
+        # Burst 100k + remaining 300k at 200k/s = 1.5s
+        assert 1.2 <= elapsed < 3.0, f"Transfer took {elapsed:.2f}s, expected between 1.2s and 3.0s"
+
+        c_w.close()
+        await c_w.wait_closed()
+    finally:
+        await router.close_all_tcp_listeners()
+        srv.close()
+        await srv.wait_closed()
+
+
+# ---------------------------------------------------------------------------
+# Lead Audit A4: HTTP Metrics Endpoint
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_router_http_metrics_endpoint():
+    from services.instancer.router.main import handle_client
+    port = get_free_port()
+    relay_port = get_free_port()
+
+    router = InstanceRouter(
+        instance_domain="example.com",
+        instancer_url="http://127.0.0.1:8300",
+        router_token="secret",
+        tcp_port_start=relay_port,
+        tcp_port_count=10,
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+    )
+    http_srv = await asyncio.start_server(
+        lambda r, w: handle_client(r, w, router),
+        "127.0.0.1",
+        port,
+    )
+    try:
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        req = b"GET /metrics HTTP/1.1\r\nHost: router\r\nConnection: close\r\n\r\n"
+        w.write(req)
+        await w.drain()
+        resp = await r.read()
+        w.close()
+        await w.wait_closed()
+
+        resp_text = resp.decode("utf-8", errors="replace")
+        assert "HTTP/1.1 200 OK" in resp_text
+        assert "instancer_router_tcp_open_relays" in resp_text
+        assert "instancer_router_tcp_bytes_total" in resp_text
+        assert "instancer_router_tcp_connect_failures_total" in resp_text
+        assert "instancer_router_tcp_refusals_total" in resp_text
+        assert "instancer_router_http_active_connections" in resp_text
+    finally:
+        http_srv.close()
+        await http_srv.wait_closed()
+        await router.close_all_tcp_listeners()
+

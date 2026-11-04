@@ -46,7 +46,7 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
     results = {}
     timeout = float(params.get("timeout", "0.2"))
 
-    # 1. Other instance by IP (if provided)
+    # 1. Other instance by IP
     other_ip = params.get("other_ip") or os.environ.get("PROBE_OTHER_IP")
     other_port = int(params.get("other_port") or os.environ.get("PROBE_OTHER_PORT", "8080"))
     if other_ip:
@@ -56,6 +56,13 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
             "reachable": reachable,
             "target": f"{other_ip}:{other_port}",
             "detail": err,
+        }
+    else:
+        results["other_instance_by_ip"] = {
+            "isolated": True,
+            "reachable": False,
+            "target": "none",
+            "detail": "target_ip_not_configured",
         }
 
     # 2. Other instance by hostname/container name
@@ -67,6 +74,13 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
             "reachable": reachable,
             "target": f"{other_name}:{other_port}",
             "detail": err,
+        }
+    else:
+        results["other_instance_by_name"] = {
+            "isolated": True,
+            "reachable": False,
+            "target": "none",
+            "detail": "target_name_not_configured",
         }
 
     # 3. Host gateway probe
@@ -84,12 +98,23 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
         "ports": gw_details,
     }
 
-    # 4. Internet outbound probe
-    dns_reachable, dns_err = try_tcp_connect("1.1.1.1", 53, timeout=timeout)
+    # 4. Internet outbound probe: public TCP connect AND DNS lookup
+    tcp_pub_reachable, tcp_pub_err = try_tcp_connect("1.1.1.1", 53, timeout=timeout)
+    dns_resolved = False
+    dns_err = "none"
+    try:
+        # Standard public domain DNS resolution attempt
+        socket.getaddrinfo("example.com", 80)
+        dns_resolved = True
+        dns_err = "resolved"
+    except Exception as e:
+        dns_err = str(e)
+    internet_breached = tcp_pub_reachable or dns_resolved
     results["internet_outbound"] = {
-        "isolated": not dns_reachable,
-        "reachable": dns_reachable,
-        "detail": dns_err,
+        "isolated": not internet_breached,
+        "reachable": internet_breached,
+        "tcp_public_53": {"reachable": tcp_pub_reachable, "detail": tcp_pub_err},
+        "dns_lookup": {"resolved": dns_resolved, "detail": dns_err},
     }
 
     # 5. Cloud metadata 169.254.169.254
@@ -100,15 +125,21 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
         "detail": meta_err,
     }
 
-    # 6. Docker socket on filesystem
+    # 6. Docker API: no filesystem socket AND port 2375 closed
     sock_path = "/var/run/docker.sock"
     sock_exists = os.path.exists(sock_path)
-    results["docker_socket"] = {
-        "isolated": not sock_exists,
-        "socket_exists": sock_exists,
+    d2375_local, d2375_local_err = try_tcp_connect("127.0.0.1", 2375, timeout=timeout)
+    d2375_gw, d2375_gw_err = try_tcp_connect(gateway_ip, 2375, timeout=timeout)
+    docker_api_breached = sock_exists or d2375_local or d2375_gw
+    results["docker_api"] = {
+        "isolated": not docker_api_breached,
+        "reachable": docker_api_breached,
+        "socket_file_exists": sock_exists,
+        "port_2375_local": {"reachable": d2375_local, "detail": d2375_local_err},
+        "port_2375_gateway": {"reachable": d2375_gw, "detail": d2375_gw_err},
     }
 
-    # 7. Instancer API probe
+    # 7. Instancer API probe (ports 8300, 8301)
     instancer_host = params.get("instancer_host") or os.environ.get("PROBE_INSTANCER_HOST", "instancer")
     inst_r8300, inst_err8300 = try_tcp_connect(instancer_host, 8300, timeout=timeout)
     inst_r8301, inst_err8301 = try_tcp_connect(instancer_host, 8301, timeout=timeout)
@@ -118,10 +149,28 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
         "port_8301": {"reachable": inst_r8301, "detail": inst_err8301},
     }
 
-    # 8. CTFd / Database / Redis
+    # 8. Router control ports probe
+    router_host = params.get("router_host") or os.environ.get("PROBE_ROUTER_HOST", "router")
+    r_ctl, r_ctl_err = try_tcp_connect(router_host, 8090, timeout=timeout)
+    results["router_control"] = {
+        "isolated": not r_ctl,
+        "reachable": r_ctl,
+        "detail": r_ctl_err,
+    }
+
+    # 9. CTFd / Database / Redis / Compose project containers by name
     core_breached = False
     core_details = {}
-    for host, prt in [("ctfd", 8000), ("db", 3306), ("mariadb", 3306), ("cache", 6379), ("redis", 6379)]:
+    core_targets = [
+        ("ctfd", 8000),
+        ("db", 3306),
+        ("mariadb", 3306),
+        ("cache", 6379),
+        ("redis", 6379),
+        ("nginx", 80),
+        ("instancer-socket-proxy", 2375),
+    ]
+    for host, prt in core_targets:
         r, err = try_tcp_connect(host, prt, timeout=timeout)
         core_details[f"{host}:{prt}"] = {"reachable": r, "detail": err}
         if r:

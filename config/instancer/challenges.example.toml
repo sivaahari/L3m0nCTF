@@ -24,3 +24,27 @@ pids = 128
 ttl_minutes = 45
 read_only = true
 max_per_team = 1
+
+[[challenge]]
+slug = "demo-tcp"
+image = "l3mon-fixture/tcp:dev"
+protocol = "tcp"
+port = 8000
+cpus = 0.5
+mem_mb = 256
+pids = 128
+ttl_minutes = 45
+read_only = true
+max_per_team = 1
+
+[[challenge]]
+slug = "demo-prober"
+image = "l3mon-fixture/prober:dev"
+protocol = "http"
+port = 8080
+cpus = 0.5
+mem_mb = 256
+pids = 128
+ttl_minutes = 45
+read_only = true
+max_per_team = 1

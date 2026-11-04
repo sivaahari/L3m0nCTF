@@ -21,6 +21,7 @@ services:
   router:
     ports: !override
       - "${ROUTER_BIND_HOST:-0.0.0.0}:${ROUTER_HTTP_PORT:-8090}:8090"
+      - "${ROUTER_BIND_HOST:-0.0.0.0}:30000-30199:30000-30199"
     environment:
       INSTANCE_DOMAIN: "${INSTANCE_DOMAIN:?INSTANCE_DOMAIN must be set}"
     volumes:

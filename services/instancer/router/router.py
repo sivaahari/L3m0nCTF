@@ -121,7 +121,7 @@ TCP_CONNECT_TIMEOUT_SECONDS = 5.0
 def validate_route_target(
     target_ip: str,
     target_port: int,
-    pool: ipaddress.IPv4Network | ipaddress.IPv6Network,
+    pool: ipaddress.IPv4Network | ipaddress.IPv6Network | list[ipaddress.IPv4Network | ipaddress.IPv6Network],
     allow_loopback: bool = False,
 ) -> bool:
     """Validate that target_ip:target_port is safe to connect to.
@@ -139,16 +139,27 @@ def validate_route_target(
     except ValueError:
         return False
 
-    if addr not in pool:
+    pools = list(pool) if isinstance(pool, (list, tuple)) else [pool]
+    matching_pool = None
+    for p in pools:
+        if addr in p:
+            matching_pool = p
+            break
+    if matching_pool is None:
         return False
 
     # Reject network address and broadcast address
-    if addr == pool.network_address:
+    if addr == matching_pool.network_address:
         return False
-    if hasattr(pool, "broadcast_address") and addr == pool.broadcast_address:
+    if hasattr(matching_pool, "broadcast_address") and addr == matching_pool.broadcast_address:
         return False
 
     # Reject host gateway (.1 in any IPv4 subnet) unless loopback test mode
+    # Subnet sizing note (A6.1):
+    # With Docker daemon default-address-pools of base size 24, each instance network is a /24
+    # whose network address is .0, gateway is .1, broadcast is .255, and usable host range is .2 to .254.
+    # Rejecting .0, .1, and .255 matches this /24 topology. If a different pool size is configured
+    # in daemon.json, the explicit network_address and broadcast_address checks above and gateway rules protect boundaries.
     if isinstance(addr, ipaddress.IPv4Address) and not (allow_loopback and addr.is_loopback):
         if addr.packed[-1] == 1:
             return False
@@ -186,7 +197,10 @@ class TokenBucketRateLimiter:
                 deficit = nbytes - self.tokens
                 wait_time = deficit / self.rate
                 await asyncio.sleep(wait_time)
-                self.tokens = 0.0
+                now2 = time.monotonic()
+                elapsed2 = now2 - self.last_update
+                self.last_update = now2
+                self.tokens = min(float(self.burst), self.tokens + elapsed2 * self.rate - nbytes)
             else:
                 self.tokens -= nbytes
 
@@ -225,10 +239,48 @@ class InstanceRouter:
             raise ValueError(
                 f"TCP port range [{tcp_port_start}, {tcp_port_start + tcp_port_count - 1}] exceeds 65535"
             )
-        try:
-            self.pool_network = ipaddress.ip_network(instance_pool)
-        except ValueError as e:
-            raise ValueError(f"Invalid INSTANCER_INSTANCE_POOL '{instance_pool}': {e}")
+
+        if not (isinstance(tcp_max_connections_per_instance, int) and 1 <= tcp_max_connections_per_instance <= 100):
+            raise ValueError(
+                f"INSTANCER_TCP_MAX_CONNS_PER_INSTANCE must be between 1 and 100, got {tcp_max_connections_per_instance}"
+            )
+        if not (isinstance(tcp_max_connections_per_ip, int) and 1 <= tcp_max_connections_per_ip <= 1000):
+            raise ValueError(
+                f"INSTANCER_TCP_MAX_CONNS_PER_IP must be between 1 and 1000, got {tcp_max_connections_per_ip}"
+            )
+        if not (isinstance(tcp_max_total_connections, int) and 1 <= tcp_max_total_connections <= 10000):
+            raise ValueError(
+                f"INSTANCER_TCP_MAX_TOTAL_CONNS must be between 1 and 10000, got {tcp_max_total_connections}"
+            )
+        if not (isinstance(tcp_rate_limit_bps, int) and 1024 <= tcp_rate_limit_bps <= 1024 * 1024 * 1024):
+            raise ValueError(
+                f"INSTANCER_TCP_RATE_LIMIT_BPS must be between 1024 and 1073741824, got {tcp_rate_limit_bps}"
+            )
+        if not (isinstance(tcp_rate_limit_burst, int) and 1024 <= tcp_rate_limit_burst <= 1024 * 1024 * 1024):
+            raise ValueError(
+                f"INSTANCER_TCP_RATE_LIMIT_BURST must be between 1024 and 1073741824, got {tcp_rate_limit_burst}"
+            )
+        if not (isinstance(tcp_idle_timeout, (int, float)) and 0.1 <= tcp_idle_timeout <= 86400):
+            raise ValueError(
+                f"INSTANCER_TCP_IDLE_TIMEOUT must be between 0.1 and 86400, got {tcp_idle_timeout}"
+            )
+        if not (isinstance(tcp_lifetime_cap, (int, float)) and 0.1 <= tcp_lifetime_cap <= 86400):
+            raise ValueError(
+                f"INSTANCER_TCP_LIFETIME_CAP must be between 0.1 and 86400, got {tcp_lifetime_cap}"
+            )
+
+        pools = []
+        for p in instance_pool.split(","):
+            p_clean = p.strip()
+            if p_clean:
+                try:
+                    pools.append(ipaddress.ip_network(p_clean))
+                except ValueError as e:
+                    raise ValueError(f"Invalid INSTANCER_INSTANCE_POOL entry '{p_clean}': {e}")
+        if not pools:
+            raise ValueError("INSTANCER_INSTANCE_POOL cannot be empty")
+        self.pool_networks = pools
+        self.pool_network = pools[0]
 
         self.instance_domain = instance_domain
         self.instancer_url = instancer_url
@@ -271,6 +323,7 @@ class InstanceRouter:
         self._tcp_conns_per_inst: dict[str, int] = collections.defaultdict(int)
         self._total_tcp_connections: int = 0
         self._tcp_lock = asyncio.Lock()
+        self._tcp_sync_lock = asyncio.Lock()
 
         # TCP Metrics (F1.5, no instance IDs as labels)
         self._tcp_metrics_open_relays: int = 0
@@ -359,11 +412,6 @@ class InstanceRouter:
             if inst_id:
                 new_routes[inst_id] = r
         self._routes = new_routes
-        try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self.sync_tcp_routes(routes))
-        except RuntimeError:
-            pass
 
     async def acquire_connection(self, inst_id: str) -> tuple[bool, int, str]:
         """Atomically check and acquire an instance connection slot."""
@@ -421,93 +469,94 @@ class InstanceRouter:
 
     async def sync_tcp_routes(self, routes: list[dict]) -> None:
         """Synchronize active TCP port listeners with current route table (F1)."""
-        new_tcp_routes: dict[int, dict] = {}
-        for r in routes:
-            if r.get("protocol") == "tcp":
-                port = r.get("port")
-                if port and isinstance(port, int) and (self.tcp_port_start <= port < self.tcp_port_start + self.tcp_port_count):
-                    target_ip = r.get("target_ip")
-                    target_port = r.get("target_port")
-                    if validate_route_target(
-                        target_ip, target_port, self.pool_network, allow_loopback=self.allow_loopback_for_tests
-                    ):
-                        new_tcp_routes[port] = r
-                    else:
-                        _log.warning(
-                            "Rejecting invalid/poisoned TCP route target: %s:%s on port %s",
-                            target_ip,
-                            target_port,
-                            port,
-                        )
-                        async with self._tcp_lock:
-                            self._tcp_metrics_refusals["invalid_target"] += 1
+        async with self._tcp_sync_lock:
+            new_tcp_routes: dict[int, dict] = {}
+            for r in routes:
+                if r.get("protocol") == "tcp":
+                    port = r.get("port")
+                    if port and isinstance(port, int) and (self.tcp_port_start <= port < self.tcp_port_start + self.tcp_port_count):
+                        target_ip = r.get("target_ip")
+                        target_port = r.get("target_port")
+                        if validate_route_target(
+                            target_ip, target_port, self.pool_networks, allow_loopback=self.allow_loopback_for_tests
+                        ):
+                            new_tcp_routes[port] = r
+                        else:
+                            _log.warning(
+                                "Rejecting invalid/poisoned TCP route target: %s:%s on port %s",
+                                target_ip,
+                                target_port,
+                                port,
+                            )
+                            async with self._tcp_lock:
+                                self._tcp_metrics_refusals["invalid_target"] += 1
 
-        async with self._tcp_lock:
-            current_ports = set(self._tcp_listeners.keys())
-            desired_ports = set(new_tcp_routes.keys())
+            async with self._tcp_lock:
+                current_ports = set(self._tcp_listeners.keys())
+                desired_ports = set(new_tcp_routes.keys())
 
-            # Ports to close: missing from new routes or target modified
-            ports_to_close = set()
-            for p in current_ports:
-                if p not in desired_ports:
-                    ports_to_close.add(p)
-                else:
-                    curr_r = self._tcp_routes.get(p, {})
-                    new_r = new_tcp_routes[p]
-                    if (
-                        curr_r.get("target_ip") != new_r.get("target_ip")
-                        or curr_r.get("target_port") != new_r.get("target_port")
-                        or curr_r.get("id") != new_r.get("id")
-                    ):
+                # Ports to close: missing from new routes or target modified
+                ports_to_close = set()
+                for p in current_ports:
+                    if p not in desired_ports:
                         ports_to_close.add(p)
+                    else:
+                        curr_r = self._tcp_routes.get(p, {})
+                        new_r = new_tcp_routes[p]
+                        if (
+                            curr_r.get("target_ip") != new_r.get("target_ip")
+                            or curr_r.get("target_port") != new_r.get("target_port")
+                            or curr_r.get("id") != new_r.get("id")
+                        ):
+                            ports_to_close.add(p)
 
-            ports_to_open = desired_ports - (current_ports - ports_to_close)
+                ports_to_open = desired_ports - (current_ports - ports_to_close)
 
-        # Close removed/changed listeners outside lock to avoid deadlocks
-        for p in ports_to_close:
-            server = self._tcp_listeners.pop(p, None)
-            if server:
-                server.close()
+            # Close removed/changed listeners outside lock to avoid deadlocks
+            for p in ports_to_close:
+                server = self._tcp_listeners.pop(p, None)
+                if server:
+                    server.close()
 
-            # Abort all active relay tasks on this port first so sockets close
-            tasks = list(self._tcp_connections.pop(p, set()))
-            for t in tasks:
-                t.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+                # Abort all active relay tasks on this port first so sockets close
+                tasks = list(self._tcp_connections.pop(p, set()))
+                for t in tasks:
+                    t.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
 
-            if server:
+                if server:
+                    try:
+                        await asyncio.wait_for(server.wait_closed(), timeout=0.5)
+                    except Exception:
+                        pass
+
+                self._tcp_routes.pop(p, None)
+                _log.info("Closed TCP listener and terminated relays on port %d", p)
+
+            if ports_to_close:
+                await asyncio.sleep(0.05)
+
+            # Open new listeners
+            for p in ports_to_open:
+                route = new_tcp_routes[p]
                 try:
-                    await asyncio.wait_for(server.wait_closed(), timeout=0.5)
-                except Exception:
-                    pass
-
-            self._tcp_routes.pop(p, None)
-            _log.info("Closed TCP listener and terminated relays on port %d", p)
-
-        if ports_to_close:
-            await asyncio.sleep(0.05)
-
-        # Open new listeners
-        for p in ports_to_open:
-            route = new_tcp_routes[p]
-            try:
-                server = await asyncio.start_server(
-                    lambda r, w, port=p: self.handle_tcp_client(r, w, port),
-                    "0.0.0.0",
-                    p,
-                )
-                self._tcp_listeners[p] = server
-                self._tcp_routes[p] = route
-                _log.info(
-                    "Started TCP relay listener on 0.0.0.0:%d -> %s:%s (instance: %s)",
-                    p,
-                    route.get("target_ip"),
-                    route.get("target_port"),
-                    route.get("id"),
-                )
-            except Exception as e:
-                _log.error("Failed to bind TCP listener on port %d: %s", p, e)
+                    server = await asyncio.start_server(
+                        lambda r, w, port=p: self.handle_tcp_client(r, w, port),
+                        "0.0.0.0",
+                        p,
+                    )
+                    self._tcp_listeners[p] = server
+                    self._tcp_routes[p] = route
+                    _log.info(
+                        "Started TCP relay listener on 0.0.0.0:%d -> %s:%s (instance: %s)",
+                        p,
+                        route.get("target_ip"),
+                        route.get("target_port"),
+                        route.get("id"),
+                    )
+                except Exception as e:
+                    _log.error("Failed to bind TCP listener on port %d: %s", p, e)
 
     async def handle_tcp_client(
         self, client_reader: asyncio.StreamReader, client_writer: asyncio.StreamWriter, port: int
@@ -744,6 +793,21 @@ class InstanceRouter:
         for reason, count in sorted(self._tcp_metrics_refusals.items()):
             lines.append(f'instancer_router_tcp_refusals_total{{reason="{reason}"}} {count}')
         return "\n".join(lines) + "\n"
+
+    def format_metrics_prometheus(self) -> str:
+        """Render combined Prometheus format metrics for HTTP and TCP."""
+        lines = [
+            "# HELP instancer_router_http_active_connections Current number of active HTTP client connections.",
+            "# TYPE instancer_router_http_active_connections gauge",
+            f"instancer_router_http_active_connections {self._total_active_connections}",
+            "# HELP instancer_router_http_reading_bytes Current bytes allocated in reading budget.",
+            "# TYPE instancer_router_http_reading_bytes gauge",
+            f"instancer_router_http_reading_bytes {self._current_reading_bytes}",
+            "# HELP instancer_router_routes_total Total active routes known to router.",
+            "# TYPE instancer_router_routes_total gauge",
+            f"instancer_router_routes_total {len(self._routes)}",
+        ]
+        return "\n".join(lines) + "\n" + self.format_tcp_metrics_prometheus()
 
     async def forward_stream(
         self,
