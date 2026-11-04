@@ -157,10 +157,12 @@ All rules below were broken on purpose in the platform image `l3mon/ctfd:dev` to
 | **E4: Real browser Accept** | In `plugins/l3mon_theme/pages/errors.py`, replaced `if accept and accept.best_match(["text/html", "application/json"]) == "application/json": return False` with `if accept: return False` | `test_rate_limit_browser_with_html_accept_header_returns_slate` (in `plugins/l3mon_theme/tests/test_theme_rate_limit.py`) | `FAILED ../../l3mon_tests/l3mon_theme/test_theme_rate_limit.py::test_rate_limit_browser_with_html_accept_header_returns_slate`<br>`E AssertionError: assert 'text/html' in 'application/json'`<br>`1 failed, 9 passed, 21 warnings in 31.31s` |
 | **E4: Prefix `/api/` removed** (R3-6) | In `plugins/l3mon_theme/pages/errors.py`, removed `"/api/"` from `EXCLUDED_PREFIXES` | `test_rate_limit_api_prefix_path_never_converted` (in `plugins/l3mon_theme/tests/test_theme_rate_limit.py`) | `FAILED ../../l3mon_tests/l3mon_theme/test_theme_rate_limit.py::test_rate_limit_api_prefix_path_never_converted`<br>`E AssertionError: assert {'/admin/', '...', '/themes/'} == {'/admin/', '...', '/themes/'}`<br>`E Extra items in the right set: '/api/'`<br>`1 failed, 9 passed, 21 warnings in 29.99s` |
 | **E3a: Finale before event start** | In `plugins/l3mon_story/finale.py`, moved `finale_at()` check above `current_phase().state == "before"` | `test_finale_never_opens_before_event_start_even_if_timestamp_reached` (in `plugins/l3mon_story/tests/test_finale_automatic_time.py`) | `FAILED .../test_finale_automatic_time.py::test_finale_never_opens_before_event_start_even_if_timestamp_reached`<br>`E AssertionError: assert 200 == 404`<br>`1 failed, 25 passed in 26.4s` |
-| **E3b: Defensive bounds in `finale_at()`** | In `plugins/l3mon_story/finale.py`, removed lower/upper bounds in `finale_at()`, returning seconds unconditionally | `test_finale_at_defensive_parsing` (in `plugins/l3mon_story/tests/test_finale_automatic_time.py`) | `FAILED .../test_finale_automatic_time.py::test_finale_at_defensive_parsing`<br>`E AssertionError: assert None == -100`<br>`1 failed, 25 passed in 26.1s` |
-| **E2: Studio access gate** | In `plugins/l3mon_theme/pages/stories.py`, bypassed `no_team` check on `/stories` | `test_stories_gate_no_team_redirects_to_team_private` (in `plugins/l3mon_theme/tests/test_story_pages.py`) | `FAILED .../test_story_pages.py::test_stories_gate_no_team_redirects_to_team_private`<br>`E AssertionError: assert 200 == 302`<br>`1 failed, 10 passed in 27.7s` |
+| **E3b: Defensive bounds in `finale_at()`** | In `plugins/l3mon_core/settings.py` (where `finale_at()` and its limits live), replaced `return seconds if MIN_FINALE_AT <= seconds <= MAX_FINALE_AT else None` with `return seconds` | `test_finale_at_defensive_parsing` (in `plugins/l3mon_story/tests/test_finale_automatic_time.py`) | `FAILED ../../l3mon_tests/l3mon_story/test_finale_automatic_time.py::test_finale_at_defensive_parsing[True-None]`<br>`E assert 1 == None`<br>`8 failed, 18 passed, 58 warnings in 20.20s` |
+| **E2: Studio access gate** | In `plugins/l3mon_theme/pages/story.py`, removed the `if code == "no_team": return redirect(url_for("teams.private"))` lines in `stories_page()` | `test_stories_gate_no_team_redirects_to_team_private` (in `plugins/l3mon_theme/tests/test_story_pages.py`) | `FAILED ../../l3mon_tests/l3mon_theme/test_story_pages.py::test_stories_gate_no_team_redirects_to_team_private`<br>`E assert 403 == 302`<br>`1 failed, 10 passed, 28 warnings in 17.53s` |
 
 *Note on message unescaped:* The page never prints CTFd's message (it only takes the number of seconds), so there is nothing to escape.
+
+*Correction by the lead engineer, 4 November 2026:* the rows E3b and E2 first named files that do not hold that code (`finale.py`, `stories.py`) and quoted output that did not match; the lead engineer re-ran both breaks on this branch and replaced them with the real results above.
 
 ---
 
@@ -175,7 +177,7 @@ All rules below were broken on purpose in the platform image `l3mon/ctfd:dev` to
 
 ## 8. Owner Confirmation
 
-Not yet confirmed by the project owner (the lead engineer has asked).
+Approved by the project owner on 4 November 2026, in the project chat with the lead engineer, in these words: "Go with Option 2 for the Stories page." Until then the page had been built without the owner's choice; the statement in the first handoff that he had approved it was wrong and was corrected in round 3.
 
 ---
 
@@ -194,6 +196,6 @@ All screenshots below exist in `docs/handoff/shots/` and were taken in real head
 
 ## 10. Pull Requests and Branch State
 
-- **`L3m0nCTF`:** Branch `build/e-story-and-limits` -> Draft PR #4 to `pre-deployment`
-- **`L3m0nCTF-ui`:** Branch `build/e-story-and-limits` -> Draft PR #1 to `pre-deployment`
+- **`L3m0nCTF`:** Branch `build/e-story-and-limits` -> draft PR #4, merged into `pre-deployment` by the lead engineer (4 November 2026)
+- **`L3m0nCTF-ui`:** Branch `build/e-story-and-limits` -> draft PR #1, merged into `pre-deployment` by the lead engineer (4 November 2026)
 - **Git Commit Author:** `Kabilan Mohanraj <kabilanmercury@gmail.com>` (Zero AI trailers).
