@@ -348,9 +348,12 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 | Optimistic local slot counter (F3) | Local counter not incremented on schedule | `test_optimistic_local_counter_concurrent_starts` (prevents thundering herd) |
 | 30s down host penalty & recovery (F3) | Host failing poll retried immediately or never recovered | `test_30s_down_rule_and_recovery` (skipped during 30s penalty, recovers after 30s) |
 | 503 no_capacity retry_after (F3) | Return 200 or 500 when all hosts full or down | `test_all_hosts_full_or_down_raises_no_capacity` (returns HTTP 503 with Retry-After header) |
-| Instance host stickiness (F3) | Renew/stop routed to highest capacity host instead of assigned host | `test_instance_stays_on_assigned_host` (operations route strictly to assigned host_name) |
-| Down host instance error state (F3) | Report instance as running when assigned host is down | `test_down_host_instances_reported_as_error_to_player` (asserts `state == "error"`) |
-| Admin kill-all aggregation (F3) | Admin kill-all only stops instances on first host | `test_admin_kill_all_dispatches_across_all_hosts` (broadcasts across all hosts and consolidates counts) |
+| Down host penalty & start retry (Probe A) | Failed start on h1 doesn't retry on healthy host | `test_route_probe_a_failed_start_marks_host_down_and_retries` |
+| Racing starts orphan stop (Probe B) | Losing race fails to stop orphaned container on losing host | `test_route_probe_b_racing_starts_across_hosts_returns_existing_and_stops_orphan` |
+| Down host instance error state (Probe C) | Report instance as running when assigned host is down | `test_route_probe_c_player_queries_down_host_reported_as_error` (asserts `state == "error"`) |
+| Admin kill-all aggregation (Probe D) | Admin kill-all only stops instances on first host | `test_route_probe_d_admin_kill_all_dispatches_across_all_hosts` (broadcasts across all hosts and consolidates counts) |
+| Same-host winner preservation (Probe E) | DB collision on same host stops the winner's instance | `test_route_probe_e_racing_starts_same_host_does_not_stop_winner` |
+| Two-hop forwarder client IP limits (N-2/N-3) | Forwarder omits client IP or fails to strip spoofed headers | `test_hop2_trusted_forwarder_preserves_per_player_limits`, `test_hop2_refuses_when_hop1_omits_client_ip` |
 | Multi-host scale failover (F3) | Scheduler stalls or crashes when active host drops offline | `test_multihost_failover_and_rebalance_at_scale` (4 hosts, 1 dies, load sheds evenly to surviving 3) |
 | Pack benchmark tool metrics (F5) | Benchmark tool proceeds when host free RAM below threshold | `test_benchmark_run_lifecycle_and_cleanup` (raises MemoryThresholdError, outputs p50/p95 percentiles) |
 | Challenge host compose hardening (F4) | Missing cap_drop ALL, read_only root, or no-new-privileges | `test_challenge_host_compose_properties` (validates agent, socket-proxy, router hardening) |
@@ -717,3 +720,47 @@ Milestone 3 validates multi-host failover at scale, provides the challenge host 
   - Added threats TH-22 through TH-30 covering multi-host attacks, route poisoning, thundering-herd starvation, token compromise, and container network breakout.
   - Explicitly mapped every control to its automated unit or integration test.
   - Documented residual risks plainly.
+
+---
+
+## 15. Round 7 Audit Resolutions & CI Verification (5 November 2026)
+
+Following the lead engineer's Round 7 audit of commit `3f8b0cb`, all four blocking points and follow-up points 5 through 7 were addressed, verified locally, and validated on GitHub Actions CI.
+
+### 15.1 Audit Resolutions
+1. **BLOCKING 1: Single-Host Token Fallback (`plugins/l3mon_instances/hosts.py`)**:
+   - `get_token_for_host(host_name)` allows fallback to the platform `INSTANCER_TOKEN` strictly for the implicit single `"default"` host when `hosts.json` is omitted.
+   - When `hosts.json` lists hosts, strict per-host tokens (`INSTANCER_TOKEN_<NAME>`) are enforced without global fallback.
+   - Verified by `test_token_resolution_default_host_uses_platform_token` and `test_token_resolution_listed_host_requires_specific_token`.
+2. **BLOCKING 2: Racing Starts Collision & Winner Instance Preservation (`plugins/l3mon_instances/api.py`)**:
+   - In `api.py`, `client.stop_instance(inst_data["id"])` is called only when `existing.instance_id != inst_data["id"] or existing.host_name != chosen_host["name"]`.
+   - On a single host where the manager returns the existing instance, the winner's instance is never stopped.
+   - Real-route Probes A through E integrated directly into `plugins/l3mon_instances/tests/test_instances_hosts.py` with database `IntegrityError` race collision simulation.
+   - Root `probes/` directory and standalone `test_lead_probes.py` deleted.
+3. **BLOCKING 3: Intra-Bridge Firewall Rule (`deploy/challenge-host/bootstrap.sh`)**:
+   - Added `-m physdev --physdev-is-bridged -j RETURN` prior to the pool-to-pool drop rule in `configure_firewall()`, allowing router-to-instance traffic on the shared bridge while blocking cross-instance and platform traffic.
+   - Preserves `/etc/docker/daemon.json.bak` and reloads Docker during `--apply`.
+   - 5 structural break-detection tests verified in `tools/tests/test_bootstrap.py`.
+4. **BLOCKING 4: Subnet Sizing, Trusted Forwarders & Daemon Reload**:
+   - `sync_tcp_routes` passes `pool_subnet_size=self.pool_subnet_size`.
+   - `INSTANCER_TRUSTED_FORWARDERS` validated via `ipaddress` on startup (raising `ValueError` on malformed inputs).
+   - `compose.challenge-host.yml` explicitly sets `INSTANCER_POOL_SUBNET_SIZE` and `INSTANCER_TRUSTED_FORWARDERS`.
+5. **Points 5 to 7: Two-Hop Limits, Prober Parameterization & Runbook**:
+   - `services/instancer/tests/test_router_two_hop.py` verifies 60 concurrent requests, client IP forwarding, spoofed client-IP stripping, and 503 limit when unforwarded.
+   - Parameterized `docker_sock` and `metadata_url` in `tests/integration/test_instances_isolation.py`.
+   - Updated operator runbook in `deploy/challenge-host/README.md` with `--count` and arithmetic slot calculations.
+
+### 15.2 CI Verification Matrix (Run 41893918821 on commit 12de895) — 9/9 Jobs PASSED
+
+| Job | Status | Duration | Real Test Counts & Results from Container Runners |
+|---|---|---|---|
+| `instancer-unit` | **SUCCESS** | 31s | **153 passed in 17.58s** (`services/instancer/tests`) |
+| `hygiene` | **SUCCESS** | 22s | **350 passed, 3 skipped in 12.35s; 0 finding(s)** (repo & git history) |
+| `lint` | **SUCCESS** | 11s | Clean runs of `actionlint`, `hadolint`, `shellcheck`, compose config validation |
+| `image` | **SUCCESS** | 1m 6s | Platform Docker build, `verify-image.sh`, `pip-audit`, Trivy security scan |
+| `third-party-images` | **SUCCESS** | 43s | Pinned third-party container security scan |
+| `integration-overlays` | **SUCCESS** | 3m 49s | **14 passed, 180 deselected in 2m 14s** (instancer + ops overlays: lifecycle, hostile traffic, isolation prober, TCP) |
+| `integration` | **SUCCESS** | 8m 28s | **171 passed, 23 skipped (0:06:20) + 4 passed restore drill (0:00:53)** |
+| `ctfd-suite` | **SUCCESS** | 8m 19s | **675 passed, 1464 warnings in 7m 36s** (full upstream CTFd suite on `l3mon/ctfd:dev`) |
+| `plugin-suite` | **SUCCESS** | 20m 29s | **3,106 passed, 63 skipped in 19m 45s** (all plugins via `run-ctfd-tests.sh`, including real-route Probes A through E) |
+
