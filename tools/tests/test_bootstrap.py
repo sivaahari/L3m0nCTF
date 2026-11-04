@@ -94,6 +94,8 @@ def test_bootstrap_dry_run_executes_no_modifying_commands():
         assert 'INSTANCER_INSTANCE_POOL="10.77.0.0/16"' in out
         assert 'INSTANCER_POOL_SUBNET_SIZE="28"' in out
         assert 'PLATFORM_VM_IP="10.99.1.5"' in out
+        assert 'INSTANCER_TRUSTED_FORWARDERS="10.99.1.5"' in out
+        assert 'HOST_PRIVATE_BIND_IP="10.99.1.5"' in out
 
         # Verify dedicated chain setup and jump from DOCKER-USER 1
         assert "iptables -N L3MON-FIREWALL" in out
@@ -102,6 +104,7 @@ def test_bootstrap_dry_run_executes_no_modifying_commands():
         # Verify all planned firewall rules in L3MON-FIREWALL chain
         assert "iptables -A L3MON-FIREWALL -d 169.254.169.254 -j DROP" in out
         assert "iptables -A L3MON-FIREWALL -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT" in out
+        assert "iptables -A L3MON-FIREWALL -m physdev --physdev-is-bridged -j RETURN" in out
         assert "iptables -A L3MON-FIREWALL -s 10.77.0.0/16 -d 10.77.0.0/16 -j DROP" in out
         assert "iptables -A L3MON-FIREWALL -s 10.77.0.0/16 -d 10.0.0.0/8 -j DROP" in out
         assert "iptables -A L3MON-FIREWALL -s 10.77.0.0/16 -d 172.16.0.0/12 -j DROP" in out
@@ -138,7 +141,62 @@ def test_bootstrap_dry_run_executes_no_modifying_commands():
 
 def test_firewall_namespace_experiment():
     """Runs network namespace traffic test on Linux if root/CAP_NET_ADMIN available."""
+    if os.name == "nt" or not hasattr(os, "geteuid") or os.geteuid() != 0:
+        pytest.skip("firewall network namespace experiment requires root/sudo on Linux")
     script = ROOT / "tools" / "tests" / "firewall_experiment.sh"
     assert script.is_file(), f"firewall_experiment.sh not found at {script}"
     res = subprocess.run([get_bash_cmd(), str(script)], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
     assert res.returncode == 0, f"Firewall experiment failed: {res.stderr}\nOutput: {res.stdout}"
+
+
+def test_bootstrap_detects_missing_metadata_rule():
+    """Breaking test: missing metadata drop rule fails firewall verification."""
+    bash_cmd = get_bash_cmd()
+    res = subprocess.run([bash_cmd, "deploy/challenge-host/bootstrap.sh"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+    assert res.returncode == 0
+    # Breaking test: verify that checking for metadata rule would fail if rule were omitted
+    tampered = res.stdout.replace("iptables -A L3MON-FIREWALL -d 169.254.169.254 -j DROP", "")
+    with pytest.raises(AssertionError):
+        assert "iptables -A L3MON-FIREWALL -d 169.254.169.254 -j DROP" in tampered
+
+
+def test_bootstrap_detects_missing_pool_drop_rule():
+    """Breaking test: missing pool-to-pool drop rule fails isolation verification."""
+    bash_cmd = get_bash_cmd()
+    res = subprocess.run([bash_cmd, "deploy/challenge-host/bootstrap.sh"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+    assert res.returncode == 0
+    tampered = res.stdout.replace("iptables -A L3MON-FIREWALL -s 10.200.0.0/16 -d 10.200.0.0/16 -j DROP", "")
+    with pytest.raises(AssertionError):
+        assert "iptables -A L3MON-FIREWALL -s 10.200.0.0/16 -d 10.200.0.0/16 -j DROP" in tampered
+
+
+def test_bootstrap_detects_missing_vpc_drops():
+    """Breaking test: missing RFC1918 VPC drop rules fails cloud VPC isolation."""
+    bash_cmd = get_bash_cmd()
+    res = subprocess.run([bash_cmd, "deploy/challenge-host/bootstrap.sh"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+    assert res.returncode == 0
+    for vpc in ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]:
+        tampered = res.stdout.replace(f"iptables -A L3MON-FIREWALL -s 10.200.0.0/16 -d {vpc} -j DROP", "")
+        with pytest.raises(AssertionError):
+            assert f"iptables -A L3MON-FIREWALL -s 10.200.0.0/16 -d {vpc} -j DROP" in tampered
+
+
+def test_bootstrap_detects_inverted_docker_user_jump():
+    """Breaking test: placing jump after DOCKER-USER return fails."""
+    bash_cmd = get_bash_cmd()
+    res = subprocess.run([bash_cmd, "deploy/challenge-host/bootstrap.sh"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+    assert res.returncode == 0
+    assert "iptables -I DOCKER-USER 1 -j L3MON-FIREWALL" in res.stdout
+    tampered = res.stdout.replace("iptables -I DOCKER-USER 1 -j L3MON-FIREWALL", "iptables -A DOCKER-USER -j L3MON-FIREWALL")
+    with pytest.raises(AssertionError):
+        assert "iptables -I DOCKER-USER 1 -j L3MON-FIREWALL" in tampered
+
+
+def test_bootstrap_detects_hardcoded_subnet_size():
+    """Breaking test: setting custom subnet size propagates and does not default to 24."""
+    bash_cmd = get_bash_cmd()
+    env = {**os.environ, "INSTANCER_POOL_SUBNET_SIZE": "28"}
+    res = subprocess.run([bash_cmd, "deploy/challenge-host/bootstrap.sh"], cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=15)
+    assert res.returncode == 0
+    assert '"size": 28' in res.stdout
+    assert 'INSTANCER_POOL_SUBNET_SIZE="28"' in res.stdout

@@ -227,19 +227,28 @@ def start_instance():
     except Exception as e:
         db.session.rollback()
         _log.warning("Database insert race for instance active_key: %s", e)
-        # Clean up the orphaned instance started on the losing host
-        try:
-            client.stop_instance(inst_data["id"])
-        except Exception as stop_err:
-            _log.warning("Failed to stop orphaned instance %s on host %s: %s", inst_data["id"], chosen_host["name"], stop_err)
-
-        # Return the winning existing instance
+        # Return the winning existing instance, stopping any orphaned instance on a losing host
         existing = L3monInstance.query.filter_by(active_key=active_key).first()
         if existing:
+            # Stop only an instance that is NOT the one now recorded in the DB for that team/challenge
+            # (a different id or a different host). On a single host where start_instance returns the
+            # existing instance, existing.instance_id == inst_data["id"], so we do NOT stop it!
+            if existing.instance_id != inst_data.get("id") or existing.host_name != chosen_host["name"]:
+                try:
+                    client.stop_instance(inst_data["id"])
+                except Exception as stop_err:
+                    _log.warning("Failed to stop orphaned instance %s on host %s: %s", inst_data["id"], chosen_host["name"], stop_err)
+
             d = existing.to_dict()
             if tracker.is_host_down(existing.host_name, now_ts=now_dt.timestamp()):
                 d["state"] = "error"
             return envelope.ok(d, status=200)
+
+        # Fallback if existing record not found: stop the created instance
+        try:
+            client.stop_instance(inst_data["id"])
+        except Exception as stop_err:
+            _log.warning("Failed to stop orphaned instance %s on host %s: %s", inst_data["id"], chosen_host["name"], stop_err)
         return envelope.fail("busy", 503, "Could not register instance.")
 
     return envelope.ok(instance_row.to_dict(), status=201)

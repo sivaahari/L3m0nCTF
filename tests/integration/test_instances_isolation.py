@@ -74,9 +74,12 @@ def test_prober_reports_fully_isolated_when_all_targets_unreachable():
         "instancer_host": "unreachable.invalid",
         "public_ip": "192.0.2.1",
         "public_host": "nothing.invalid",
+        "docker_sock": "/nonexistent/docker.sock",
+        "metadata_url": "http://192.0.2.1:1/nonexistent",
     })
+    failing_checks = [k for k, v in report.get("checks", {}).items() if not v.get("isolated")]
     # Strict assertion: fully_isolated must be True (no weak field existence check)
-    assert report["fully_isolated"] is True
+    assert report["fully_isolated"] is True, f"Failing checks: {failing_checks} (report: {report})"
     # Assert exact set of checks: a probe that silently disappears fails the test
     assert set(report["checks"].keys()) == EXPECTED_PROBER_CHECKS
     for check_name, check_data in report["checks"].items():

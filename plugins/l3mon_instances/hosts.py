@@ -50,12 +50,14 @@ def get_token_for_host(host_name: str, allow_fallback: bool = False) -> str:
     if specific_env:
         return specific_env
 
-    if not allow_fallback:
-        raise ValueError(
-            f"Missing per-host token for host '{host_name}': INSTANCER_TOKEN_{clean_name} must be set"
-        )
+    # The implicit single 'default' host (used when no hosts.json is configured)
+    # uses the platform token. Strict per-host tokens apply only to listed hosts.
+    if host_name == "default" or allow_fallback:
+        return get_instancer_token()
 
-    return get_instancer_token()
+    raise ValueError(
+        f"Missing per-host token for host '{host_name}': INSTANCER_TOKEN_{clean_name} must be set"
+    )
 
 
 def validate_host_entry(entry: dict) -> dict:

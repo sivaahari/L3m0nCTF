@@ -24,6 +24,10 @@ cleanup() {
   ip netns del ns_inst2 2>/dev/null || true
   ip netns del ns_plat 2>/dev/null || true
   ip netns del ns_router 2>/dev/null || true
+  ip link del br_inst1 2>/dev/null || true
+  ip link del br_inst2 2>/dev/null || true
+  ip link del br_plat 2>/dev/null || true
+  ip link del meta0 2>/dev/null || true
   iptables -D DOCKER-USER -j L3MON-FIREWALL 2>/dev/null || true
   iptables -F L3MON-FIREWALL 2>/dev/null || true
   iptables -X L3MON-FIREWALL 2>/dev/null || true
@@ -32,7 +36,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "=== Running L3MON-FIREWALL Traffic Experiment ==="
+echo "=== Running L3MON-FIREWALL Traffic Experiment (Real Bridge Topology) ==="
+
+# Enable br_netfilter so bridged packets are evaluated by iptables
+modprobe br_netfilter 2>/dev/null || true
+if [[ -f /proc/sys/net/bridge/bridge-nf-call-iptables ]]; then
+  echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+fi
+echo 1 > /proc/sys/net/ipv4/ip_forward
 
 # Ensure DOCKER-USER chain exists in FORWARD
 iptables -N DOCKER-USER 2>/dev/null || iptables -F DOCKER-USER
@@ -51,50 +62,68 @@ ip netns add ns_inst2
 ip netns add ns_plat
 ip netns add ns_router
 
-# Enable IP forwarding on host
-echo 1 > /proc/sys/net/ipv4/ip_forward
+# Setup dummy interface for cloud metadata (169.254.169.254)
+ip link add meta0 type dummy 2>/dev/null || true
+ip addr add 169.254.169.254/32 dev meta0 2>/dev/null || true
+ip link set meta0 up 2>/dev/null || true
 
-# Setup veth for inst1 (10.200.0.18/28 -> gw 10.200.0.17)
+# 1. Instance 1 Network Bridge (br_inst1: 10.200.0.16/28, gw 10.200.0.17)
+# Real topology: Both the challenge container and the router are on the SAME instance bridge!
+ip link add br_inst1 type bridge
+ip addr add 10.200.0.17/28 dev br_inst1
+ip link set br_inst1 up
+
+# Connect inst1 (10.200.0.18/28) to br_inst1
 ip link add veth_i1 type veth peer name ceth_i1
 ip link set ceth_i1 netns ns_inst1
-ip addr add 10.200.0.17/28 dev veth_i1
+ip link set veth_i1 master br_inst1
 ip link set veth_i1 up
 ip netns exec ns_inst1 ip addr add 10.200.0.18/28 dev ceth_i1
 ip netns exec ns_inst1 ip link set ceth_i1 up
 ip netns exec ns_inst1 ip link set lo up
 ip netns exec ns_inst1 ip route add default via 10.200.0.17
 
-# Setup veth for inst2 (10.200.0.34/28 -> gw 10.200.0.33)
+# Connect router (10.200.0.19/28) to br_inst1 (shared bridge with inst1)
+ip link add veth_rtr type veth peer name ceth_rtr
+ip link set ceth_rtr netns ns_router
+ip link set veth_rtr master br_inst1
+ip link set veth_rtr up
+ip netns exec ns_router ip addr add 10.200.0.19/28 dev ceth_rtr
+ip netns exec ns_router ip link set ceth_rtr up
+ip netns exec ns_router ip link set lo up
+ip netns exec ns_router ip route add default via 10.200.0.17
+
+# 2. Instance 2 Network Bridge (br_inst2: 10.200.0.32/28, gw 10.200.0.33)
+ip link add br_inst2 type bridge
+ip addr add 10.200.0.33/28 dev br_inst2
+ip link set br_inst2 up
+
+# Connect inst2 (10.200.0.34/28) to br_inst2
 ip link add veth_i2 type veth peer name ceth_i2
 ip link set ceth_i2 netns ns_inst2
-ip addr add 10.200.0.33/28 dev veth_i2
+ip link set veth_i2 master br_inst2
 ip link set veth_i2 up
 ip netns exec ns_inst2 ip addr add 10.200.0.34/28 dev ceth_i2
 ip netns exec ns_inst2 ip link set ceth_i2 up
 ip netns exec ns_inst2 ip link set lo up
 ip netns exec ns_inst2 ip route add default via 10.200.0.33
 
-# Setup veth for platform (10.0.0.5/24 -> gw 10.0.0.1)
+# 3. Platform Network Bridge (br_plat: 10.0.0.0/24, gw 10.0.0.1)
+ip link add br_plat type bridge
+ip addr add 10.0.0.1/24 dev br_plat
+ip link set br_plat up
+
+# Connect plat (10.0.0.5/24) to br_plat
 ip link add veth_plat type veth peer name ceth_plat
 ip link set ceth_plat netns ns_plat
-ip addr add 10.0.0.1/24 dev veth_plat
+ip link set veth_plat master br_plat
 ip link set veth_plat up
 ip netns exec ns_plat ip addr add 10.0.0.5/24 dev ceth_plat
 ip netns exec ns_plat ip link set ceth_plat up
 ip netns exec ns_plat ip link set lo up
 ip netns exec ns_plat ip route add default via 10.0.0.1
 
-# Setup veth for router (172.18.0.2/24 -> gw 172.18.0.1)
-ip link add veth_rtr type veth peer name ceth_rtr
-ip link set ceth_rtr netns ns_router
-ip addr add 172.18.0.1/24 dev veth_rtr
-ip link set veth_rtr up
-ip netns exec ns_router ip addr add 172.18.0.2/24 dev ceth_rtr
-ip netns exec ns_router ip link set ceth_rtr up
-ip netns exec ns_router ip link set lo up
-ip netns exec ns_router ip route add default via 172.18.0.1
-
-# Start listener inside inst1 and inst2
+# Start listener inside inst1, inst2, and plat
 ip netns exec ns_inst1 nc -l -p 8080 -k &
 ip netns exec ns_inst2 nc -l -p 8080 -k &
 ip netns exec ns_plat nc -l -p 8000 -k &

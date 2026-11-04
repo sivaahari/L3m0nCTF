@@ -24,17 +24,20 @@ Hardware capacity planning must be determined empirically rather than estimated.
 
 Operators must run the packing benchmark tool on the target machine before sizing production slots:
 ```bash
-python services/instancer/tools/pack_test.py --slug <challenge-slug> --concurrency 20
+python services/instancer/tools/pack_test.py --slug <challenge-slug> --count 20
 ```
 
 ### Capacity Sizing Baseline Guidelines:
 - **Host Infrastructure Overhead:** Agent daemon + socket proxy + router + Linux kernel baseline consumes ~200–300 MB RAM.
 - **Per-Container Allocation:** Budget RAM based on the declared `mem_limit` in `challenges.toml` (e.g. 128m or 256m) plus 20–30% safety headroom for kernel networking buffers and conntrack table overhead.
 - **Port Relays:** Ensure `INSTANCER_TCP_PORT_COUNT` does not exceed the target host's available ephemeral port range and file descriptor limits (`nofile >= 65535`).
-- **Conservative Slot Ceilings:**
-  - 4 GB RAM VM: 20–30 concurrent instances (at 128 MB `mem_limit`).
-  - 8 GB RAM VM: 50–70 concurrent instances (at 128 MB `mem_limit`).
-  - 16 GB RAM VM: 100–150 concurrent instances (at 128 MB `mem_limit`).
+- **Slot Ceilings Calculation (Arithmetic):**
+  Slot ceilings are calculated arithmetically as:
+  `Slot Ceiling = floor((Assignable Host RAM - Host Infrastructure Overhead) / (mem_limit * (1 + safety_headroom)))`
+  - 4 GB RAM VM (~3.7 GB assignable): 20–25 concurrent instances (at 128 MB `mem_limit` with headroom).
+  - 8 GB RAM VM (~7.7 GB assignable): 45–55 concurrent instances (at 128 MB `mem_limit` with headroom).
+  - 16 GB RAM VM (~15.7 GB assignable): 95–110 concurrent instances (at 128 MB `mem_limit` with headroom).
+  Verify these bounds under real load with `pack_test.py --count <N>`.
 
 ---
 
@@ -85,9 +88,12 @@ chmod 0600 /etc/l3mon/secrets/*
 ### Step 3: Start Challenge Host Services
 Define `HOST_PRIVATE_BIND_IP` with the host's private cloud VPC IP address (e.g. `10.0.1.10`) so the platform VM can reach the agent (port 8300) and router (port 8090). Do not leave this at default `127.0.0.1` unless testing locally on the same host.
 
+Ensure `INSTANCER_TRUSTED_FORWARDERS` is configured in `/etc/l3mon/challenge-host.env` (or exported in environment) with the platform VM's private IP address (e.g. `10.0.0.1` or `10.0.1.1`). `bootstrap.sh` sets this automatically from `PLATFORM_VM_IP`. This allows the Hop 2 host router to trust `X-L3mon-Client-IP` forwarded by Hop 1, preserving per-player rate limits and connection tracking.
+
 Point secret file environment variables to the token locations:
 ```bash
 export HOST_PRIVATE_BIND_IP="10.0.1.10"
+export INSTANCER_TRUSTED_FORWARDERS="10.0.0.1"
 export INSTANCER_TOKEN_FILE_HOST="/etc/l3mon/secrets/INSTANCER_TOKEN"
 export ROUTER_TOKEN_FILE_HOST="/etc/l3mon/secrets/ROUTER_TOKEN"
 

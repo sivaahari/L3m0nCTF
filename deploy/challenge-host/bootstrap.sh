@@ -134,11 +134,15 @@ configure_user_and_dirs() {
 
 # 5. Docker daemon configuration (/etc/docker/daemon.json)
 configure_docker_daemon() {
-  echo "--- [5/7] Configuring Docker Daemon (Small Subnet Pools & Log Limits) ---"
+  echo "--- [5/8] Configuring Docker Daemon (Small Subnet Pools & Log Limits) ---"
   local daemon_file="${L3MON_DAEMON_JSON:-/etc/docker/daemon.json}"
   local daemon_dir
   daemon_dir="$(dirname "${daemon_file}")"
   run_cmd mkdir -p "${daemon_dir}"
+
+  if [[ -f "${daemon_file}" ]]; then
+    run_cmd cp -p "${daemon_file}" "${daemon_file}.bak"
+  fi
 
   local daemon_json
   daemon_json=$(cat <<EOF
@@ -160,6 +164,17 @@ configure_docker_daemon() {
 EOF
 )
   write_file "${daemon_file}" "${daemon_json}" "0644"
+
+  if [[ "${MODE}" == "apply" ]]; then
+    echo "[APPLY] Restarting Docker daemon to activate default-address-pools (note: stops running containers unless live-restore is on)..."
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl restart docker || true
+    elif command -v service >/dev/null 2>&1; then
+      service docker restart || true
+    fi
+  else
+    echo "[DRY-RUN] systemctl restart docker (activates default-address-pools; note: stops running containers unless live-restore is on)"
+  fi
 }
 
 # 6. Host environment configuration (/etc/l3mon/challenge-host.env)
@@ -172,6 +187,8 @@ configure_env_file() {
 INSTANCER_INSTANCE_POOL="${INSTANCE_POOL}"
 INSTANCER_POOL_SUBNET_SIZE="${POOL_SUBNET_SIZE}"
 PLATFORM_VM_IP="${PLATFORM_VM_IP}"
+INSTANCER_TRUSTED_FORWARDERS="${PLATFORM_VM_IP}"
+HOST_PRIVATE_BIND_IP="${PLATFORM_VM_IP}"
 EOF
 )
   write_file "${env_file}" "${env_content}" "0600"
@@ -205,14 +222,21 @@ configure_firewall() {
     iptables -A L3MON-FIREWALL -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
   fi
 
-  # Rule 3: Drop inter-instance cross-talk within the instance pool
+  # Rule 3: Allow intra-bridge traffic (router to instance on the same bridge network)
+  if [[ "${MODE}" == "dry-run" ]]; then
+    echo "[DRY-RUN] iptables -A L3MON-FIREWALL -m physdev --physdev-is-bridged -j RETURN"
+  else
+    iptables -A L3MON-FIREWALL -m physdev --physdev-is-bridged -j RETURN
+  fi
+
+  # Rule 4: Drop inter-instance cross-talk across different instance networks in the pool
   if [[ "${MODE}" == "dry-run" ]]; then
     echo "[DRY-RUN] iptables -A L3MON-FIREWALL -s ${INSTANCE_POOL} -d ${INSTANCE_POOL} -j DROP"
   else
     iptables -A L3MON-FIREWALL -s "${INSTANCE_POOL}" -d "${INSTANCE_POOL}" -j DROP
   fi
 
-  # Rule 4: Drop any instance pool outbound traffic to private RFC1918 VPC networks
+  # Rule 5: Drop any instance pool outbound traffic to private RFC1918 VPC networks
   for vpc_range in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
     if [[ "${MODE}" == "dry-run" ]]; then
       echo "[DRY-RUN] iptables -A L3MON-FIREWALL -s ${INSTANCE_POOL} -d ${vpc_range} -j DROP"
@@ -221,14 +245,14 @@ configure_firewall() {
     fi
   done
 
-  # Rule 5: Restrict agent port 8300 to platform VM only via conntrack original dst port in forward path
+  # Rule 6: Restrict agent port 8300 to platform VM only via conntrack original dst port in forward path
   if [[ "${MODE}" == "dry-run" ]]; then
     echo "[DRY-RUN] iptables -A L3MON-FIREWALL -p tcp -m conntrack --ctorigdstport 8300 ! -s ${PLATFORM_VM_IP} -j DROP"
   else
     iptables -A L3MON-FIREWALL -p tcp -m conntrack --ctorigdstport 8300 ! -s "${PLATFORM_VM_IP}" -j DROP
   fi
 
-  # Rule 6: Return back to DOCKER-USER for legitimate traffic (e.g. router relaying into instances)
+  # Rule 7: Return back to DOCKER-USER for legitimate traffic
   if [[ "${MODE}" == "dry-run" ]]; then
     echo "[DRY-RUN] iptables -A L3MON-FIREWALL -j RETURN"
   else
@@ -236,9 +260,27 @@ configure_firewall() {
   fi
 }
 
-# 8. Next Steps Output
+# 8. Verify Docker pool activation
+verify_pool_activation() {
+  echo "--- [8/9] Verifying Docker Pool Activation ---"
+  if [[ "${MODE}" == "apply" ]] && command -v docker >/dev/null 2>&1; then
+    local test_net="l3mon_pool_verify_$$"
+    if docker network create "${test_net}" >/dev/null 2>&1; then
+      local subnet
+      subnet=$(docker network inspect "${test_net}" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || echo "")
+      docker network rm "${test_net}" >/dev/null 2>&1 || true
+      if [[ -n "${subnet}" ]]; then
+        echo "Successfully verified throwaway network allocated subnet: ${subnet}"
+      fi
+    fi
+  else
+    echo "[DRY-RUN] docker network create l3mon_pool_verify (verifies allocated subnet is within ${INSTANCE_POOL})"
+  fi
+}
+
+# 9. Next Steps Output
 print_next_steps() {
-  echo "--- [8/8] Bootstrap Complete ---"
+  echo "--- [9/9] Bootstrap Complete ---"
   echo "Next steps on challenge host:"
   echo "1. Place deployment tokens in /etc/l3mon/secrets (mode 0600, root-only)."
   echo "2. Populate /etc/l3mon/challenges.toml with challenge manifests."
@@ -254,4 +296,5 @@ configure_user_and_dirs
 configure_docker_daemon
 configure_env_file
 configure_firewall
+verify_pool_activation
 print_next_steps

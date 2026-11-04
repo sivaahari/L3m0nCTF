@@ -360,8 +360,8 @@ class InstanceRouter:
                     self.trusted_forwarders.append(ipaddress.ip_network(item, strict=False))
                 else:
                     self.trusted_forwarders.append(ipaddress.ip_network(f"{item}/32" if ":" not in item else f"{item}/128", strict=False))
-            except ValueError:
-                pass
+            except ValueError as e:
+                raise ValueError(f"Invalid INSTANCER_TRUSTED_FORWARDERS entry: {item!r}") from e
 
         self.hosts = hosts or []
         self.is_central = bool(hosts)
@@ -445,9 +445,11 @@ class InstanceRouter:
         async with self._conn_lock:
             if self._total_active_connections >= self.max_total_connections:
                 return False, 503, "Service Busy (Global Limit)"
+            if not self.is_trusted_forwarder(peer_ip):
+                curr = self._active_connections_per_ip.get(peer_ip, 0)
+                if curr >= self.max_connections_per_ip:
+                    return False, 503, "Service Busy (IP Limit)"
             curr = self._active_connections_per_ip.get(peer_ip, 0)
-            if curr >= self.max_connections_per_ip:
-                return False, 503, "Service Busy (IP Limit)"
             self._total_active_connections += 1
             self._active_connections_per_ip[peer_ip] = curr + 1
             return True, 200, ""
@@ -455,6 +457,11 @@ class InstanceRouter:
     async def rebind_client_connection(self, old_ip: str, new_ip: str) -> tuple[bool, int, str]:
         """Rebind IP connection slot if Cloudflare CF-Connecting-IP reveals real client IP."""
         if old_ip == new_ip:
+            if self.is_trusted_forwarder(old_ip):
+                async with self._conn_lock:
+                    curr = self._active_connections_per_ip.get(old_ip, 0)
+                    if curr > self.max_connections_per_ip:
+                        return False, 503, "Service Busy (IP Limit)"
             return True, 200, ""
         async with self._conn_lock:
             curr_new = self._active_connections_per_ip.get(new_ip, 0)
@@ -682,7 +689,11 @@ class InstanceRouter:
                         target_ip = r.get("target_ip")
                         target_port = r.get("target_port")
                         if validate_route_target(
-                            target_ip, target_port, self.pool_networks, allow_loopback=self.allow_loopback_for_tests
+                            target_ip,
+                            target_port,
+                            self.pool_networks,
+                            allow_loopback=self.allow_loopback_for_tests,
+                            pool_subnet_size=self.pool_subnet_size,
                         ):
                             new_tcp_routes[port] = r
                         else:

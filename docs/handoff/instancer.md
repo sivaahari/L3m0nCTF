@@ -613,7 +613,7 @@ Milestone 2 distributes container workloads across multiple challenge host VMs, 
   - `get_token_for_host(host_name)` resolves `INSTANCER_TOKEN_<NAME_UPPER>`. In multi-host mode, falling back to the global platform token is strictly refused (raises `ValueError`) to enforce token isolation across hosts.
 - **Pinned CA Support**:
   - `InstancerClient` accepts optional `ca_cert` parameter for mutual TLS or pinned internal CAs.
-- **Verification**: 15 tests (11 unit tests in `plugins/l3mon_instances/tests/test_instances_hosts.py` + 4 lead probes in `test_lead_probes.py`) passed in 0.11s.
+- **Verification**: 14 tests in `plugins/l3mon_instances/tests/test_instances_hosts.py` (9 unit tests for capacity tracking, caching, optimistic concurrency, and token resolution + 5 real route-level Probes A through E).
 
 ### 13.2 Instancer Agent Mode (`services/instancer/manager.py`, `services/instancer/main.py`)
 - `InstanceManager` accepts `host_name` (default: `"local"`) and `agent_mode` (default: `False`).
@@ -654,7 +654,7 @@ Milestone 2 distributes container workloads across multiple challenge host VMs, 
   - First-registered host wins: if two agents report the same instance ID, the first host retains the route; subsequent attempts are ignored.
 - 30-Second Silent Host Route Expiration:
   - If a challenge host stops responding for >= 30 seconds, its routes are purged from the central routing table.
-- Verified by 6 tests in `services/instancer/tests/test_router_two_hop.py`.
+- Verified by 9 tests in `services/instancer/tests/test_router_two_hop.py` (including two-router end-to-end client IP preservation, spoofing protection, and N-2/N-3 verification).
 
 ---
 
@@ -673,18 +673,31 @@ Milestone 3 validates multi-host failover at scale, provides the challenge host 
 ### 14.2 Challenge Host VM Bootstrap Script (`deploy/challenge-host/bootstrap.sh`)
 - Idempotent setup script for Debian 12 / Ubuntu 22.04+ challenge host VMs.
 - Default mode is `--dry-run`; `--apply` flag required to perform modifications.
-- Unified Pool Configuration:
-  - Sets `default-address-pools` in `/etc/docker/daemon.json` (`base: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16}", size: 24`).
-  - Exports `INSTANCER_INSTANCE_POOL` in `/etc/l3mon/challenge-host.env` from the exact same variable.
-- `DOCKER-USER` iptables Rules:
-  - Drops traffic to Cloud metadata service: `169.254.169.254`.
-  - Permits established and related traffic (`-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT`).
-  - Allows traffic from router container to challenge container pool.
-  - Drops challenge container pool traffic to private VPC subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
-  - Restricts agent control port 8300 strictly to the platform VM IP (`PLATFORM_VM_IP`).
-- Poison Stub Dry-Run Verification (`tools/tests/test_bootstrap.py`):
-  - Uses poison executable stubs on `PATH` for modifying commands (`apt-get`, `iptables`, `systemctl`, `mkdir`, `cp`, `cat`) that fail immediately with exit code 99 if executed.
-  - Confirms that running `--dry-run` executes zero modifying commands and generates correct unified pool configuration and `DOCKER-USER` rules.
+- Small Subnet Pools Configuration:
+  - Backs up existing `/etc/docker/daemon.json` to `/etc/docker/daemon.json.bak`.
+  - Sets `default-address-pools` in `/etc/docker/daemon.json` (`base: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16}", size: 28`) providing 4,096 distinct `/28` instance networks (14 usable container IPs per bridge).
+  - Restarts Docker daemon during `--apply` to activate pool settings, and verifies allocated subnets via throwaway test network.
+  - Exports `INSTANCER_INSTANCE_POOL`, `INSTANCER_POOL_SUBNET_SIZE`, `INSTANCER_TRUSTED_FORWARDERS`, and `HOST_PRIVATE_BIND_IP` in `/etc/l3mon/challenge-host.env`.
+- Dedicated `L3MON-FIREWALL` Chain (inserted at position 1 of `DOCKER-USER`):
+  1. Drop cloud metadata: `-d 169.254.169.254 -j DROP`.
+  2. Permit established/related: `-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT`.
+  3. Allow intra-bridge traffic: `-m physdev --physdev-is-bridged -j RETURN` allows legitimate router-to-instance traffic on the same bridge network (as Docker connects the router container directly to the instance bridge).
+  4. Inter-instance cross-talk drop: `-s 10.200.0.0/16 -d 10.200.0.0/16 -j DROP` drops routed traffic between different instance bridges.
+  5. VPC isolation: `-s 10.200.0.0/16 -d 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 -j DROP`.
+  6. Agent port 8300 protection: `-p tcp -m conntrack --ctorigdstport 8300 ! -s ${PLATFORM_VM_IP} -j DROP`.
+  7. Return to `DOCKER-USER`: `-j RETURN`.
+- Breakage Detection Tests (`tools/tests/test_bootstrap.py`):
+  All 5 structural breakages of the firewall and pool configuration are detected and caught:
+  1. Missing metadata rule: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_missing_metadata_rule - AssertionError`
+  2. Missing pool-to-pool drop rule: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_missing_pool_drop_rule - AssertionError`
+  3. Missing RFC1918 VPC drops: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_missing_vpc_drops - AssertionError`
+  4. Inverted jump (jump placed after RETURN): `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_inverted_docker_user_jump - AssertionError`
+  5. Hardcoded subnet size: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_hardcoded_subnet_size - AssertionError`
+- Root Network Namespace Experiment (`tools/tests/firewall_experiment.sh`):
+  Uses the real Docker bridge topology (router and instance on shared bridge `br_inst1` with `br_netfilter` enabled). Skips explicitly via `pytest.skip` when not run as root. Can be run in CI using runner sudo privileges via:
+  `sudo bash tools/tests/firewall_experiment.sh`
+- Poison Stub Dry-Run Verification:
+  Confirms that `--dry-run` executes zero modifying commands and generates correct unified pool configuration and `DOCKER-USER` rules.
 - Shellcheck lint integration: Added `deploy/challenge-host/bootstrap.sh` to the shellcheck file list in `.github/workflows/ci.yml` (permitted under Rule A4).
 
 ### 14.3 Operator Runbook & Documentation

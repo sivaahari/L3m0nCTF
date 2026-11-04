@@ -141,6 +141,56 @@ def test_route_target_pool_validation():
     assert validate_route_target("10.200.0.999", 8080, pool) is False
 
 
+@pytest.mark.asyncio
+async def test_sync_tcp_routes_rejects_gateway_with_custom_subnet_size():
+    """BLOCKING 4: sync_tcp_routes enforces pool_subnet_size and rejects gateway 10.200.0.17."""
+    router = InstanceRouter(
+        instance_domain="inst.l3m0nctf.xyz",
+        instance_pool="10.200.0.0/16",
+        pool_subnet_size=28,
+        tcp_port_start=30000,
+        tcp_port_count=10,
+    )
+    # Attempt to route port 30000 to gateway 10.200.0.17 (gateway for 10.200.0.16/28)
+    routes = [
+        {
+            "id": "a" * 32,
+            "protocol": "tcp",
+            "port": 30000,
+            "target_ip": "10.200.0.17",
+            "target_port": 8080,
+        }
+    ]
+    await router.sync_tcp_routes(routes)
+    # Gateway route must be rejected: no listener bound on port 30000
+    assert 30000 not in router._tcp_listeners
+    assert router._tcp_metrics_refusals["invalid_target"] == 1
+
+    # Now provide a valid usable host in that subnet (10.200.0.18)
+    valid_routes = [
+        {
+            "id": "b" * 32,
+            "protocol": "tcp",
+            "port": 30000,
+            "target_ip": "10.200.0.18",
+            "target_port": 8080,
+        }
+    ]
+    await router.sync_tcp_routes(valid_routes)
+    assert 30000 in router._tcp_listeners
+    await router.close_all_tcp_listeners()
+
+
+def test_trusted_forwarders_validation():
+    """BLOCKING 4: invalid trusted_forwarders entry raises ValueError instead of being ignored."""
+    with pytest.raises(ValueError, match="Invalid INSTANCER_TRUSTED_FORWARDERS entry"):
+        InstanceRouter(
+            instance_domain="inst.l3m0nctf.xyz",
+            instance_pool="10.200.0.0/16",
+            trusted_forwarders="not-a-valid-ip",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Break-Matrix Row 11: Byte-rate limiter measurement
 # ---------------------------------------------------------------------------
@@ -903,6 +953,9 @@ def test_router_main_env_reading():
 
     with pytest.raises(ValueError, match="ROUTER_HTTP_PORT must be between 1 and 65535"):
         parse_router_config({"ROUTER_HTTP_PORT": "99999"})
+
+    with pytest.raises(ValueError, match="Invalid INSTANCER_TRUSTED_FORWARDERS entry"):
+        parse_router_config({"INSTANCER_TRUSTED_FORWARDERS": "not_an_ip"})
 
 
 # ---------------------------------------------------------------------------

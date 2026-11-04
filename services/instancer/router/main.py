@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -76,6 +77,16 @@ def parse_router_config(env: dict | None = None) -> dict:
     pool_subnet_size = _get_int("INSTANCER_POOL_SUBNET_SIZE", 24)
     instance_pool = e.get("INSTANCER_INSTANCE_POOL", "10.200.0.0/16").strip()
     trusted_forwarders = e.get("INSTANCER_TRUSTED_FORWARDERS", "").strip()
+    if trusted_forwarders:
+        for item in [x.strip() for x in trusted_forwarders.split(",") if x.strip()]:
+            try:
+                if "/" in item:
+                    ipaddress.ip_network(item, strict=False)
+                else:
+                    ipaddress.ip_network(f"{item}/32" if ":" not in item else f"{item}/128", strict=False)
+            except ValueError as val_err:
+                raise ValueError(f"Invalid INSTANCER_TRUSTED_FORWARDERS entry: {item!r}") from val_err
+
     hosts_path = e.get("ROUTER_HOSTS_PATH", "").strip() or None
 
     return {
@@ -210,12 +221,11 @@ async def _serve_one(reader, writer, router, header_timeout, body_timeout, clien
 
     # N2: Resolve real IP behind Cloudflare and rebind connection tracking
     real_ip = router.resolve_client_ip(client_ip, headers_list)
-    if real_ip != client_ip:
-        rebound, reb_status, reb_msg = await router.rebind_client_connection(client_ip, real_ip)
-        if not rebound:
-            await _refuse(writer, reb_status, reb_msg)
-            return client_ip
-        client_ip = real_ip
+    rebound, reb_status, reb_msg = await router.rebind_client_connection(client_ip, real_ip)
+    if not rebound:
+        await _refuse(writer, reb_status, reb_msg)
+        return client_ip
+    client_ip = real_ip
 
     # N1: Look at Host and route FIRST before reading any body
     host_header = ""
@@ -388,9 +398,6 @@ async def main():
         cfg["port"],
     )
     _log.info("Instance Router listening for HTTP on 0.0.0.0:%d (domain: %s)", cfg["port"], cfg["instance_domain"])
-
-    async with server:
-        await server.serve_forever()
 
     async with server:
         await server.serve_forever()

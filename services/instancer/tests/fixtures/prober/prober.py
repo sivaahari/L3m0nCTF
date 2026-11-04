@@ -32,9 +32,9 @@ def try_tcp_connect(host: str, port: int, timeout: float = 1.0) -> tuple[bool, s
             pass
 
 
-def check_metadata(timeout: float = 1.0) -> tuple[bool, str]:
-    url = "http://169.254.169.254/computeMetadata/v1/"
-    req = urllib.request.Request(url, headers={"Metadata-Flavor": "Google"})
+def check_metadata(timeout: float = 1.0, url: str | None = None) -> tuple[bool, str]:
+    target_url = url or os.environ.get("PROBE_METADATA_URL", "http://169.254.169.254/computeMetadata/v1/")
+    req = urllib.request.Request(target_url, headers={"Metadata-Flavor": "Google"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return True, f"status_{resp.status}"
@@ -120,7 +120,8 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
     }
 
     # 5. Cloud metadata 169.254.169.254
-    meta_reachable, meta_err = check_metadata(timeout=timeout)
+    meta_url = params.get("metadata_url") or os.environ.get("PROBE_METADATA_URL", "http://169.254.169.254/computeMetadata/v1/")
+    meta_reachable, meta_err = check_metadata(timeout=timeout, url=meta_url)
     results["cloud_metadata"] = {
         "isolated": not meta_reachable,
         "reachable": meta_reachable,
@@ -128,7 +129,7 @@ def run_isolation_probes(params: dict[str, str]) -> dict:
     }
 
     # 6. Docker API: no filesystem socket AND port 2375 closed
-    sock_path = "/var/run/docker.sock"
+    sock_path = params.get("docker_sock") or os.environ.get("PROBE_DOCKER_SOCK", "/var/run/docker.sock")
     sock_exists = os.path.exists(sock_path)
     d2375_local, d2375_local_err = try_tcp_connect("127.0.0.1", 2375, timeout=timeout)
     d2375_gw, d2375_gw_err = try_tcp_connect(gateway_ip, 2375, timeout=timeout)

@@ -192,10 +192,15 @@ def test_challenge_host_compose_properties():
     assert len(tcp_ports) == 200
     assert all(p.get("host_ip") == "0.0.0.0" for p in tcp_ports)
 
-    # 4. Same INSTANCER_INSTANCE_POOL for agent and router
+    # 4. Same INSTANCER_INSTANCE_POOL and INSTANCER_POOL_SUBNET_SIZE for agent and router
     agent_pool = agent.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
     router_pool = router.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
     assert agent_pool is not None and agent_pool == router_pool
+
+    agent_sub_size = agent.get("environment", {}).get("INSTANCER_POOL_SUBNET_SIZE")
+    router_sub_size = router.get("environment", {}).get("INSTANCER_POOL_SUBNET_SIZE")
+    assert agent_sub_size == "28" and router_sub_size == "28"
+    assert "INSTANCER_TRUSTED_FORWARDERS" in router.get("environment", {})
 
     # 5. Logging rotation explicitly configured on all services
     for sname, sdef in services.items():
