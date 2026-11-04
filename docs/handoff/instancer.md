@@ -199,18 +199,25 @@ python -m pytest tests/integration/test_instances.py -v
 ### Instancer Unit Tests (`services/instancer/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-137 passed in 18.23s (4 November 2026)
+148 passed in 17.02s (4 November 2026)
 ```
-*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup, TCP port range validation, route target pool validation with multi-pool support, token bucket continuous rate limiting (2 MB/s, 4 MB burst), bidirectional relaying, clean half-close propagation, zero-leakage port reuse, TCP idle timeout, per-instance connection cap, silent connect failure, Prometheus TCP & HTTP metrics export, double-sync lock protection, three TCP settings range validation, per-IP cap boundary, global cap boundary, absolute lifetime cap under constant traffic, real byte-rate transfer timing, and HTTP metrics endpoint.*
+*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup, TCP port range validation, route target pool validation with multi-pool support, token bucket continuous rate limiting (2 MB/s, 4 MB burst), bidirectional relaying, clean half-close propagation, zero-leakage port reuse, TCP idle timeout, per-instance connection cap, silent connect failure, Prometheus TCP & HTTP metrics export, double-sync lock protection, three TCP settings range validation, per-IP cap boundary, global cap boundary, absolute lifetime cap under constant traffic, real byte-rate transfer timing, router HTTP metrics endpoint, packing test benchmark tool execution & safety metrics, central router two-hop destination integrity, route ID 32-hex validation, duplicate route ID resolution (first-wins), and 30-second silent host route expiration.*
 
 *Note on CI coverage: Prior to 4 November 2026, GitHub Actions did not execute `services/instancer/tests/`. Merging `pre-deployment` into this branch added the `instancer-unit` CI job, running `python -m pytest services/instancer/tests` in the platform Linux container (Python 3.11 with pytest 8.4.2 and pytest-asyncio 0.24.0).*
+
+### Plugin Multi-Host Capacity & Scheduler Tests (`plugins/l3mon_instances/tests/`)
+```
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
+11 passed in 0.12s (4 November 2026)
+```
+*Coverage: host configuration validation (`config/instancer/hosts.example.json`), per-host token isolation (`INSTANCER_TOKEN_<NAME>` with fallback), 5.0s TTL capacity cache & background refresh, in-memory optimistic local slot counter preventing thundering herd under concurrency, 30-second down host penalty & automatic recovery, 503 `no_capacity` with `Retry-After` header when all hosts down/full, instance host stickiness for renew and stop, down host instance status mapping to `error` (never `running`), admin kill-all aggregation across all hosts, and multi-host failover and rebalancing at scale (4 hosts, 1 host failure, load dynamically shed to surviving hosts).*
 
 ### Tools Regression Suite (`tools/tests/`)
 ```
 platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-303 passed, 12 skipped in 30.82s (4 November 2026)
+332 passed, 14 skipped in 137.83s (4 November 2026)
 ```
-*Includes `test_instancer_compose.py` validating dev overlay (loopback TCP port range 30000-30199 and shared `INSTANCER_INSTANCE_POOL`) vs production overlay (host-published 0.0.0.0 TCP port range 30000-30199) with `docker compose config`, and verifying that production overlay fails when `INSTANCE_DOMAIN` is unset.*
+*Includes `test_instancer_compose.py` (validating dev overlay, production overlay with `INSTANCE_DOMAIN` check, and standalone challenge host compose `compose.challenge-host.yml` with container hardening `cap_drop: [ALL]`, `read_only: true`, `no-new-privileges: true`, log rotation `10m/3`) and `test_bootstrap.py` (verifying bootstrap script `--dry-run` with poison stubs on PATH failing with exit code 99 if called, zero modifying commands executed, and unified pool configuration across `daemon.json` and `INSTANCER_INSTANCE_POOL` with `DOCKER-USER` rules).*
 
 ### CTFd Plugin Tests inside Container (`tools/run-ctfd-tests.sh`)
 ```
@@ -331,6 +338,24 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 | External port isolation (A1) | Check host 2375 port exposure | `test_external_port_isolation` |
 | Real live overlay isolation proof (A1) | Start live prober and target instances on overlay stack | `test_live_overlay_instance_isolation_proof` |
 | Real TCP challenge lifecycle (A4) | Start TCP instance, read flag, submit correct/incorrect, renew, stop, recovery | `test_tcp_instance_end_to_end_lifecycle` |
+| Host config structure & safety (F3) | Invalid host url or non-alphanumeric name in `hosts.json` | `test_load_hosts_config_validates_structure_and_safety` (raises ValueError) |
+| Per-host token isolation (F3) | Host 2 client uses Host 1 secret token | `test_per_host_token_resolution_and_isolation` (asserts distinct tokens per host) |
+| Capacity cache 5.0s TTL (F3) | Cache refreshed on every poll instead of cached for 5s | `test_capacity_cache_ttl_and_refresh` (cached for 5s, refreshed after 5s) |
+| Optimistic local slot counter (F3) | Local counter not incremented on schedule | `test_optimistic_local_slot_counter_concurrency` (prevents thundering herd) |
+| 30s down host penalty & recovery (F3) | Host failing poll retried immediately or never recovered | `test_down_host_30s_penalty_and_recovery` (skipped during 30s penalty, recovers after 30s) |
+| 503 no_capacity retry_after (F3) | Return 200 or 500 when all hosts full or down | `test_all_hosts_down_or_full_returns_503_no_capacity` (returns HTTP 503 with Retry-After header) |
+| Instance host stickiness (F3) | Renew/stop routed to highest capacity host instead of assigned host | `test_instance_host_stickiness_for_renew_and_stop` (operations route strictly to assigned host_name) |
+| Down host instance error state (F3) | Report instance as running when assigned host is down | `test_down_host_instances_reported_as_error_not_running` (asserts `state == "error"`) |
+| Admin kill-all aggregation (F3) | Admin kill-all only stops instances on first host | `test_admin_kill_all_and_list_across_hosts` (broadcasts across all hosts and consolidates counts) |
+| Multi-host scale failover (F3) | Scheduler stalls or crashes when active host drops offline | `test_multihost_failover_and_rebalance_at_scale` (4 hosts, 1 dies, load sheds evenly to surviving 3) |
+| Pack benchmark tool metrics (F5) | Benchmark tool proceeds when host free RAM below threshold | `test_pack_test_tool_execution_and_metrics` (raises MemoryThresholdError, outputs p50/p95 percentiles) |
+| Challenge host compose hardening (F4) | Missing cap_drop ALL, read_only root, or no-new-privileges | `test_challenge_host_compose_properties` (validates agent, socket-proxy, router hardening) |
+| Two-hop destination integrity (F6) | Forward Hop 1 traffic to untrusted target_ip reported in agent route | `test_central_router_dest_integrity_ignores_reported_target_ip` (forwards strictly to configured router_url) |
+| Central router route ID 32-hex (F6) | Accept path-traversal or non-hex string as route ID | `test_central_router_rejects_malformed_route_ids` (strictly rejects non-32-hex IDs) |
+| Duplicate route ID first-wins (F6) | Second host overwrites first host's registered route | `test_central_router_duplicate_route_id_first_wins` (first registered host retains route) |
+| 30s silent host route expiry (F6) | Routes from dead host remain active in central router indefinitely | `test_central_router_silent_host_route_expiration` (purges routes after 30s silence) |
+| Bootstrap dry run poison stubs (F4) | Execute modifying command during `--dry-run` | `test_bootstrap_dry_run_executes_no_modifying_commands` (poison stubs on PATH exit 99 if called) |
+| Unified pool & DOCKER-USER rules (F4) | Write conflicting CIDRs between daemon.json and pool | `test_bootstrap_generates_correct_iptables_and_daemon_json` (asserts identical subnet across configs) |
 
 ---
 
@@ -352,8 +377,9 @@ tests/integration/test_instances_tcp.py (full TCP instance start, open, flag ret
 ## 9. Open questions and known gaps
 
 - **Milestone 1 (Round 2)**: Completed. All six audit findings (A1 through A6) resolved, verified, and backed by tests that fail when broken (see Section 12).
-- **Milestone 2 (Multi-Host Distribution, Capacity Client, Two-Hop Router)**: Scheduled for Part B.
-- **Milestone 3 (Failover, Bootstrap Script, Runbook, Threat Model)**: Scheduled for Part C.
+- **Milestone 2 (Multi-Host Distribution, Capacity Client, Two-Hop Router)**: Completed. All items implemented and verified across 11 plugin host tests, 148 instancer tests, and 332 tools tests (see Section 13).
+- **Milestone 3 (Failover, Bootstrap Script, Runbook, Threat Model)**: Completed. Scale failover verified, bootstrap dry run verified with poison stubs, documentation, traffic topologies, and threat model updated with TH-22..TH-30 (see Section 14).
+- **Awaiting Owner / Lead Cloud Provisions**: Once cloud deployment resumes, the project owner will provision the second challenge server and the direct DNS A-records (`h1.inst.l3m0nctf.xyz`, etc.). Local multi-host testing verified using loopback and container ports.
 
 ---
 
@@ -531,3 +557,140 @@ Following the lead engineer's review of the second half plan (`NOTE-F.md`), Mile
   - `instancer_router_tcp_connect_failures_total` (counter)
   - `instancer_router_tcp_refusals_total{reason="..."}` (counter by reason: `instance_cap`, `ip_cap`, `global_cap`, `invalid_target`, `route_closed`)
   - No instance IDs or team identifiers exposed in metric labels.
+
+---
+
+## 13. Milestone 2 Implementation & Verification (Part B)
+
+Milestone 2 distributes container workloads across multiple challenge host VMs, providing high scalability, agent mode execution, automated packing benchmarking, and two-hop HTTP reverse proxying with destination integrity.
+
+### 13.1 Multi-Host Scheduler & Capacity Tracker (`plugins/l3mon_instances/hosts.py`)
+- **Host Configuration (`config/instancer/hosts.example.json`)**:
+  - Defines challenge host nodes with schema:
+    ```json
+    [
+      {
+        "name": "h1",
+        "url": "http://instancer-h1:8300",
+        "router_url": "http://router-h1:8090",
+        "capacity": 60,
+        "enabled": true
+      }
+    ]
+    ```
+  - Validated by `load_hosts_config` and `validate_host_entry`: enforces valid URL schemes (`http`, `https`), alphanumeric host identifiers (preventing directory traversal / header injection), and positive integer capacity limits.
+- **5.0-Second TTL Capacity Cache (`HostCapacityTracker`)**:
+  - Queries `GET /v1/capacity` on enabled hosts and caches capacity data with a 5.0-second TTL.
+  - Eliminates polling storms against agent instances during traffic spikes.
+  - Thread safety enforced via `threading.RLock()`.
+- **In-Memory Optimistic Local Slot Counter**:
+  - To prevent thundering herds when multiple workers concurrently schedule instances within the 5.0-second cache window, `HostCapacityTracker.schedule_instance()` increments an internal optimistic counter (`_optimistic_slots += 1`).
+  - Optimistic reservations decrement visible capacity immediately. Upon the next cache refresh (5 seconds), optimistic reservations reset and real container counts take over.
+- **30-Second Down Host Penalty**:
+  - If a host fails a capacity check or start request, `mark_host_down(host_name)` marks it down for 30.0 seconds.
+  - The scheduler skips down hosts for all new instance starts, dynamically routing new instances to healthy hosts.
+  - Down hosts automatically recover after 30 seconds once a subsequent poll succeeds.
+- **503 `no_capacity` with `Retry-After`**:
+  - When all configured hosts are at capacity or down, the player API returns HTTP 503 with body `{"success": false, "error": "no_capacity"}` and `Retry-After: 30` header.
+- **Instance Host Stickiness**:
+  - The database records the assigned `host_name` on each active instance (`l3mon_instance.host_name`).
+  - Renew and stop requests query the database and route strictly to the assigned host, preventing cross-host route conflicts or orphaned containers.
+- **Down Host Status Mapping**:
+  - If a player queries instance status while the assigned host is down, the plugin returns `state="error"`, never misleading players with a false `state="running"`.
+- **Admin Kill-All Aggregation**:
+  - Admin `POST /api/v1/l3mon/admin/instances/kill_all` broadcasts `POST /v1/admin/kill` across all enabled hosts, aggregating stopped container counts.
+- **Per-Host Token Isolation**:
+  - `get_token_for_host(host_name)` resolves `INSTANCER_TOKEN_<NAME_UPPER>`, falling back to `INSTANCER_TOKEN`.
+- **Pinned CA Support**:
+  - `InstancerClient` accepts optional `ca_cert` parameter for mutual TLS or pinned internal CAs.
+- **Verification**: 11 unit tests in `plugins/l3mon_instances/tests/test_instances_hosts.py` passed in 0.12s.
+
+### 13.2 Instancer Agent Mode (`services/instancer/manager.py`, `services/instancer/main.py`)
+- `InstanceManager` accepts `host_name` (default: `"local"`) and `agent_mode` (default: `False`).
+- `get_capacity()` enriches status output with `host_name`, `slots_free`, `mem_mb_free`, and active container count.
+- `main.py` parses `INSTANCER_AGENT_MODE` and `INSTANCER_HOST_NAME`.
+- Verified across 148 instancer unit tests.
+
+### 13.3 Standalone Challenge Host Compose Overlay (`deploy/compose/compose.challenge-host.yml`)
+- Standalone compose specification running exclusively the remote execution plane:
+  - `agent`: instancer daemon in agent mode (`INSTANCER_AGENT_MODE=1`).
+  - `socket-proxy`: pinned `tecnativa/docker-socket-proxy@sha256:d8c47bb371f8e1781297593cff15cf4663df86b24d770c0c70ab0357ea1c6fc8` restricted to containers and networks.
+  - `router`: reverse proxy and TCP relay for that host's instances.
+- Container hardening:
+  - `cap_drop: [ALL]` across all services.
+  - `read_only: true` on `agent` and `router`.
+  - `security_opt: [no-new-privileges:true]`.
+  - Bounded memory limits (`256m`) and CPU limits (`0.50`).
+  - Log rotation (`max-size: 10m`, `max-file: 3`).
+- Verified by `tools/tests/test_instancer_compose.py` (`test_challenge_host_compose_properties`).
+
+### 13.4 Packing Test Benchmark Tool (`services/instancer/tools/pack_test.py`)
+- Python 3.11 standard library only; zero external dependencies.
+- Concurrently creates N fixture instances, measures startup latency (p50, p95), polls Docker memory and CPU via `docker stats`, and checks container reachability.
+- Safety checks:
+  - Memory threshold verification: refuses to run if free host memory is below safety margin.
+  - Interactive prompt detailing instance count and expected memory footprint (bypassed with `--yes`).
+  - Traps `SIGINT` and `SIGTERM` to reliably clean up only instances created by that benchmark run.
+- Verified by unit tests in `services/instancer/tests/test_pack_test.py`.
+
+### 13.5 Central Router Two-Hop Forwarding & Destination Integrity (`services/instancer/router/`)
+- Two-Hop HTTP Relay: Central router on platform VM receives player traffic for `Host: <instance_id>.<instance_domain>` and proxies it over private network to the challenge host's router (`router_url`), which forwards it to the container.
+- Destination Integrity:
+  - The central router determines Hop 1 destination strictly from its own configuration (`router_url` in `hosts.json`).
+  - Untrusted `target_ip` addresses reported in agent route lists are completely ignored, preventing route-poisoning attacks against platform internal services.
+- Route ID Validation:
+  - Enforces strict regex `^[0-9a-f]{32}$`. Non-conforming route IDs are rejected immediately.
+- Duplicate Route ID Resolution:
+  - First-registered host wins: if two agents report the same instance ID, the first host retains the route; subsequent attempts are ignored.
+- 30-Second Silent Host Route Expiration:
+  - If a challenge host stops responding for >= 30 seconds, its routes are purged from the central routing table.
+- Verified by 6 tests in `services/instancer/tests/test_router_two_hop.py`.
+
+---
+
+## 14. Milestone 3 Implementation & Verification (Part C)
+
+Milestone 3 validates multi-host failover at scale, provides the challenge host VM bootstrap automation with dry-run poison stub verification, and updates operational runbooks and threat models.
+
+### 14.1 Multi-Host Scale Failover Testing
+- `test_multihost_failover_and_rebalance_at_scale`:
+  - Validates a 4-host configuration under high concurrency.
+  - Phase 1: Schedules 12 instances evenly across 4 hosts (3 instances per host).
+  - Phase 2: Simulates Host 2 crashing / dropping offline. Host 2 enters 30-second down penalty.
+  - Phase 3: Schedules 6 new instances; confirms 0 instances placed on dead Host 2, and all 6 are distributed evenly across the surviving 3 hosts.
+  - Phase 4: Simulates Host 2 recovering after 30 seconds; scheduler resumes placing instances on Host 2.
+
+### 14.2 Challenge Host VM Bootstrap Script (`deploy/challenge-host/bootstrap.sh`)
+- Idempotent setup script for Debian 12 / Ubuntu 22.04+ challenge host VMs.
+- Default mode is `--dry-run`; `--apply` flag required to perform modifications.
+- Unified Pool Configuration:
+  - Sets `default-address-pools` in `/etc/docker/daemon.json` (`base: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16}", size: 24`).
+  - Exports `INSTANCER_INSTANCE_POOL` in `/etc/l3mon/challenge-host.env` from the exact same variable.
+- `DOCKER-USER` iptables Rules:
+  - Drops traffic to Cloud metadata service: `169.254.169.254`.
+  - Permits established and related traffic (`-m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT`).
+  - Allows traffic from router container to challenge container pool.
+  - Drops challenge container pool traffic to private VPC subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+  - Restricts agent control port 8300 strictly to the platform VM IP (`PLATFORM_VM_IP`).
+- Poison Stub Dry-Run Verification (`tools/tests/test_bootstrap.py`):
+  - Uses poison executable stubs on `PATH` for modifying commands (`apt-get`, `iptables`, `systemctl`, `mkdir`, `cp`, `cat`) that fail immediately with exit code 99 if executed.
+  - Confirms that running `--dry-run` executes zero modifying commands and generates correct unified pool configuration and `DOCKER-USER` rules.
+- Shellcheck lint integration: Added `deploy/challenge-host/bootstrap.sh` to the shellcheck file list in `.github/workflows/ci.yml` (permitted under Rule A4).
+
+### 14.3 Operator Runbook & Documentation
+- `deploy/challenge-host/README.md`:
+  - Sizing guide with formulas derived from packing benchmark data.
+  - Cloud firewall and VPC security group rules.
+  - Step-by-step procedure for provisioning and joining a new challenge host.
+  - GHCR container image workflow: fine-grained read-only tokens, zero baked secrets/flags in images, digest pinning.
+  - Emergency operator procedures: `kill_all` execution, handling host failure, host drain, token rotation.
+- `docs/deploy/instancer.md`:
+  - Documented multi-host architecture, image workflow, exact manifest format, and limits.
+- `docs/deploy/instancer-traffic.md`:
+  - Documented Two-Hop HTTP forwarding path and Direct TCP routing path.
+  - Cloudflare DNS-only A-records for challenge hosts (`h1.inst.l3m0nctf.xyz`, etc.).
+  - Network topology and firewall diagrams.
+- `docs/security/instancer-threat-model.md`:
+  - Added threats TH-22 through TH-30 covering multi-host attacks, route poisoning, thundering-herd starvation, token compromise, and container network breakout.
+  - Explicitly mapped every control to its automated unit or integration test.
+  - Documented residual risks plainly.

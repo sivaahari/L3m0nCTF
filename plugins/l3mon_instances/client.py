@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import ssl
 import urllib.error
 import urllib.request
 from typing import Optional
@@ -42,10 +43,11 @@ class InstancerClientError(Exception):
 
 
 class InstancerClient:
-    def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None, timeout: int = 10):
+    def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None, timeout: int = 10, ca_cert: Optional[str] = None):
         self.base_url = (base_url or get_instancer_url()).rstrip("/")
         self.token = token or get_instancer_token()
         self.timeout = timeout
+        self.ca_cert = ca_cert
 
     def _request(self, method: str, path: str, body: Optional[dict] = None) -> tuple[int, dict]:
         if _override_client is not None:
@@ -61,9 +63,16 @@ class InstancerClient:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
 
+        ssl_context = None
+        if self.ca_cert and url.startswith("https://"):
+            ssl_context = ssl.create_default_context(cafile=self.ca_cert)
+
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            kwargs = {"timeout": self.timeout}
+            if ssl_context is not None:
+                kwargs["context"] = ssl_context
+            with urllib.request.urlopen(req, **kwargs) as resp:
                 status = resp.status
                 content = resp.read()
                 parsed = json.loads(content.decode("utf-8")) if content else {}

@@ -126,3 +126,57 @@ def test_production_overlay_fails_without_instance_domain():
     combined = res.stderr + res.stdout
     assert "INSTANCE_DOMAIN must be set" in combined, f"Expected error text not found in: {combined}"
 
+
+def test_challenge_host_compose_properties():
+    """Validates deploy/compose/compose.challenge-host.yml standalone configuration."""
+    ch_file = ROOT / "deploy" / "compose" / "compose.challenge-host.yml"
+    assert ch_file.is_file(), f"Missing compose.challenge-host.yml at {ch_file}"
+
+    cmd = ["docker", "compose", "-f", str(ch_file), "config", "--format", "json"]
+    res = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, f"docker compose config failed for challenge host: {res.stderr}\nOutput:\n{res.stdout}"
+
+    data = json.loads(res.stdout)
+    services = data.get("services", {})
+    assert set(services.keys()) == {"agent", "socket-proxy", "router"}
+
+    agent = services["agent"]
+    socket_proxy = services["socket-proxy"]
+    router = services["router"]
+
+    # 1. Agent configuration and hardening
+    assert agent.get("read_only") is True
+    assert agent.get("cap_drop") == ["ALL"]
+    assert "no-new-privileges:true" in agent.get("security_opt", [])
+    assert agent.get("environment", {}).get("INSTANCER_AGENT_MODE") == "1"
+    assert int(agent.get("mem_limit")) == 268435456 or agent.get("mem_limit") == "256m"  # 256MB
+    assert agent.get("pids_limit") == 128
+
+    # 2. Socket proxy image pinned by digest and hardened
+    assert "@sha256:" in socket_proxy.get("image", "")
+    assert socket_proxy.get("read_only") is True
+    assert socket_proxy.get("cap_drop") == ["ALL"]
+    assert socket_proxy.get("pids_limit") == 64
+
+    # 3. Router configuration and hardening
+    assert router.get("read_only") is True
+    assert router.get("cap_drop") == ["ALL"]
+    assert "no-new-privileges:true" in router.get("security_opt", [])
+    ports = router.get("ports", [])
+    assert len(ports) == 201, f"Expected 201 ports, got {len(ports)}"
+    tcp_ports = [p for p in ports if int(p.get("target", 0)) in range(30000, 30200)]
+    assert len(tcp_ports) == 200
+    assert all(p.get("host_ip") == "0.0.0.0" for p in tcp_ports)
+
+    # 4. Same INSTANCER_INSTANCE_POOL for agent and router
+    agent_pool = agent.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
+    router_pool = router.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
+    assert agent_pool is not None and agent_pool == router_pool
+
+    # 5. Logging rotation explicitly configured on all services
+    for sname, sdef in services.items():
+        logging_opts = sdef.get("logging", {}).get("options", {})
+        assert logging_opts.get("max-size") in ("10m", "50m"), f"Service {sname} missing max-size logging"
+        assert logging_opts.get("max-file") in ("3", "5"), f"Service {sname} missing max-file logging"
+
+

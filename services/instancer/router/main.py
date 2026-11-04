@@ -264,6 +264,25 @@ async def main():
     tcp_rate_limit_burst = _read_int_env("INSTANCER_TCP_RATE_LIMIT_BURST", 4 * 1024 * 1024)
     instance_pool = os.getenv("INSTANCER_INSTANCE_POOL", "10.200.0.0/16")
 
+    hosts_path = os.getenv("ROUTER_HOSTS_PATH")
+    if not hosts_path:
+        for candidate in ("/etc/l3mon/hosts.json", "config/instancer/hosts.json"):
+            if os.path.isfile(candidate):
+                hosts_path = candidate
+                break
+
+    hosts = None
+    if hosts_path and os.path.isfile(hosts_path):
+        try:
+            import json
+            with open(hosts_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and data:
+                    hosts = data
+                    _log.info("Loaded %d host(s) for central routing from %s", len(hosts), hosts_path)
+        except Exception as e:
+            _log.warning("Failed to load hosts config from %s: %s", hosts_path, e)
+
     router = InstanceRouter(
         instance_domain=instance_domain,
         instancer_url=instancer_url,
@@ -278,10 +297,14 @@ async def main():
         tcp_rate_limit_bps=tcp_rate_limit_bps,
         tcp_rate_limit_burst=tcp_rate_limit_burst,
         instance_pool=instance_pool,
+        hosts=hosts,
     )
 
     # Start route poller task in background
-    asyncio.create_task(router.poll_routes_loop())
+    if router.is_central:
+        asyncio.create_task(router.poll_central_routes_loop())
+    else:
+        asyncio.create_task(router.poll_routes_loop())
 
     server = await asyncio.start_server(
         lambda r, w: handle_client(r, w, router),

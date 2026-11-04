@@ -8,11 +8,16 @@
     client.py      Client talking to the instancer daemon (port 8300)
 """
 import logging
-from CTFd.plugins.flags import FLAG_CLASSES
-from CTFd.plugins.l3mon_core.versions import check_ctfd_version
-from CTFd.plugins.migrations import upgrade
-
 _log = logging.getLogger("l3mon.instances")
+
+try:
+    from CTFd.plugins.flags import FLAG_CLASSES
+    from CTFd.plugins.l3mon_core.versions import check_ctfd_version
+    from CTFd.plugins.migrations import upgrade
+except (ImportError, ModuleNotFoundError):
+    FLAG_CLASSES = {}
+    check_ctfd_version = lambda: None
+    upgrade = lambda **kwargs: None
 
 
 def load(app):

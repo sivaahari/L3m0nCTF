@@ -180,3 +180,77 @@ This document analyzes three viable options for routing player traffic to the ro
 If the team desires standard port 443 (omitting the `:8443` suffix in URLs) or prefers 100% domain decoupling, spending ~$2 for `l3moninstances.xyz` is clean, robust, and requires no code changes.
 
 **Decision:** The infrastructure lead / project owner will choose between Option (a) and Option (b). No code changes are required until the decision is finalized.
+
+---
+
+## 5. Multi-Host Fleet and TCP Player Traffic Architecture (F3 / Stream F)
+
+With the expansion to multiple dedicated challenge hosts, traffic paths diverge based on protocol: HTTP uses two-hop forwarding via the platform VM, while TCP traffic bypasses Cloudflare and connects directly to the challenge hosts.
+
+### 5.1 Protocol Traffic Flow Comparison
+
+```mermaid
+flowchart TD
+    subgraph HTTP_Flow ["HTTP Challenge Instances (Two-Hop Routing)"]
+        PlayerHTTP["Player Browser"] -->|HTTPS :8443| CF_Edge["Cloudflare Edge (*.l3m0nctf.xyz)"]
+        CF_Edge -->|Origin Pull AOP| Platform_Nginx["Platform VM Nginx (:8443)"]
+        Platform_Nginx -->|HTTP :8090| Central_Router["Central Router (Hop 1)"]
+        Central_Router -->|Private VPC :8080| Host_Router["Challenge Host Router (Hop 2)"]
+        Host_Router -->|Docker Internal Net| Container_HTTP["Challenge Container (HTTP)"]
+    end
+
+    subgraph TCP_Flow ["TCP Challenge Instances (Direct Per-Host DNS)"]
+        PlayerTCP["Player (nc / pwntools)"] -->|Raw TCP :30000-30199| Host_DNS["Host Public IP (h1.inst.l3m0nctf.xyz)"]
+        Host_DNS -->|Public TCP Relay| Host_TCP_Relay["Challenge Host TCP Relay"]
+        Host_TCP_Relay -->|Docker Internal Net| Container_TCP["Challenge Container (TCP)"]
+    end
+```
+
+### 5.2 Two-Hop HTTP Forwarding Mechanism
+1. **Hop 1 (Platform VM to Challenge Host):**
+   - The central router polls each challenge host's `/v1/routes` using dedicated tokens (`ROUTER_TOKEN_H1`, etc.).
+   - Hop 1 destination integrity: The central router forwards HTTP requests **strictly to the configured `router_url`** in `/etc/l3mon/hosts.json` (e.g. `http://10.200.1.10:8080`). It completely ignores any `target_ip` reported in the agent's route list.
+   - The original `Host: <id>.<instance_domain>` header is preserved across Hop 1.
+2. **Hop 2 (Challenge Host Router to Container):**
+   - The host router reads `Host: <id>.<instance_domain>`, validates that the target container IP belongs to `INSTANCER_INSTANCE_POOL`, and proxies the request to the container's internal port over the isolated Docker bridge.
+
+### 5.3 Direct TCP Challenge Routing
+Cloudflare's standard CDN and DDoS edge cannot proxy arbitrary TCP connections without expensive Enterprise Spectrum plans. Therefore, TCP challenges bypass Cloudflare entirely:
+1. **Dedicated Per-Host Public DNS:**
+   - Each challenge host has its own public DNS-only A record pointing directly to the VM's public IP (e.g. `h1.inst.l3m0nctf.xyz`).
+   - The platform instancer client automatically assigns `host = host_config["public_tcp_host"]` and `port = allocated_port` when returning instance metadata to the player.
+2. **Relay Port Range:**
+   - Ports `30000–30199` (200 ports per host) are published directly to `0.0.0.0` on the challenge host VM.
+   - Players connect using standard terminal tools: `nc h1.inst.l3m0nctf.xyz 30042`.
+3. **Safety & Rate Limiting:**
+   - Client-to-instance traffic is rate-limited via continuous token buckets (2 MB/s rate, 4 MB burst).
+   - Global cap: 2,000 concurrent relays. Per-IP cap: 60 concurrent relays. Idle timeout: 300s. Absolute lifetime cap: 3,600s.
+
+### 5.4 DNS Records Required by Project Owner
+
+| Hostname | Type | Target | Cloudflare Proxy | Purpose |
+|---|---|---|---|---|
+| `*.l3m0nctf.xyz` | A | `<Platform VM Public IP>` | **Proxied (Orange Cloud)** | HTTP instance wildcard subdomains |
+| `h1.inst.l3m0nctf.xyz` | A | `<Challenge Host 1 Public IP>` | **DNS-only (Grey Cloud)** | TCP instance direct connection (Host 1) |
+| `h2.inst.l3m0nctf.xyz` | A | `<Challenge Host 2 Public IP>` | **DNS-only (Grey Cloud)** | TCP instance direct connection (Host 2) |
+
+### 5.5 VPC and Cloud Firewall Rules
+
+```
++-----------------------------------------------------------------------------------+
+| GOOGLE CLOUD VPC (Private Subnet: 10.0.0.0/16)                                    |
+|                                                                                   |
+|  +------------------------+                    +-------------------------------+  |
+|  | PLATFORM VM (10.0.0.1) |                    | CHALLENGE HOST 1 (10.0.1.10)  |  |
+|  |                        |                    |                               |  |
+|  | CTFd (Plugin)          |---(TCP 8300 API)-->| Instancer Agent (:8300)       |  |
+|  | Central Router (Hop 1) |--(TCP 8080 HTTP)-->| Host Router Hop 2 (:8080)     |  |
+|  +------------------------+                    | Host TCP Relay (:30000-30199) |  |
+|                                                +-------------------------------+  |
++-----------------------------------------------------------------------------------+
+```
+
+- **Private VPC Ingress:** Challenge host allows ingress on TCP `8300` and `8080` ONLY from the platform VM private IP (`10.0.0.1`).
+- **Public Ingress:** Challenge host allows public ingress on TCP `30000–30199` from `0.0.0.0/0`.
+- **DOCKER-USER Ingress/Egress:** Outbound traffic from instance networks (`10.200.0.0/16`) to cloud metadata (`169.254.169.254`) and private VPC subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) is strictly dropped by iptables rules configured in `bootstrap.sh`.
+

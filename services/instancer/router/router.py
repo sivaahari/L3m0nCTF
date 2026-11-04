@@ -205,6 +205,36 @@ class TokenBucketRateLimiter:
                 self.tokens -= nbytes
 
 
+def get_router_token_for_host(host_name: str, fallback_token: Optional[str] = None) -> str:
+    """Read host-specific route read token (ROUTER_TOKEN_<NAME_UPPER>) with fallback."""
+    clean_name = re.sub(r"[^A-Za-z0-9_]", "_", host_name.upper())
+    path = f"/run/secrets/ROUTER_TOKEN_{clean_name}"
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                if val:
+                    return val
+        except Exception:
+            pass
+    env_val = os.getenv(f"ROUTER_TOKEN_{clean_name}", "").strip()
+    if env_val:
+        return env_val
+    if fallback_token:
+        return fallback_token
+
+    global_path = "/run/secrets/ROUTER_TOKEN"
+    if os.path.exists(global_path):
+        try:
+            with open(global_path, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                if val:
+                    return val
+        except Exception:
+            pass
+    return os.getenv("ROUTER_TOKEN", "").strip()
+
+
 class InstanceRouter:
     """Reverse proxy carrying HTTP traffic to per-team challenge instances without Docker daemon access."""
 
@@ -230,6 +260,7 @@ class InstanceRouter:
         instance_pool: str = DEFAULT_INSTANCE_POOL,
         tcp_connect_timeout: float = TCP_CONNECT_TIMEOUT_SECONDS,
         allow_loopback_for_tests: bool = False,
+        hosts: Optional[list[dict]] = None,
     ):
         if not (1024 <= tcp_port_start <= 65535):
             raise ValueError(f"INSTANCER_TCP_PORT_START must be between 1024 and 65535, got {tcp_port_start}")
@@ -303,6 +334,10 @@ class InstanceRouter:
         self.instance_pool = instance_pool
         self.tcp_connect_timeout = tcp_connect_timeout
         self.allow_loopback_for_tests = allow_loopback_for_tests
+
+        self.hosts = hosts or []
+        self.is_central = bool(hosts)
+        self._host_last_poll: dict[str, float] = {}
 
         self._routes: dict[str, dict] = {}  # instance_id -> route dict
         self._lock = asyncio.Lock()
@@ -413,6 +448,72 @@ class InstanceRouter:
                 new_routes[inst_id] = r
         self._routes = new_routes
 
+    def update_host_routes(
+        self, host_name: str, router_url: str, routes: list[dict], now_ts: Optional[float] = None
+    ):
+        """Update routes received from a challenge host agent (Hop 1 routing).
+
+        Enforces:
+        1. ID must be strictly 32 lowercase hex characters (_ID_PATTERN).
+        2. Hop 1 destination integrity: target_ip and target_port are taken EXCLUSIVELY
+           from the host's configured router_url, NEVER from the agent's route payload.
+        3. First-registered ID wins across hosts (preventing route hijacking).
+        4. Tracks last successful poll timestamp per host for 30s expiration.
+        """
+        ts = now_ts if now_ts is not None else time.time()
+        parsed_router = urllib.parse.urlparse(router_url)
+        hop1_host = parsed_router.hostname or "127.0.0.1"
+        hop1_port = parsed_router.port or (443 if parsed_router.scheme == "https" else 80)
+
+        self._host_last_poll[host_name] = ts
+
+        valid_incoming = {}
+        for r in routes:
+            inst_id = r.get("id")
+            if not inst_id or not isinstance(inst_id, str) or not _ID_PATTERN.fullmatch(inst_id):
+                _log.warning("Central router rejecting malformed route ID from host %s: %r", host_name, inst_id)
+                continue
+
+            existing = self._routes.get(inst_id)
+            if existing and existing.get("host_name") != host_name:
+                _log.warning(
+                    "Central router rejecting duplicate ID %s from host %s; already registered on host %s",
+                    inst_id,
+                    host_name,
+                    existing.get("host_name"),
+                )
+                continue
+
+            # Hop 1 destination integrity: forward ONLY to configured router_url, ignore untrusted route target
+            valid_incoming[inst_id] = {
+                "id": inst_id,
+                "protocol": r.get("protocol", "http"),
+                "host_name": host_name,
+                "target_ip": hop1_host,
+                "target_port": hop1_port,
+                "max_body_bytes": r.get("max_body_bytes", MAX_BODY_BYTES),
+                "response_timeout_seconds": r.get("response_timeout_seconds", 120.0),
+                "updated_at": ts,
+            }
+
+        # Keep routes from other hosts, replace routes from this host
+        new_routes = {k: v for k, v in self._routes.items() if v.get("host_name") != host_name}
+        new_routes.update(valid_incoming)
+
+        # Expire routes for any host that has not responded in >= 30.0s
+        expired_hosts = {h for h, last_ts in self._host_last_poll.items() if ts - last_ts >= 30.0}
+        if expired_hosts:
+            new_routes = {k: v for k, v in new_routes.items() if v.get("host_name") not in expired_hosts}
+
+        self._routes = new_routes
+
+    def purge_expired_host_routes(self, now_ts: Optional[float] = None):
+        """Purge routes belonging to dead hosts that have not responded in >= 30 seconds."""
+        ts = now_ts if now_ts is not None else time.time()
+        expired_hosts = {h for h, last_ts in self._host_last_poll.items() if ts - last_ts >= 30.0}
+        if expired_hosts:
+            self._routes = {k: v for k, v in self._routes.items() if v.get("host_name") not in expired_hosts}
+
     async def acquire_connection(self, inst_id: str) -> tuple[bool, int, str]:
         """Atomically check and acquire an instance connection slot."""
         async with self._conn_lock:
@@ -464,6 +565,52 @@ class InstanceRouter:
                     await self.sync_tcp_routes(routes)
             except Exception as e:
                 _log.debug("Error polling routes from %s: %s", self.instancer_url, e)
+
+            await asyncio.sleep(self.poll_interval)
+
+    async def poll_central_routes_loop(self):
+        """Poll /v1/routes across all configured challenge hosts in central multi-host mode (SP4 / F3)."""
+        while True:
+            for host in self.hosts:
+                hname = host["name"]
+                hurl = host["url"]
+                rurl = host["router_url"]
+                token = get_router_token_for_host(hname, self.router_token)
+                try:
+                    parsed = urllib.parse.urlparse(hurl)
+                    h_host = parsed.hostname or "127.0.0.1"
+                    h_port = parsed.port or 8300
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(h_host, h_port),
+                        timeout=self.poll_interval,
+                    )
+                    req = (
+                        f"GET /v1/routes HTTP/1.1\r\n"
+                        f"Host: {h_host}:{h_port}\r\n"
+                        f"Authorization: Bearer {token}\r\n"
+                        f"Accept: application/json\r\n"
+                        f"Connection: close\r\n\r\n"
+                    )
+                    writer.write(req.encode("utf-8"))
+                    await writer.drain()
+
+                    resp_data = await asyncio.wait_for(
+                        reader.read(),
+                        timeout=self.poll_interval,
+                    )
+                    writer.close()
+                    await writer.wait_closed()
+
+                    parts = resp_data.split(b"\r\n\r\n", 1)
+                    if len(parts) == 2:
+                        body = json.loads(parts[1].decode("utf-8"))
+                        routes = body.get("routes", [])
+                        async with self._lock:
+                            self.update_host_routes(hname, rurl, routes, now_ts=time.time())
+                except Exception as e:
+                    _log.debug("Central router poll failed for host %s: %s", hname, e)
+                    async with self._lock:
+                        self.purge_expired_host_routes(time.time())
 
             await asyncio.sleep(self.poll_interval)
 

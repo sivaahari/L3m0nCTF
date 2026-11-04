@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -41,9 +42,12 @@ def run_reaper_loop(manager: InstanceManager, interval: int = 5):
 def main():
     _log.info("Starting L3m0nCTF Challenge Instancer Service")
     dev_mode = os.getenv("INSTANCER_DEV", "0") in ("1", "true", "yes")
+    agent_mode = os.getenv("INSTANCER_AGENT_MODE", "0") in ("1", "true", "yes")
+    host_name = os.getenv("INSTANCER_HOST_NAME", "default").strip()
 
-    instancer_token = _read_secret("INSTANCER_TOKEN")
-    router_token = _read_secret("ROUTER_TOKEN")
+    clean_name = re.sub(r"[^A-Za-z0-9_]", "_", host_name.upper())
+    instancer_token = _read_secret(f"INSTANCER_TOKEN_{clean_name}") or _read_secret("INSTANCER_TOKEN")
+    router_token = _read_secret(f"ROUTER_TOKEN_{clean_name}") or _read_secret("ROUTER_TOKEN")
     if not instancer_token:
         _log.error("INSTANCER_TOKEN is not set or empty. Exiting.")
         sys.exit(1)
@@ -52,7 +56,7 @@ def main():
     if not os.path.exists(manifest_path):
         manifest_path = "config/instancer/challenges.example.toml"
 
-    _log.info("Loading manifest from %s (dev_mode=%s)", manifest_path, dev_mode)
+    _log.info("Loading manifest from %s (dev_mode=%s, agent_mode=%s, host_name=%s)", manifest_path, dev_mode, agent_mode, host_name)
     manifest = load_manifest(manifest_path, dev_mode=dev_mode)
 
     docker = DockerClient()
@@ -71,6 +75,8 @@ def main():
         tcp_port_count=tcp_port_count,
         router_container_name=router_container_name,
         dev_mode=dev_mode,
+        host_name=host_name,
+        agent_mode=agent_mode,
     )
 
     # Reconcile existing containers from Docker labels

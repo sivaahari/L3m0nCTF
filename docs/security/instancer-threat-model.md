@@ -113,6 +113,15 @@ flowchart TD
 | **TH-19 (N1)** | Unrouted Request Body Memory Exhaustion & Excessive Body Floods | External Hostile Client | Router inspects `Host` and verifies valid route before reading any body (404 immediately before read); manifest configures per-challenge request body cap (default 1 MB, max 10 MB, 413 before read); global reading budget (64 MB) rejects concurrent reads with 503. | `test_unknown_host_large_body_refused_immediately_without_reading_body`, `test_body_exceeding_challenge_cap_refused_immediately_without_reading`, `test_reading_budget_exhaustion_returns_503` |
 | **TH-20 (N2)** | Pre-Routing Header Slowloris & Unbounded Connection Exhaustion | External Botnet / Attacker | Request line capped at 8 KB (431), entire header block capped at 16 KB (431). Pre-routing global connection limit (1,000, 503) and per-IP limit (50, 503). `CF-Connecting-IP` trusted strictly from published Cloudflare CIDRs. Hostile client stress suite verifies clean connection and memory recovery. | `test_request_line_too_large_refused_with_431`, `test_header_block_too_large_refused_with_431`, `test_pre_routing_connection_limits_and_ip_limiting`, `test_cloudflare_real_ip_trust_and_spoof_refusal`, `test_hostile_many_slow_header_connections`, `test_hostile_many_slow_bodies`, `test_hostile_many_connections_burst` |
 | **TH-21 (N3)** | Backend Connection Slot Starvation via Dripping Response | Malicious / Compromised Instance | Backend sends 1 byte every 29s defeating 30s idle timeout. Router enforces absolute total deadline per request (`response_timeout_seconds`, default 120s, manifest key for long downloads) and severs connection with 504 Gateway Timeout while closing backend socket in `finally`. | `test_backend_dripping_bytes_triggers_total_deadline_timeout_504`, `test_the_connection_to_the_instance_is_closed_by_the_router_when_it_gives_up` |
+| **TH-22 (F2)** | Container Network Pivoting and Metadata Access | Compromised Challenge Container | Instance network configured with `internal: true`. Host `DOCKER-USER` iptables rules drop `169.254.169.254` and VPC CIDRs. Prober queries all targets from inside container; all must fail. | `test_live_overlay_instance_isolation_proof` |
+| **TH-23 (F1)** | TCP Port Reuse Data Leakage | Subsequent Player on Reused Port | When a TCP route expires and port is reassigned, old connection is immediately aborted with reset/EOF within 1.0s and cancellation loop cancels old relay tasks. | `test_tcp_port_reuse_no_byte_leakage` |
+| **TH-24 (F1)** | TCP Connection Flooding / Denial of Service | Malicious Client / Botnet | Router enforces strict per-client-IP connection caps (60 conns max) and global connection cap (2000 total). Excess connections are rejected with refusal count. | `test_tcp_per_ip_cap_boundary`, `test_tcp_global_cap_boundary` |
+| **TH-25 (F1)** | Long-Lived Zombie TCP Relays | Idle / Malicious Client | Router enforces idle timeout (300s) and absolute lifetime cap (3600s). Ongoing relay is terminated once lifetime cap is exceeded. | `test_tcp_absolute_lifetime_cap`, `test_tcp_idle_timeout` |
+| **TH-26 (F1)** | Bandwidth Exhaustion via High-Speed TCP Transfer | Malicious Client | Continuous token bucket rate limiter clamps client-to-instance byte transfer rate to 2 MB/s with 4 MB burst. | `test_tcp_real_byte_rate_transfer_timing` |
+| **TH-27 (F3)** | Hop 1 Route Target Manipulation (Central Router Poisoning) | Compromised Agent / Host | Central router forwards Hop 1 HTTP traffic exclusively to configured `router_url` in static `hosts.json`. Agent-supplied `target_ip` is completely ignored. | `test_hop1_destination_integrity_ignores_agent_target` |
+| **TH-28 (F3)** | Malformed / SQLi Route ID Injection | Malicious Agent | Central router strictly enforces route ID regex `^[0-9a-f]{32}$`. Non-compliant IDs are rejected immediately. | `test_router_rejects_malformed_instance_id` |
+| **TH-29 (F3)** | Cross-Host Credential Replay / Escalation | Compromised Challenge Host | Every challenge host receives isolated per-host tokens (`INSTANCER_TOKEN_<HOST>`, `ROUTER_TOKEN_<HOST>`). Compromise of one host does not yield access to others. | `test_per_host_router_token_isolation`, `test_token_resolution_per_host` |
+| **TH-30 (F3)** | Thundering Herd / Host Saturation on Cache Expiry | High Concurrency Starts | Scheduler uses 5s capacity cache paired with optimistic local slot incrementation (`_optimistic_slots += 1`) at moment of selection, distributing concurrent starts evenly. | `test_optimistic_local_counter_concurrent_starts`, `test_multihost_failover_and_rebalance_at_scale` |
 
 
 ---
@@ -130,12 +139,14 @@ Every challenge container started by the instancer is guaranteed to satisfy the 
 
 ---
 
-## 6. Open Items & Roadmap for Milestone 2 & 3
+## 6. Implementation Status & Residual Risks
 
-- **Milestone 2**:
-  - Implement full TCP router relaying and test port range binding security.
-  - Dedicated automated isolation suite (`tests/integration/test_instances_isolation.py`) using fixture prober image.
-  - Expand break-on-purpose test matrix to 30+ verified security assertions.
-- **Milestone 3**:
-  - Production host bootstrap script with host-level `DOCKER-USER` iptables rules dropping metadata IP `169.254.169.254`.
-  - Multi-host capacity packing and remote agent mTLS verification.
+### Verification & Completion
+- **Milestone 1:** Single-host instancer, TCP relaying, container validation, and prober fixture isolation proof.
+- **Milestone 2:** Multi-host scheduler with capacity cache and optimistic local counter, agent mode, two-hop HTTP router with destination integrity, and packing benchmark tool.
+- **Milestone 3:** Failover at scale, automated VM bootstrap script with `DOCKER-USER` rules, operator runbooks, and threat model.
+
+### Residual Risks Stated Plainly
+1. **0-Day Kernel Escape:** If an attacker achieves an arbitrary Linux kernel privilege escalation from inside a challenge container, they land on the dedicated challenge host VM. Because the challenge host never holds `FLAG_HMAC_SECRET` or database credentials, the attacker cannot steal the master secret, manipulate the scoreboard, or pivot into the platform VM (prevented by cloud VPC firewall).
+2. **Challenge Source Code Disclosure:** If an attacker achieves host execution, they can inspect local Docker image layers. For this reason, **no flag is ever baked into challenge images**; flags are injected exclusively at runtime via the `FLAG` environment variable.
+3. **Campus IP Rate-Limiting:** Multiple players competing behind a single university NAT share one IP. The per-IP connection cap is set to 60 (rather than 20) to prevent starvation, while the global cap (2,000) prevents whole-host denial of service.

@@ -8,6 +8,7 @@ from CTFd.plugins.l3mon_board import envelope
 from CTFd.plugins.l3mon_core import audit
 from CTFd.plugins.l3mon_core.clock import now
 from CTFd.plugins.l3mon_instances.client import InstancerClient
+from CTFd.plugins.l3mon_instances.hosts import get_host_tracker
 from CTFd.plugins.l3mon_instances.models import L3monInstance
 from CTFd.utils.decorators import admins_only
 
@@ -52,6 +53,8 @@ def list_instances():
             return envelope.fail("invalid_param", 400, "Invalid challenge id.")
         q = q.filter(L3monInstance.challenge_id == cid)
 
+    tracker = get_host_tracker()
+    now_ts = _now_dt().timestamp()
     instances = q.all()
     results = []
     for inst in instances:
@@ -59,6 +62,9 @@ def list_instances():
         d["id"] = inst.instance_id
         d["team_id"] = inst.team_id
         d["slug"] = inst.slug
+        d["host_name"] = inst.host_name
+        if tracker.is_host_down(inst.host_name, now_ts=now_ts):
+            d["state"] = "error"
         results.append(d)
 
     return envelope.ok({"instances": results})
@@ -83,12 +89,14 @@ def kill_instances():
         if challenge_id is None:
             return envelope.fail("invalid_param", 400, "Invalid challenge id.")
 
-    client = InstancerClient()
+    tracker = get_host_tracker()
     stopped = 0
-    try:
-        stopped = client.kill_instances(team_id=team_id, challenge_id=challenge_id)
-    except Exception as e:
-        _log.warning("Instancer client error during kill_instances: %s", e)
+    for host in tracker.get_hosts():
+        client = tracker.get_client_for_host(host["name"])
+        try:
+            stopped += client.kill_instances(team_id=team_id, challenge_id=challenge_id)
+        except Exception as e:
+            _log.warning("Instancer client error during kill_instances on host %s: %s", host.get("name"), e)
 
     # Mark local database rows
     now_dt = _now_dt()
