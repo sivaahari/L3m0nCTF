@@ -18,3 +18,8 @@ CVE-2026-92392
 CVE-2026-117610
 CVE-2026-118370
 CVE-2026-113351
+#
+# apt in the MariaDB image (Ubuntu 22.04, 2026-11-05): apt 2.4.14, fixed in 2.4.15ubuntu0.1, not yet in the image. apt never runs while the database
+# runs (the container starts directly as user 999 with mariadbd; no package is installed or downloaded), and the flaw needs an attacker on the network
+# path while apt downloads packages. The platform image takes Debian's fix instead (docker/ctfd/Dockerfile).
+CVE-2026-109518

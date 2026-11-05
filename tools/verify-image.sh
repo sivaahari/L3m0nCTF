@@ -60,6 +60,8 @@ check "libpcre2-8-0 is at or above 10.42-1+deb12u2" run "$image" sh -c 'dpkg --c
 check "perl-base is at or above 5.36.0-7+deb12u4" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" perl-base)" ge 5.36.0-7+deb12u4'
 check "libssl3 is at or above 3.0.22-1~deb12u2" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libssl3)" ge 3.0.22-1~deb12u2'
 check "openssl is at or above 3.0.22-1~deb12u2" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" openssl)" ge 3.0.22-1~deb12u2'
+check "apt is at or above 2.6.2" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" apt)" ge 2.6.2'
+check "libapt-pkg6.0 is at or above 2.6.2" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libapt-pkg6.0)" ge 2.6.2'
 check "no package lists left behind" run "$image" sh -c '[ -z "$(ls /var/lib/apt/lists 2>/dev/null | grep -v "^partial$")" ]'
 
 # no build tools, no package manager caches left behind
