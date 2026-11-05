@@ -13,6 +13,7 @@ from CTFd.plugins.l3mon_core.models import Programme
 from CTFd.plugins.l3mon_core.visibility import is_visible
 from CTFd.plugins.l3mon_instances.client import InstancerClient, InstancerClientError
 from CTFd.plugins.l3mon_instances.flag import derive_team_flag, get_flag_secret
+from CTFd.plugins.l3mon_instances.hosts import get_host_tracker
 from CTFd.plugins.l3mon_instances.models import L3monInstance, L3monInstanceLog
 from CTFd.utils.user import get_current_user
 
@@ -56,13 +57,26 @@ def get_instances():
         L3monInstance.expires_at > now_dt,
     ).all()
 
+    tracker = get_host_tracker()
+    now_ts = now_dt.timestamp()
+    host_answers: dict[str, bool] = {}
+    instances_out = []
+    for i in instances:
+        d = i.to_dict()
+        if i.host_name not in host_answers:
+            # asked once per host per request; the answer comes from the host-down mark shared by all workers or from the 5-second capacity cache
+            host_answers[i.host_name] = tracker.check_host(i.host_name, now_ts=now_ts)
+        if not host_answers[i.host_name]:
+            d["state"] = "error"
+        instances_out.append(d)
+
     limits = {
         "live": len(instances),
         "max": MAX_TEAM_INSTANCES,
         "cooldown_seconds": COOLDOWN_SECONDS,
     }
     return envelope.ok({
-        "instances": [i.to_dict() for i in instances],
+        "instances": instances_out,
         "limits": limits,
     })
 
@@ -100,7 +114,11 @@ def start_instance():
     existing = L3monInstance.query.filter_by(active_key=active_key).first()
     if existing:
         if existing.expires_at > now_dt and existing.state in ("running", "starting"):
-            return envelope.ok(existing.to_dict(), status=200)
+            d = existing.to_dict()
+            tracker = get_host_tracker()
+            if tracker.is_host_down(existing.host_name, now_ts=now_dt.timestamp()):
+                d["state"] = "error"
+            return envelope.ok(d, status=200)
 
     # 2. Quota check: at most 3 live instances per team
     active_count = L3monInstance.query.filter(
@@ -128,36 +146,66 @@ def start_instance():
         return envelope.fail("busy", 503, "Flag secret not available.")
     flag = derive_team_flag(secret, team.id, challenge_id)
 
-    # 5. Call instancer client
-    client = InstancerClient()
-    try:
-        # How long an instance lives comes from the challenge's manifest, never from the player. A test switch (the platform started with
-        # L3MON_INSTANCES_TTL_OVERRIDE=1, which no overlay sets) lets the integration tests ask for a short life.
-        ttl_seconds = data.get("ttl_seconds") if os.environ.get("L3MON_INSTANCES_TTL_OVERRIDE") == "1" else None
-        inst_data = client.start_instance(
-            team_id=team.id,
-            challenge_id=challenge_id,
-            slug=prog.slug,
-            flag=flag,
-            ttl_seconds=ttl_seconds,
-        )
-    except InstancerClientError as e:
-        if e.error_code == "cooldown":
-            return envelope.fail("cooldown", 429, e.message, retry_after=e.retry_after or 60)
-        elif e.error_code == "quota":
-            return envelope.fail("quota", 409, e.message)
-        elif e.error_code == "no_capacity":
-            return envelope.fail("no_capacity", 503, e.message, retry_after=e.retry_after or 30)
-        elif e.error_code == "not_found":
-            return envelope.fail("not_found", 404, e.message)
-        else:
+    # 5. Call instancer client with host capacity tracking (retry once on failed start)
+    tracker = get_host_tracker()
+    now_ts = now_dt.timestamp()
+    ttl_seconds = data.get("ttl_seconds") if os.environ.get("L3MON_INSTANCES_TTL_OVERRIDE") == "1" else None
+
+    chosen_host = None
+    client = None
+    inst_data = None
+
+    for attempt in range(2):
+        try:
+            chosen_host = tracker.select_host_for_start(slug=prog.slug, now_ts=now_ts)
+        except InstancerClientError as e:
+            if e.error_code == "no_capacity":
+                return envelope.fail("no_capacity", 503, e.message, retry_after=e.retry_after or 30)
             return envelope.fail("busy", 503, e.message)
+
+        client = tracker.get_client_for_host(chosen_host["name"])
+        try:
+            inst_data = client.start_instance(
+                team_id=team.id,
+                challenge_id=challenge_id,
+                slug=prog.slug,
+                flag=flag,
+                ttl_seconds=ttl_seconds,
+            )
+            break
+        except InstancerClientError as e:
+            # Client errors (cooldown, quota, not_found) are not host failures
+            if e.error_code in ("cooldown", "quota", "not_found"):
+                if e.error_code == "cooldown":
+                    return envelope.fail("cooldown", 429, e.message, retry_after=e.retry_after or 60)
+                elif e.error_code == "quota":
+                    return envelope.fail("quota", 409, e.message)
+                elif e.error_code == "not_found":
+                    return envelope.fail("not_found", 404, e.message)
+
+            # Host failure (connection error, 5xx server error, or capacity issue)
+            _log.warning("Start instance failed on host %s: %s (attempt %d)", chosen_host["name"], e, attempt + 1)
+            tracker.mark_host_down(chosen_host["name"], now_ts=now_ts)
+            if attempt == 0:
+                continue
+            else:
+                if e.error_code == "no_capacity":
+                    return envelope.fail("no_capacity", 503, e.message, retry_after=e.retry_after or 30)
+                return envelope.fail("busy", 503, e.message)
 
     # 6. Record in DB
     created_ts = inst_data.get("created_at") or int(now_dt.timestamp())
     expires_ts = inst_data.get("expires_at") or int((now_dt + datetime.timedelta(minutes=45)).timestamp())
     created_at = datetime.datetime.utcfromtimestamp(created_ts)
     expires_at = datetime.datetime.utcfromtimestamp(expires_ts)
+
+    # For TCP instances, host comes from chosen host's public TCP host if provided
+    host_val = inst_data.get("host")
+    if inst_data.get("protocol") == "tcp":
+        host_val = chosen_host.get("public_tcp_host") or chosen_host.get("host") or host_val
+
+    # Query log record BEFORE adding instance_row so autoflush does not trigger a premature insert
+    log_row = L3monInstanceLog.query.filter_by(team_id=team.id, challenge_id=challenge_id).first()
 
     instance_row = L3monInstance(
         instance_id=inst_data["id"],
@@ -166,18 +214,15 @@ def start_instance():
         slug=prog.slug,
         protocol=inst_data.get("protocol", "http"),
         state="running",
-        host_name="default",
+        host_name=chosen_host["name"],
         url=inst_data.get("url"),
-        host=inst_data.get("host"),
+        host=host_val,
         port=inst_data.get("port"),
         created_at=created_at,
         expires_at=expires_at,
         active_key=active_key,
     )
     db.session.add(instance_row)
-
-    # Log record for flag sharing evidence detection
-    log_row = L3monInstanceLog.query.filter_by(team_id=team.id, challenge_id=challenge_id).first()
     if not log_row:
         db.session.add(L3monInstanceLog(team_id=team.id, challenge_id=challenge_id, first_seen_at=now_dt))
 
@@ -186,10 +231,28 @@ def start_instance():
     except Exception as e:
         db.session.rollback()
         _log.warning("Database insert race for instance active_key: %s", e)
-        # If another worker inserted, return the active one
+        # Return the winning existing instance, stopping any orphaned instance on a losing host
         existing = L3monInstance.query.filter_by(active_key=active_key).first()
         if existing:
-            return envelope.ok(existing.to_dict(), status=200)
+            # Stop only an instance that is NOT the one now recorded in the DB for that team/challenge
+            # (a different id or a different host). On a single host where start_instance returns the
+            # existing instance, existing.instance_id == inst_data["id"], so we do NOT stop it!
+            if existing.instance_id != inst_data.get("id") or existing.host_name != chosen_host["name"]:
+                try:
+                    client.stop_instance(inst_data["id"])
+                except Exception as stop_err:
+                    _log.warning("Failed to stop orphaned instance %s on host %s: %s", inst_data["id"], chosen_host["name"], stop_err)
+
+            d = existing.to_dict()
+            if tracker.is_host_down(existing.host_name, now_ts=now_dt.timestamp()):
+                d["state"] = "error"
+            return envelope.ok(d, status=200)
+
+        # Fallback if existing record not found: stop the created instance
+        try:
+            client.stop_instance(inst_data["id"])
+        except Exception as stop_err:
+            _log.warning("Failed to stop orphaned instance %s on host %s: %s", inst_data["id"], chosen_host["name"], stop_err)
         return envelope.fail("busy", 503, "Could not register instance.")
 
     return envelope.ok(instance_row.to_dict(), status=201)
@@ -223,7 +286,12 @@ def renew_instance(challenge_id_param):
     if not instance_row:
         return envelope.fail("not_found", 404, "Instance not found.")
 
-    client = InstancerClient()
+    tracker = get_host_tracker()
+    try:
+        client = tracker.get_client_for_host(instance_row.host_name)
+    except ValueError as e:
+        _log.error("Cannot renew instance %s: %s", instance_row.instance_id, e)
+        return envelope.fail("busy", 503, "The challenge host of this instance is not set up correctly. Tell the crew.")
     try:
         renewed_data = client.renew_instance(instance_row.instance_id)
     except InstancerClientError as e:
@@ -261,10 +329,11 @@ def stop_instance(challenge_id_param):
         # Idempotent stop: return success if already stopped
         return envelope.ok({"message": "Stopped."}, status=200)
 
-    client = InstancerClient()
+    tracker = get_host_tracker()
     try:
+        client = tracker.get_client_for_host(instance_row.host_name)
         client.stop_instance(instance_row.instance_id)
-    except Exception as e:
+    except Exception as e:  # includes a host without its token (ValueError): the host's own reaper removes the instance when its time is up
         _log.warning("Client error stopping instance %s: %s", instance_row.instance_id, e)
 
     instance_row.state = "stopping"

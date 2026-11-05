@@ -1,0 +1,20 @@
+[
+  {
+    "name": "h1",
+    "url": "http://10.200.1.10:8300",
+    "router_url": "http://10.200.1.10:8090",
+    "host": "h1.inst.l3m0nctf.xyz",
+    "max_slots": 50,
+    "weight": 1.0,
+    "ca_cert": null
+  },
+  {
+    "name": "h2",
+    "url": "http://10.200.1.11:8300",
+    "router_url": "http://10.200.1.11:8090",
+    "host": "h2.inst.l3m0nctf.xyz",
+    "max_slots": 50,
+    "weight": 1.0,
+    "ca_cert": null
+  }
+]

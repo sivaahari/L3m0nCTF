@@ -125,7 +125,18 @@ class InstanceManager:
         router_container_name: str = "l3mon-router",
         dev_mode: bool = False,
         time_fn: Optional[Callable[[], float]] = None,
+        host_name: str = "default",
+        agent_mode: bool = False,
     ):
+        if not (1024 <= tcp_port_start <= 65535):
+            raise ValueError(f"INSTANCER_TCP_PORT_START must be between 1024 and 65535, got {tcp_port_start}")
+        if not (1 <= tcp_port_count <= 2000):
+            raise ValueError(f"INSTANCER_TCP_PORT_COUNT must be between 1 and 2000, got {tcp_port_count}")
+        if tcp_port_start + tcp_port_count - 1 > 65535:
+            raise ValueError(
+                f"TCP port range [{tcp_port_start}, {tcp_port_start + tcp_port_count - 1}] exceeds 65535"
+            )
+
         self.manifest = manifest
         self.docker = docker_client
         self.instance_domain = instance_domain
@@ -137,6 +148,8 @@ class InstanceManager:
         self.router_container_name = router_container_name
         self.dev_mode = dev_mode
         self._time = time_fn or time.time
+        self.host_name = host_name
+        self.agent_mode = agent_mode
         self._lock = threading.Lock()
 
         # State storage
@@ -553,10 +566,13 @@ class InstanceManager:
                     mem_mb_used += spec.mem_mb
 
             return {
+                "host_name": self.host_name,
                 "slots_total": self.max_slots,
                 "slots_used": slots_used,
+                "slots_free": max(0, self.max_slots - slots_used),
                 "mem_mb_total": self.max_mem_mb,
                 "mem_mb_used": mem_mb_used,
+                "mem_mb_free": max(0, self.max_mem_mb - mem_mb_used),
             }
 
     def get_routes(self) -> list[dict]:

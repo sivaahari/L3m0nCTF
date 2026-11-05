@@ -96,6 +96,7 @@ services:
       INSTANCER_DEV: "${INSTANCER_DEV:-0}"
       MANIFEST_PATH: /etc/instancer/challenges.toml
       ROUTER_CONTAINER_NAME: l3mon-router-1
+      INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16,172.16.0.0/12}"
     networks:
       - instancer
     depends_on:
@@ -123,6 +124,7 @@ services:
         max-file: "5"
     ports:
       - "${ROUTER_BIND_HOST:-127.0.0.1}:${ROUTER_HTTP_PORT:-8090}:8090"
+      - "${ROUTER_BIND_HOST:-127.0.0.1}:30000-30199:30000-30199"
     secrets:
       - ROUTER_TOKEN
     environment:
@@ -130,6 +132,9 @@ services:
       ROUTER_TOKEN_FILE: /run/secrets/ROUTER_TOKEN
       INSTANCE_DOMAIN: "${INSTANCE_DOMAIN:-localhost:8090}"
       POLL_INTERVAL: "2.0"
+      INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:-10.200.0.0/16,172.16.0.0/12}"
+      INSTANCER_TCP_PORT_START: "30000"
+      INSTANCER_TCP_PORT_COUNT: "200"
     networks:
       - instancer
     depends_on:

@@ -34,6 +34,15 @@ def load(app):
     app.register_blueprint(player_bp)
     app.register_blueprint(admin_bp)
 
+    # A listed host without its own token (or an unreadable hosts file) is reported loudly at start. It is not a crash: the players
+    # of the hosts that are set up keep working, and the log names the variable to set.
+    try:
+        from CTFd.plugins.l3mon_instances.hosts import get_host_tracker, host_token_problems
+        for problem in host_token_problems(get_host_tracker().get_hosts()):
+            _log.error("Instancer host not usable: %s", problem)
+    except Exception as e:
+        _log.error("The instancer hosts file could not be read: %s", e)
+
     # Register board hook
     try:
         import CTFd.plugins.l3mon_board.hooks as board_hooks
