@@ -75,7 +75,7 @@ jobs:
           docker run --rm -v "$PWD:/mnt" -w /mnt "$SHELLCHECK_IMAGE" --severity=warning -x
           docker/ctfd/l3mon-entrypoint.sh docker/ctfd/l3mon-env.sh docker/ctfd/l3mon-run.sh
           tools/backup.sh tools/compose.sh tools/restore.sh tools/run-ctfd-tests.sh tools/verify-image.sh tools/export-state.sh tools/import-state.sh
-          deploy/challenge-host/bootstrap.sh
+          deploy/challenge-host/bootstrap.sh tools/tests/firewall_experiment.sh
       - name: Generate settings and secrets (throwaway, for this run only)
         working-directory: tools
         run: |
@@ -130,6 +130,21 @@ jobs:
         run: python -m pip install pytest==8.4.2 pytest-asyncio==0.24.0
       - name: Instancer tests
         run: python -m pytest services/instancer/tests -q -p no:cacheprovider
+
+  firewall-experiment:
+    # The challenge host's firewall (deploy/challenge-host/bootstrap.sh --firewall-only, the part the reboot unit re-runs) tested with REAL traffic between
+    # network namespaces: an instance cannot reach another instance, the platform, the cloud metadata address or the agent port; the router still reaches its
+    # instance. It needs root (namespaces and iptables), so it is skipped everywhere else and runs here.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install the tools the experiment uses
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq iproute2 iptables netcat-openbsd kmod
+      - name: The firewall, with real traffic (as root)
+        run: sudo bash tools/tests/firewall_experiment.sh
 
   third-party-images:
     # The three images we do not build (MariaDB, Redis, nginx), exactly as pinned in the compose file.

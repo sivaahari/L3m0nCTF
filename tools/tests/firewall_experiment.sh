@@ -39,6 +39,8 @@ cleanup() {
   ip netns del ns_router 2>/dev/null || true
   ip netns del ns_meta 2>/dev/null || true
   ip netns del ns_agent 2>/dev/null || true
+  ip netns del ns_vpc 2>/dev/null || true
+  ip link del veth_vpc 2>/dev/null || true
   ip link del br_inst1 2>/dev/null || true
   ip link del br_inst2 2>/dev/null || true
   ip link del br_plat 2>/dev/null || true
@@ -71,7 +73,7 @@ export INSTANCER_INSTANCE_POOL="10.200.0.0/16"
 export INSTANCER_POOL_SUBNET_SIZE="28"
 export PLATFORM_VM_IP="10.0.0.5"
 export CHALLENGE_HOST_PRIVATE_IP="10.0.1.10"
-bash deploy/challenge-host/bootstrap.sh --apply
+bash deploy/challenge-host/bootstrap.sh --firewall-only
 
 # Create namespaces
 ip netns add ns_inst1
@@ -80,6 +82,7 @@ ip netns add ns_plat
 ip netns add ns_router
 ip netns add ns_meta
 ip netns add ns_agent
+ip netns add ns_vpc
 
 # 1. Cloud Metadata Namespace (169.254.169.254/32 behind host routing across FORWARD chain)
 ip link add veth_meta type veth peer name ceth_meta
@@ -89,6 +92,7 @@ ip netns exec ns_meta ip link set ceth_meta up
 ip netns exec ns_meta ip link set lo up
 ip addr add 169.254.169.1/30 dev veth_meta
 ip link set veth_meta up
+ip netns exec ns_meta ip route add 169.254.169.1 dev ceth_meta
 ip netns exec ns_meta ip route add default via 169.254.169.1
 ip route add 169.254.169.254/32 dev veth_meta
 
@@ -102,6 +106,16 @@ ip addr add 10.0.1.1/24 dev veth_agent
 ip link set veth_agent up
 ip netns exec ns_agent ip route add default via 10.0.1.1
 ip route add 10.0.1.10/32 dev veth_agent
+
+# 2b. A third party on the VPC (10.0.2.7): not the platform, not in the instance pool. Only the port-8300 rule keeps it away from the agent.
+ip link add veth_vpc type veth peer name ceth_vpc
+ip link set ceth_vpc netns ns_vpc
+ip netns exec ns_vpc ip addr add 10.0.2.7/24 dev ceth_vpc
+ip netns exec ns_vpc ip link set ceth_vpc up
+ip netns exec ns_vpc ip link set lo up
+ip addr add 10.0.2.1/24 dev veth_vpc
+ip link set veth_vpc up
+ip netns exec ns_vpc ip route add default via 10.0.2.1
 
 # 3. Instance 1 Network Bridge (br_inst1: 10.200.0.16/28, gw 10.200.0.17)
 # Real topology: Both the challenge container and the router are on the SAME instance bridge!
@@ -215,6 +229,15 @@ if ip netns exec ns_inst1 nc -z -w 1 10.0.1.10 8300; then
   exit 1
 else
   echo "PASS: inst1 -> agent:8300 was correctly DROPPED."
+fi
+
+# Check 5b: a third party on the VPC cannot reach the agent port 8300 (only the platform may). Removing the 8300 rule makes this fail.
+echo "Testing: other VPC host (not the platform, not an instance) -> agent:8300 (must be DROPPED)"
+if ip netns exec ns_vpc nc -z -w 1 10.0.1.10 8300; then
+  echo "FAIL: a third party on the VPC was able to connect to agent port 8300!" >&2
+  exit 1
+else
+  echo "PASS: other VPC host -> agent:8300 was correctly DROPPED."
 fi
 
 # Check 6: Platform CAN reach Agent port 8300

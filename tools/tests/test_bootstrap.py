@@ -329,10 +329,57 @@ def test_bootstrap_verify_pool_activation_subnet_check():
 
 
 def test_firewall_namespace_experiment():
-    """Runs network namespace traffic test on Linux if root/CAP_NET_ADMIN available."""
+    """Runs network namespace traffic test on Linux if root/CAP_NET_ADMIN available (GitHub runs it as root in the job firewall-experiment)."""
+    import shutil
+
     if os.name == "nt" or not hasattr(os, "geteuid") or os.geteuid() != 0:
         pytest.skip("firewall network namespace experiment requires root/sudo on Linux")
+    for tool in ("ip", "iptables", "nc"):
+        if shutil.which(tool) is None:
+            pytest.skip(f"firewall network namespace experiment needs '{tool}' (iproute2, iptables, netcat-openbsd)")
     script = ROOT / "tools" / "tests" / "firewall_experiment.sh"
     assert script.is_file(), f"firewall_experiment.sh not found at {script}"
-    res = subprocess.run([get_bash_cmd(), str(script)], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+    res = subprocess.run([get_bash_cmd(), str(script)], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
     assert res.returncode == 0, f"Firewall experiment failed: {res.stderr}\nOutput: {res.stdout}"
+    assert "ALL FIREWALL CHECKS PASSED" in res.stdout, res.stdout
+
+
+def _stub(directory: Path, name: str, log_file: Path, body: str = "exit 0") -> None:
+    path = directory / name
+    path.write_bytes(f'#!/usr/bin/env bash\necho "{name} $@" >> "{str(log_file).replace(chr(92), "/")}"\n{body}\n'.encode("utf-8"))
+    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def test_bootstrap_reboot_unit_is_written_ordered_after_docker_and_enabled():
+    """The unit that re-applies the firewall after a reboot (iptables rules do not survive one). Sourcing the script runs only its functions."""
+    with tempfile.TemporaryDirectory() as d:
+        d_path = Path(d)
+        log = d_path / "systemctl.log"
+        _stub(d_path, "systemctl", log)
+        unit = d_path / "l3mon-firewall.service"
+        script_copy = d_path / "bootstrap.sh"
+        env = {
+            **os.environ,
+            "PATH": f"{d}{os.pathsep}{os.environ.get('PATH', '')}",
+            "L3MON_SYSTEMD_SERVICE": str(unit).replace(chr(92), "/"),
+            "L3MON_BOOTSTRAP_SCRIPT": str(script_copy).replace(chr(92), "/"),
+        }
+        script = f'source "{str(BOOTSTRAP_SCRIPT).replace(chr(92), "/")}" >/dev/null; MODE=apply; configure_systemd_service'
+        res = subprocess.run([get_bash_cmd(), "-c", script], cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=15)
+        assert res.returncode == 0, res.stderr
+        text = unit.read_text(encoding="utf-8")
+        assert "After=docker.service" in text, text
+        assert "Requires=docker.service" in text, text
+        assert f"ExecStart={str(script_copy).replace(chr(92), '/')} --firewall-only" in text, text
+        assert "EnvironmentFile=-/etc/l3mon/challenge-host.env" in text, text
+        assert "WantedBy=multi-user.target" in text, text
+        calls = log.read_text(encoding="utf-8")
+        assert "systemctl daemon-reload" in calls, calls
+        assert "systemctl enable l3mon-firewall.service" in calls, calls
+
+
+def test_bootstrap_dry_run_shows_the_reboot_unit_and_does_not_enable_it():
+    res = subprocess.run([get_bash_cmd(), "deploy/challenge-host/bootstrap.sh"], cwd=str(ROOT), capture_output=True, text=True, timeout=15)
+    assert res.returncode == 0
+    assert "After=docker.service" in res.stdout
+    assert "[DRY-RUN] systemctl daemon-reload && systemctl enable l3mon-firewall.service" in res.stdout
