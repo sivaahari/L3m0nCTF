@@ -12,14 +12,6 @@
 #     - Optional TLS files mounted read-only if used (${ROUTER_TLS_DIR:-/etc/l3mon/router-tls}).
 
 services:
-  ctfd:
-    volumes:
-      - ${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro
-    environment:
-      L3MON_HOSTS_PATH: /etc/l3mon/hosts.json
-    secrets:
-      - INSTANCER_TOKEN_H1
-
   instancer:
     volumes:
       - ${INSTANCER_MANIFEST_FILE:-/etc/l3mon/challenges.toml}:/etc/instancer/challenges.toml:ro
@@ -34,17 +26,6 @@ services:
     environment:
       INSTANCE_DOMAIN: "${INSTANCE_DOMAIN:?INSTANCE_DOMAIN must be set}"
       INSTANCER_INSTANCE_POOL: "${INSTANCER_INSTANCE_POOL:?INSTANCER_INSTANCE_POOL must be set in production}"
-      ROUTER_HOSTS_PATH: /etc/l3mon/hosts.json
     volumes:
       - ${ROUTER_TLS_DIR:-/etc/l3mon/router-tls}:/etc/router/tls:ro
-      - ${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro
-    secrets:
-      - ROUTER_TOKEN_H1
-
-secrets:
-  INSTANCER_TOKEN_H1:
-    file: ${INSTANCER_TOKEN_H1_FILE:-/etc/l3mon/secrets/INSTANCER_TOKEN_H1}
-  ROUTER_TOKEN_H1:
-    file: ${ROUTER_TOKEN_H1_FILE:-/etc/l3mon/secrets/ROUTER_TOKEN_H1}
-
 

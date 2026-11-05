@@ -1,0 +1,38 @@
+# Optional overlay: the platform VM talks to SEVERAL challenge hosts (the kit in deploy/challenge-host/).
+#
+# Add it AFTER the instancer overlay (and after instancer-production on the real platform):
+#   L3MON_OVERLAYS=instancer,instancer-production,instancer-multihost \
+#   L3MON_HOSTS_FILE=/etc/l3mon/hosts.json \
+#   L3MON_INSTANCER_TOKENS_DIR=/etc/l3mon/host-secrets/instancer \
+#   L3MON_ROUTER_TOKENS_DIR=/etc/l3mon/host-secrets/router \
+#   tools/compose.sh up -d --wait
+# It works in development too (L3MON_OVERLAYS=instancer,instancer-multihost, with a hosts file and two folders of your own).
+#
+# A platform with ONE instancer (the default) does NOT use this file and needs none of these files or folders.
+#
+# What it mounts, read-only:
+#   hosts.json                     into ctfd and the router. The list of challenge hosts (config/instancer/hosts.example.json).
+#   a folder of INSTANCER_TOKEN_<NAME> files, one per listed host, into ctfd only (the token CTFd uses to call that host's agent).
+#   a folder of ROUTER_TOKEN_<NAME> files, one per listed host, into the router only (the token the central router uses to read that host's routes).
+# CTFd never sees a router token and the router never sees an instancer token. Any number of hosts needs no edit of this file:
+# add the host to hosts.json and drop its two token files into the two folders (name in capitals: host "h2" -> INSTANCER_TOKEN_H2).
+# A listed host without its token files is reported in the log (CTFd at start, the router refuses to start) and is not used.
+#
+# The challenge host kit must use the same INSTANCE_DOMAIN as this platform (compose.challenge-host.yml reads INSTANCE_DOMAIN).
+
+services:
+  ctfd:
+    environment:
+      L3MON_HOSTS_PATH: /etc/l3mon/hosts.json
+      L3MON_HOST_SECRETS_DIR: /run/host-secrets
+    volumes:
+      - ${L3MON_HOSTS_FILE:?L3MON_HOSTS_FILE must be the path of hosts.json}:/etc/l3mon/hosts.json:ro
+      - ${L3MON_INSTANCER_TOKENS_DIR:?L3MON_INSTANCER_TOKENS_DIR must be a folder with one INSTANCER_TOKEN_<NAME> file per host}:/run/host-secrets:ro
+
+  router:
+    environment:
+      ROUTER_HOSTS_PATH: /etc/l3mon/hosts.json
+      L3MON_HOST_SECRETS_DIR: /run/host-secrets
+    volumes:
+      - ${L3MON_HOSTS_FILE:?L3MON_HOSTS_FILE must be the path of hosts.json}:/etc/l3mon/hosts.json:ro
+      - ${L3MON_ROUTER_TOKENS_DIR:?L3MON_ROUTER_TOKENS_DIR must be a folder with one ROUTER_TOKEN_<NAME> file per host}:/run/host-secrets:ro

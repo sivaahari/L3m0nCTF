@@ -110,24 +110,72 @@ def test_production_overlay_properties():
     router_pool = router.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
     assert inst_pool is not None and inst_pool == router_pool
 
-    # 7. Multi-host switchable configuration: hosts.json mounted into ctfd and router
+    # 7. A platform with ONE instancer (every deployment today) needs no multi-host file at all: nothing of the optional
+    #    multi-host overlay (compose.instancer-multihost.yml) is in the production overlay. A mount or a secret here that points at a
+    #    file an operator does not have makes `docker compose create` fail ("secret file does not exist").
     ctfd = services.get("ctfd", {})
-    ctfd_volumes = ctfd.get("volumes", [])
-    ctfd_vol_sources = [v.get("source", "") for v in ctfd_volumes]
-    assert any("/etc/l3mon/hosts.json" in src for src in ctfd_vol_sources), f"Expected hosts.json mount in ctfd, got {ctfd_vol_sources}"
-    assert ctfd.get("environment", {}).get("L3MON_HOSTS_PATH") == "/etc/l3mon/hosts.json"
+    ctfd_vol_sources = [v.get("source", "") for v in ctfd.get("volumes", [])]
+    assert not any("hosts.json" in src for src in ctfd_vol_sources), f"single-host production must not mount hosts.json into ctfd: {ctfd_vol_sources}"
+    router_vol_sources = [v.get("source", "") for v in router.get("volumes", [])]
+    assert not any("hosts.json" in src for src in router_vol_sources), f"single-host production must not mount hosts.json into the router: {router_vol_sources}"
+    assert "L3MON_HOSTS_PATH" not in ctfd.get("environment", {})
+    assert "ROUTER_HOSTS_PATH" not in router.get("environment", {})
+    for svc in (ctfd, router):
+        names = [s.get("source") if isinstance(s, dict) else s for s in svc.get("secrets", [])]
+        assert not any("TOKEN_H" in n for n in names), f"single-host production must not require per-host secrets: {names}"
+    assert not [k for k in data.get("secrets", {}) if "TOKEN_H" in k], "single-host production must declare no per-host secrets"
 
-    router_volumes = router.get("volumes", [])
-    router_vol_sources = [v.get("source", "") for v in router_volumes]
-    assert any("/etc/l3mon/hosts.json" in src for src in router_vol_sources), f"Expected hosts.json mount in router, got {router_vol_sources}"
-    assert router.get("environment", {}).get("ROUTER_HOSTS_PATH") == "/etc/l3mon/hosts.json"
 
-    # 8. Per-host token secrets (INSTANCER_TOKEN_H1 for ctfd, ROUTER_TOKEN_H1 for router)
-    ctfd_secrets = [s.get("source") if isinstance(s, dict) else s for s in ctfd.get("secrets", [])]
-    router_secrets = [s.get("source") if isinstance(s, dict) else s for s in router.get("secrets", [])]
-    assert "INSTANCER_TOKEN_H1" in ctfd_secrets, f"Expected INSTANCER_TOKEN_H1 secret in ctfd, got {ctfd_secrets}"
-    assert "ROUTER_TOKEN_H1" in router_secrets, f"Expected ROUTER_TOKEN_H1 secret in router, got {router_secrets}"
+def test_multihost_overlay_mounts_hosts_and_two_token_folders(tmp_path):
+    """The optional overlay: hosts.json into ctfd and the router; one folder of INSTANCER_TOKEN_<NAME> files into ctfd ONLY and one
+    folder of ROUTER_TOKEN_<NAME> files into the router ONLY (least privilege), for any number of hosts, with no edit of a compose file."""
+    hosts = tmp_path / "hosts.json"
+    inst_dir = tmp_path / "instancer-tokens"
+    router_dir = tmp_path / "router-tokens"
+    for d in (inst_dir, router_dir):
+        d.mkdir()
+    hosts.write_text("[]", encoding="utf-8")
+    env = {
+        "INSTANCE_DOMAIN": "instances.l3m0nctf.xyz",
+        "INSTANCER_INSTANCE_POOL": "10.200.0.0/16",
+        "L3MON_HOSTS_FILE": str(hosts),
+        "L3MON_INSTANCER_TOKENS_DIR": str(inst_dir),
+        "L3MON_ROUTER_TOKENS_DIR": str(router_dir),
+    }
+    data = render_compose("dev", ["instancer", "instancer-multihost"], extra_env=env)
+    services = data.get("services", {})
+    ctfd, router = services["ctfd"], services["router"]
 
+    def mounts(svc):
+        return {v.get("target"): Path(v.get("source", "")).resolve() for v in svc.get("volumes", [])}
+
+    ctfd_m, router_m = mounts(ctfd), mounts(router)
+    assert ctfd_m["/etc/l3mon/hosts.json"] == hosts.resolve()
+    assert router_m["/etc/l3mon/hosts.json"] == hosts.resolve()
+    assert ctfd_m["/run/host-secrets"] == inst_dir.resolve(), "ctfd gets the INSTANCER token folder"
+    assert router_m["/run/host-secrets"] == router_dir.resolve(), "the router gets the ROUTER token folder"
+    assert all(v.get("read_only") for svc in (ctfd, router) for v in svc.get("volumes", []) if v.get("target") in ("/etc/l3mon/hosts.json", "/run/host-secrets"))
+    assert ctfd["environment"]["L3MON_HOSTS_PATH"] == "/etc/l3mon/hosts.json"
+    assert router["environment"]["ROUTER_HOSTS_PATH"] == "/etc/l3mon/hosts.json"
+    assert ctfd["environment"]["L3MON_HOST_SECRETS_DIR"] == "/run/host-secrets"
+    assert router["environment"]["L3MON_HOST_SECRETS_DIR"] == "/run/host-secrets"
+    # nothing in the overlay is tied to a host name: a second host is a line in hosts.json and two files, not an edit here
+    lines = (ROOT / "deploy" / "compose" / "compose.instancer-multihost.yml").read_text(encoding="utf-8").splitlines()
+    config = " ".join(line for line in lines if not line.lstrip().startswith("#"))  # the comments may use host names as examples
+    assert "_H1" not in config and "_H2" not in config
+
+
+@pytest.mark.parametrize("missing", ["L3MON_HOSTS_FILE", "L3MON_INSTANCER_TOKENS_DIR", "L3MON_ROUTER_TOKENS_DIR"])
+def test_multihost_overlay_fails_loudly_without_its_paths(tmp_path, missing):
+    env = {k: v for k, v in os.environ.items() if k not in ("L3MON_HOSTS_FILE", "L3MON_INSTANCER_TOKENS_DIR", "L3MON_ROUTER_TOKENS_DIR")}
+    env.update({"INSTANCE_DOMAIN": "x.example", "L3MON_HOSTS_FILE": str(tmp_path), "L3MON_INSTANCER_TOKENS_DIR": str(tmp_path), "L3MON_ROUTER_TOKENS_DIR": str(tmp_path)})
+    del env[missing]
+    files = []
+    for name in ("compose.base.yml", "compose.dev.yml", "compose.instancer.yml", "compose.instancer-multihost.yml"):
+        files += ["-f", str(ROOT / "deploy" / "compose" / name)]
+    res = subprocess.run(["docker", "compose", *files, "config", "--format", "json"], cwd=str(ROOT), capture_output=True, text=True, env=env, timeout=60)
+    assert res.returncode != 0
+    assert missing in res.stderr + res.stdout
 
 
 def test_production_overlay_fails_without_instance_domain():

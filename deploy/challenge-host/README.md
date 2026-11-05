@@ -153,9 +153,20 @@ On the **platform VM**, edit `/etc/l3mon/hosts.json` (or `config/instancer/hosts
   }
 ]
 ```
-Add the host's authentication tokens to the platform's `.env` or secrets:
-- `INSTANCER_TOKEN_H1`: Token matching `INSTANCER_TOKEN` on host h1.
-- `ROUTER_TOKEN_H1`: Token matching `ROUTER_TOKEN` on host h1.
+Then give the platform the host's two tokens and switch the platform to multi-host mode with the **optional overlay** `deploy/compose/compose.instancer-multihost.yml`. Two folders hold one file per host, named in capitals, and each container sees only its own kind of token (CTFd the instancer tokens, the router the router tokens):
+```bash
+# the tokens are the ones you generated on the host in step 2: the same values
+install -d -m 0700 /etc/l3mon/host-secrets/instancer /etc/l3mon/host-secrets/router
+install -m 0600 <(cat INSTANCER_TOKEN_OF_H1) /etc/l3mon/host-secrets/instancer/INSTANCER_TOKEN_H1   # CTFd calls the agent of h1 with this
+install -m 0600 <(cat ROUTER_TOKEN_OF_H1)    /etc/l3mon/host-secrets/router/ROUTER_TOKEN_H1         # the central router reads h1's routes with this
+
+L3MON_ENV=production L3MON_OVERLAYS=instancer,instancer-production,instancer-multihost \
+  L3MON_HOSTS_FILE=/etc/l3mon/hosts.json \
+  L3MON_INSTANCER_TOKENS_DIR=/etc/l3mon/host-secrets/instancer \
+  L3MON_ROUTER_TOKENS_DIR=/etc/l3mon/host-secrets/router \
+  tools/compose.sh up -d --wait
+```
+A second host `h2` is a second entry in `hosts.json` and two more files (`INSTANCER_TOKEN_H2`, `ROUTER_TOKEN_H2`); no compose file is edited. A platform with a single instancer does not use this overlay and needs none of these files. A host listed without its token files is **reported** (CTFd logs an ERROR naming the missing file at start; the router refuses to start and names it) and is not used: it never takes the others down. `hosts.json` may not contain a host named `default` (that name is the single-host mode).
 
 The platform scheduler will automatically probe `GET /v1/capacity` on host `h1`, cache it for 5s, and begin routing new challenge starts to it.
 

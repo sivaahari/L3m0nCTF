@@ -127,26 +127,28 @@ The platform VM distributes challenge starts across multiple challenge hosts usi
 ]
 ```
 
-### Compose Wiring for Multi-Host Fleet (`compose.instancer-production.yml`)
-To switch from single-host to multi-host mode, the production overlay mounts `hosts.json` read-only inside the platform containers and provisions per-host secret tokens:
-- **`ctfd` Container**:
-  - Mounts `${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro`
-  - Defines `L3MON_HOSTS_PATH: /etc/l3mon/hosts.json`
-  - Secrets: Mounts per-host agent credentials `INSTANCER_TOKEN_<NAME>` (e.g. `INSTANCER_TOKEN_H1`) from `/run/secrets/`.
-- **`router` Container**:
-  - Mounts `${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro`
-  - Defines `ROUTER_HOSTS_PATH: /etc/l3mon/hosts.json`
-  - Secrets: Mounts per-host route credentials `ROUTER_TOKEN_<NAME>` (e.g. `ROUTER_TOKEN_H1`) from `/run/secrets/`.
-- **Development Mount**:
-  For local testing or development, pass `L3MON_HOSTS_FILE=/path/to/hosts.json` when running `tools/compose.sh`.
+### Compose wiring for a multi-host fleet (`compose.instancer-multihost.yml`, optional)
+A platform with ONE instancer (the default; every deployment so far) uses neither this overlay nor any of its files: `compose.instancer-production.yml` starts without a `hosts.json` and without per-host secrets. To switch to several hosts, add the overlay **after** the instancer overlays:
+
+```bash
+L3MON_ENV=production L3MON_OVERLAYS=instancer,instancer-production,instancer-multihost \
+  L3MON_HOSTS_FILE=/etc/l3mon/hosts.json \
+  L3MON_INSTANCER_TOKENS_DIR=/etc/l3mon/host-secrets/instancer \
+  L3MON_ROUTER_TOKENS_DIR=/etc/l3mon/host-secrets/router \
+  tools/compose.sh up -d --wait
+```
+It also works in development (`L3MON_OVERLAYS=instancer,instancer-multihost`, with a hosts file and two folders of your own).
+
+- `hosts.json` is mounted read-only into `ctfd` (`L3MON_HOSTS_PATH`) and into the `router` (`ROUTER_HOSTS_PATH`).
+- One folder of `INSTANCER_TOKEN_<NAME>` files (one per listed host, name in capitals) is mounted read-only into `ctfd` only; one folder of `ROUTER_TOKEN_<NAME>` files into the router only. Any number of hosts needs **no edit of a compose file**: a new host is a line in `hosts.json` and two files.
+- A listed host without its token is never fed the platform token: CTFd logs an ERROR at start naming the missing variable and does not use the host; the central router refuses to start and names it.
+- The host name `default` is reserved for the implicit single-host mode and is refused in `hosts.json`.
 
 > [!IMPORTANT]
-> **Host Name Invariant:**
-> The host name `default` is strictly reserved for the implicit single-host fallback mode (when no `hosts.json` is provided). An entry named `"name": "default"` in `hosts.json` is rejected with `ValueError` on startup by both CTFd and the router to prevent ambiguity in credential resolution.
+> **Domain matching.** The challenge host kit's `INSTANCE_DOMAIN` **must equal the platform's `INSTANCE_DOMAIN`**. The central router forwards `Host: <id>.<domain>` unchanged to the host's router; with different domains the host answers HTTP 404.
 
 > [!IMPORTANT]
-> **Domain Matching Invariant:**
-> The challenge host kit's `INSTANCE_DOMAIN` **must equal the central platform's `INSTANCE_DOMAIN`** (e.g. `inst.l3m0nctf.xyz`). If the domain values differ between Hop 1 and Hop 2, Hop 2 inspects the incoming `Host: <instance_id>.<central_domain>` header, fails suffix matching against its local domain, and answers HTTP 404 Not Found.
+> **The host-down mark is shared.** When a host fails a probe, the mark "down for 30 seconds" is kept in CTFd's cache (Redis), so every CTFd worker agrees. A player's list also probes the hosts of the listed instances (through the 5-second capacity cache), so a dead host is found without waiting for anyone to start an instance, and the player sees `error` rather than `running`.
 
 ### Scheduling & Failover Invariants:
 1. **5-Second Capacity Cache:** `GET /v1/capacity` queries from each host are cached for 5 seconds to reduce inter-machine overhead.
