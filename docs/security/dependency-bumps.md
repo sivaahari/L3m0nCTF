@@ -27,6 +27,7 @@ Checked on 2026-10-06 against the official CTFd 3.8.8 image (`sha256:07cc9788d58
 | libpcre2-8-0 (Debian) | 10.42-1+deb12u1 | 10.42-1+deb12u2 | HIGH fixed |
 | perl-base (Debian) | 5.36.0-7+deb12u3 | 5.36.0-7+deb12u4 | 3 CRITICAL and 4 HIGH fixed |
 | libssl3 and openssl (Debian) | 3.0.22-1~deb12u1 | 3.0.22-1~deb12u2 | HIGH CVE-2026-84782 fixed (Debian published the fix after 2026-10-06; it was an accepted advisory until then) |
+| apt and libapt-pkg6.0 (Debian) | 2.6.1 | 2.6.2 | HIGH CVE-2026-109518 fixed (an attacker on the network path while apt downloads packages; Debian published 2.6.2 on 2026-11-05; apt only runs when the image is built, not while the platform runs, but the fix costs nothing, so it is taken instead of accepted) |
 
 The pins are in [`docker/ctfd/requirements.overrides.txt`](../../docker/ctfd/requirements.overrides.txt) and the operating-system step is in [`docker/ctfd/Dockerfile`](../../docker/ctfd/Dockerfile). `tools/verify-image.sh` checks every one of them on the built image.
 
