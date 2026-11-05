@@ -3,9 +3,14 @@
 # Firewall Rules Verification with Network Namespaces (BLOCKING 4)
 # Verifies on Linux:
 #   1. Instance cannot reach another instance's network (ia -> ib: DROP)
+#      Note: The pool-to-pool drop rule (-s 10.200.0.0/16 -d 10.200.0.0/16 -j DROP)
+#      is redundant with the general RFC1918 drop rule (-s 10.200.0.0/16 -d 10.0.0.0/8 -j DROP)
+#      when the instance pool sits within 10.0.0.0/8. Both are maintained for defense-in-depth.
 #   2. Instance cannot reach platform network even without Docker isolation (ia -> plat: DROP)
-#   3. Router reaches instances and return traffic flows (router -> ia: ACCEPT)
-#   4. Cloud metadata 169.254.169.254 is dropped (ia -> metadata: DROP)
+#   3. Cloud metadata 169.254.169.254 in dedicated namespace is dropped across FORWARD chain (ia -> metadata: DROP)
+#   4. Router reaches instances and return traffic flows across shared bridge (router -> ia: ACCEPT)
+#   5. Port 8300 access to instancer agent from non-platform address is dropped (ia -> agent:8300: DROP)
+#   6. Port 8300 access to instancer agent from platform VM is accepted (plat -> agent:8300: ACCEPT)
 # ==============================================================================
 set -euo pipefail
 
@@ -19,15 +24,26 @@ if ! command -v iptables >/dev/null 2>&1 || ! command -v ip >/dev/null 2>&1; the
   exit 0
 fi
 
+NC_PIDS=()
+
 cleanup() {
+  # Kill background listeners to prevent holding stdout/stderr pipes open
+  if [[ ${#NC_PIDS[@]} -gt 0 ]]; then
+    kill -9 "${NC_PIDS[@]}" 2>/dev/null || true
+  fi
+  pkill -9 -f "nc -l" 2>/dev/null || true
+
   ip netns del ns_inst1 2>/dev/null || true
   ip netns del ns_inst2 2>/dev/null || true
   ip netns del ns_plat 2>/dev/null || true
   ip netns del ns_router 2>/dev/null || true
+  ip netns del ns_meta 2>/dev/null || true
+  ip netns del ns_agent 2>/dev/null || true
   ip link del br_inst1 2>/dev/null || true
   ip link del br_inst2 2>/dev/null || true
   ip link del br_plat 2>/dev/null || true
-  ip link del meta0 2>/dev/null || true
+  ip link del veth_meta 2>/dev/null || true
+  ip link del veth_agent 2>/dev/null || true
   iptables -D DOCKER-USER -j L3MON-FIREWALL 2>/dev/null || true
   iptables -F L3MON-FIREWALL 2>/dev/null || true
   iptables -X L3MON-FIREWALL 2>/dev/null || true
@@ -53,7 +69,8 @@ iptables -A DOCKER-USER -j RETURN 2>/dev/null || true
 # Apply bootstrap firewall configuration
 export INSTANCER_INSTANCE_POOL="10.200.0.0/16"
 export INSTANCER_POOL_SUBNET_SIZE="28"
-export PLATFORM_VM_IP="10.0.0.1"
+export PLATFORM_VM_IP="10.0.0.5"
+export CHALLENGE_HOST_PRIVATE_IP="10.0.1.10"
 bash deploy/challenge-host/bootstrap.sh --apply
 
 # Create namespaces
@@ -61,13 +78,32 @@ ip netns add ns_inst1
 ip netns add ns_inst2
 ip netns add ns_plat
 ip netns add ns_router
+ip netns add ns_meta
+ip netns add ns_agent
 
-# Setup dummy interface for cloud metadata (169.254.169.254)
-ip link add meta0 type dummy 2>/dev/null || true
-ip addr add 169.254.169.254/32 dev meta0 2>/dev/null || true
-ip link set meta0 up 2>/dev/null || true
+# 1. Cloud Metadata Namespace (169.254.169.254/32 behind host routing across FORWARD chain)
+ip link add veth_meta type veth peer name ceth_meta
+ip link set ceth_meta netns ns_meta
+ip netns exec ns_meta ip addr add 169.254.169.254/32 dev ceth_meta
+ip netns exec ns_meta ip link set ceth_meta up
+ip netns exec ns_meta ip link set lo up
+ip addr add 169.254.169.1/30 dev veth_meta
+ip link set veth_meta up
+ip netns exec ns_meta ip route add default via 169.254.169.1
+ip route add 169.254.169.254/32 dev veth_meta
 
-# 1. Instance 1 Network Bridge (br_inst1: 10.200.0.16/28, gw 10.200.0.17)
+# 2. Instancer Agent Namespace (10.0.1.10/24 behind host routing)
+ip link add veth_agent type veth peer name ceth_agent
+ip link set ceth_agent netns ns_agent
+ip netns exec ns_agent ip addr add 10.0.1.10/24 dev ceth_agent
+ip netns exec ns_agent ip link set ceth_agent up
+ip netns exec ns_agent ip link set lo up
+ip addr add 10.0.1.1/24 dev veth_agent
+ip link set veth_agent up
+ip netns exec ns_agent ip route add default via 10.0.1.1
+ip route add 10.0.1.10/32 dev veth_agent
+
+# 3. Instance 1 Network Bridge (br_inst1: 10.200.0.16/28, gw 10.200.0.17)
 # Real topology: Both the challenge container and the router are on the SAME instance bridge!
 ip link add br_inst1 type bridge
 ip addr add 10.200.0.17/28 dev br_inst1
@@ -93,7 +129,7 @@ ip netns exec ns_router ip link set ceth_rtr up
 ip netns exec ns_router ip link set lo up
 ip netns exec ns_router ip route add default via 10.200.0.17
 
-# 2. Instance 2 Network Bridge (br_inst2: 10.200.0.32/28, gw 10.200.0.33)
+# 4. Instance 2 Network Bridge (br_inst2: 10.200.0.32/28, gw 10.200.0.33)
 ip link add br_inst2 type bridge
 ip addr add 10.200.0.33/28 dev br_inst2
 ip link set br_inst2 up
@@ -108,7 +144,7 @@ ip netns exec ns_inst2 ip link set ceth_i2 up
 ip netns exec ns_inst2 ip link set lo up
 ip netns exec ns_inst2 ip route add default via 10.200.0.33
 
-# 3. Platform Network Bridge (br_plat: 10.0.0.0/24, gw 10.0.0.1)
+# 5. Platform Network Bridge (br_plat: 10.0.0.0/24, gw 10.0.0.1)
 ip link add br_plat type bridge
 ip addr add 10.0.0.1/24 dev br_plat
 ip link set br_plat up
@@ -123,13 +159,20 @@ ip netns exec ns_plat ip link set ceth_plat up
 ip netns exec ns_plat ip link set lo up
 ip netns exec ns_plat ip route add default via 10.0.0.1
 
-# Start listener inside inst1, inst2, and plat
-ip netns exec ns_inst1 nc -l -p 8080 -k &
-ip netns exec ns_inst2 nc -l -p 8080 -k &
-ip netns exec ns_plat nc -l -p 8000 -k &
+# Start listeners with stdout and stderr sent to /dev/null
+ip netns exec ns_inst1 nc -l -p 8080 -k >/dev/null 2>&1 &
+NC_PIDS+=($!)
+ip netns exec ns_inst2 nc -l -p 8080 -k >/dev/null 2>&1 &
+NC_PIDS+=($!)
+ip netns exec ns_plat nc -l -p 8000 -k >/dev/null 2>&1 &
+NC_PIDS+=($!)
+ip netns exec ns_meta nc -l -p 80 -k >/dev/null 2>&1 &
+NC_PIDS+=($!)
+ip netns exec ns_agent nc -l -p 8300 -k >/dev/null 2>&1 &
+NC_PIDS+=($!)
 sleep 1
 
-# Check 1: Instance 1 cannot reach Instance 2
+# Check 1: Instance 1 cannot reach Instance 2 (inter-instance cross-talk dropped)
 echo "Testing: inst1 -> inst2 (must be DROPPED)"
 if ip netns exec ns_inst1 nc -z -w 1 10.200.0.34 8080; then
   echo "FAIL: inst1 was able to connect to inst2!" >&2
@@ -138,7 +181,7 @@ else
   echo "PASS: inst1 -> inst2 was correctly DROPPED."
 fi
 
-# Check 2: Instance 1 cannot reach Platform
+# Check 2: Instance 1 cannot reach Platform (VPC RFC1918 dropped)
 echo "Testing: inst1 -> platform (must be DROPPED)"
 if ip netns exec ns_inst1 nc -z -w 1 10.0.0.5 8000; then
   echo "FAIL: inst1 was able to connect to platform!" >&2
@@ -147,7 +190,7 @@ else
   echo "PASS: inst1 -> platform was correctly DROPPED."
 fi
 
-# Check 3: Instance 1 cannot reach 169.254.169.254
+# Check 3: Instance 1 cannot reach Metadata across FORWARD chain
 echo "Testing: inst1 -> 169.254.169.254 (must be DROPPED)"
 if ip netns exec ns_inst1 nc -z -w 1 169.254.169.254 80; then
   echo "FAIL: inst1 reached metadata!" >&2
@@ -156,7 +199,7 @@ else
   echo "PASS: inst1 -> 169.254.169.254 was correctly DROPPED."
 fi
 
-# Check 4: Router CAN reach Instance 1
+# Check 4: Router CAN reach Instance 1 (intra-bridge physdev allowed)
 echo "Testing: router -> inst1 (must be ACCEPTED)"
 if ip netns exec ns_router nc -z -w 1 10.200.0.18 8080; then
   echo "PASS: router -> inst1 was ACCEPTED."
@@ -165,4 +208,23 @@ else
   exit 1
 fi
 
+# Check 5: Instance 1 cannot reach Agent port 8300
+echo "Testing: inst1 -> agent:8300 (must be DROPPED)"
+if ip netns exec ns_inst1 nc -z -w 1 10.0.1.10 8300; then
+  echo "FAIL: inst1 was able to connect to agent port 8300!" >&2
+  exit 1
+else
+  echo "PASS: inst1 -> agent:8300 was correctly DROPPED."
+fi
+
+# Check 6: Platform CAN reach Agent port 8300
+echo "Testing: platform -> agent:8300 (must be ACCEPTED)"
+if ip netns exec ns_plat nc -z -w 1 10.0.1.10 8300; then
+  echo "PASS: platform -> agent:8300 was ACCEPTED."
+else
+  echo "FAIL: platform was unable to connect to agent port 8300!" >&2
+  exit 1
+fi
+
 echo "=== ALL FIREWALL CHECKS PASSED ==="
+

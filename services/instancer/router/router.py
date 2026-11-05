@@ -214,8 +214,16 @@ class TokenBucketRateLimiter:
                 self.tokens -= nbytes
 
 
-def get_router_token_for_host(host_name: str, fallback_token: Optional[str] = None) -> str:
-    """Read host-specific route read token (ROUTER_TOKEN_<NAME_UPPER>) with fallback."""
+def get_router_token_for_host(
+    host_name: str,
+    fallback_token: Optional[str] = None,
+    allow_fallback: bool = False,
+) -> str:
+    """Read host-specific route read token (ROUTER_TOKEN_<NAME_UPPER>).
+
+    In multi-host mode (allow_fallback=False), each listed host MUST have its own token.
+    Falling back to the global platform token is refused to prevent token sharing across hosts.
+    """
     clean_name = re.sub(r"[^A-Za-z0-9_]", "_", host_name.upper())
     path = f"/run/secrets/ROUTER_TOKEN_{clean_name}"
     if os.path.exists(path):
@@ -229,19 +237,24 @@ def get_router_token_for_host(host_name: str, fallback_token: Optional[str] = No
     env_val = os.getenv(f"ROUTER_TOKEN_{clean_name}", "").strip()
     if env_val:
         return env_val
-    if fallback_token:
-        return fallback_token
 
-    global_path = "/run/secrets/ROUTER_TOKEN"
-    if os.path.exists(global_path):
-        try:
-            with open(global_path, "r", encoding="utf-8") as f:
-                val = f.read().strip()
-                if val:
-                    return val
-        except Exception:
-            pass
-    return os.getenv("ROUTER_TOKEN", "").strip()
+    if host_name == "default" or allow_fallback:
+        if fallback_token:
+            return fallback_token
+        global_path = "/run/secrets/ROUTER_TOKEN"
+        if os.path.exists(global_path):
+            try:
+                with open(global_path, "r", encoding="utf-8") as f:
+                    val = f.read().strip()
+                    if val:
+                        return val
+            except Exception:
+                pass
+        return os.getenv("ROUTER_TOKEN", "").strip()
+
+    raise ValueError(
+        f"Missing per-host router token for host '{host_name}': ROUTER_TOKEN_{clean_name} must be set"
+    )
 
 
 class InstanceRouter:
@@ -639,7 +652,7 @@ class InstanceRouter:
                 hname = host["name"]
                 hurl = host["url"]
                 rurl = host["router_url"]
-                token = get_router_token_for_host(hname, self.router_token)
+                token = get_router_token_for_host(hname, allow_fallback=False)
                 try:
                     parsed = urllib.parse.urlparse(hurl)
                     h_host = parsed.hostname or "127.0.0.1"

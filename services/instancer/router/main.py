@@ -362,10 +362,16 @@ async def main():
             with open(hosts_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and data:
+                    for h in data:
+                        if isinstance(h, dict) and str(h.get("name", "")).strip().lower() == "default":
+                            raise ValueError(
+                                "Host name 'default' is reserved for implicit single-host fallback and cannot be listed in hosts.json"
+                            )
                     hosts = data
                     _log.info("Loaded %d host(s) for central routing from %s", len(hosts), hosts_path)
         except Exception as e:
             _log.warning("Failed to load hosts config from %s: %s", hosts_path, e)
+            raise
 
     router = InstanceRouter(
         instance_domain=cfg["instance_domain"],

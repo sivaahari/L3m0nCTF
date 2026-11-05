@@ -68,6 +68,10 @@ def validate_host_entry(entry: dict) -> dict:
     name = entry.get("name")
     if not name or not isinstance(name, str) or not _HOST_NAME_PATTERN.match(name):
         raise ValueError(f"Invalid host 'name': {name!r}. Must match {_HOST_NAME_PATTERN.pattern}")
+    if name.lower() == "default":
+        raise ValueError(
+            "Host name 'default' is reserved for implicit single-host fallback and cannot be used in hosts.json"
+        )
 
     url = entry.get("url")
     if not url or not isinstance(url, str):

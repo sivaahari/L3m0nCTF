@@ -22,15 +22,19 @@ if [[ $# -gt 0 ]]; then
     --dry-run)
       MODE="dry-run"
       ;;
+    --firewall-only)
+      MODE="firewall-only"
+      ;;
     --help|-h)
-      echo "Usage: $0 [--dry-run|--apply]"
+      echo "Usage: $0 [--dry-run|--apply|--firewall-only]"
       echo "  --dry-run (default): Inspect actions without applying changes"
       echo "  --apply:             Configure kernel sysctls, Docker daemon pools, and firewall isolation chains"
+      echo "  --firewall-only:     Configure/refresh firewall isolation rules in DOCKER-USER only"
       exit 0
       ;;
     *)
       echo "Unknown argument: $1" >&2
-      echo "Usage: $0 [--dry-run|--apply]" >&2
+      echo "Usage: $0 [--dry-run|--apply|--firewall-only]" >&2
       exit 1
       ;;
   esac
@@ -40,14 +44,21 @@ fi
 INSTANCE_POOL="${INSTANCER_INSTANCE_POOL:-10.200.0.0/16}"
 POOL_SUBNET_SIZE="${INSTANCER_POOL_SUBNET_SIZE:-28}"
 PLATFORM_VM_IP="${PLATFORM_VM_IP:-10.0.0.1}"
+CHALLENGE_HOST_PRIVATE_IP="${CHALLENGE_HOST_PRIVATE_IP:-}"
 SERVICE_USER="l3mon"
 CONFIG_DIR="/etc/l3mon"
 MANIFEST_FILE="${CONFIG_DIR}/challenges.toml"
 
+if [[ "${MODE}" == "apply" ]] && [[ -z "${CHALLENGE_HOST_PRIVATE_IP}" ]]; then
+  echo "Error: CHALLENGE_HOST_PRIVATE_IP must be set with --apply (host private interface IP)" >&2
+  exit 1
+fi
+
 echo "=== L3m0nCTF Challenge Host Bootstrap ==="
-echo "Mode:                    ${MODE}"
-echo "Instance Network Pool:   ${INSTANCE_POOL} (subnets: /${POOL_SUBNET_SIZE})"
-echo "Platform VM Allowed IP:  ${PLATFORM_VM_IP}"
+echo "Mode:                      ${MODE}"
+echo "Instance Network Pool:     ${INSTANCE_POOL} (subnets: /${POOL_SUBNET_SIZE})"
+echo "Platform VM Allowed IP:    ${PLATFORM_VM_IP}"
+echo "Challenge Host Private IP: ${CHALLENGE_HOST_PRIVATE_IP:-<not set>}"
 echo "=========================================="
 
 # Execution helpers
@@ -179,8 +190,9 @@ EOF
 
 # 6. Host environment configuration (/etc/l3mon/challenge-host.env)
 configure_env_file() {
-  echo "--- [6/8] Writing Challenge Host Environment (/etc/l3mon/challenge-host.env) ---"
+  echo "--- [6/10] Writing Challenge Host Environment (/etc/l3mon/challenge-host.env) ---"
   local env_file="${L3MON_ENV_FILE:-/etc/l3mon/challenge-host.env}"
+  local host_bind_ip="${CHALLENGE_HOST_PRIVATE_IP:-10.0.1.10}"
   local env_content
   env_content=$(cat <<EOF
 # L3m0nCTF Challenge Host Environment
@@ -188,7 +200,7 @@ INSTANCER_INSTANCE_POOL="${INSTANCE_POOL}"
 INSTANCER_POOL_SUBNET_SIZE="${POOL_SUBNET_SIZE}"
 PLATFORM_VM_IP="${PLATFORM_VM_IP}"
 INSTANCER_TRUSTED_FORWARDERS="${PLATFORM_VM_IP}"
-HOST_PRIVATE_BIND_IP="${PLATFORM_VM_IP}"
+HOST_PRIVATE_BIND_IP="${host_bind_ip}"
 EOF
 )
   write_file "${env_file}" "${env_content}" "0600"
@@ -196,7 +208,7 @@ EOF
 
 # 7. L3MON-FIREWALL Isolation Chain in DOCKER-USER
 configure_firewall() {
-  echo "--- [7/8] Configuring Firewall (L3MON-FIREWALL Chain in DOCKER-USER) ---"
+  echo "--- [7/10] Configuring Firewall (L3MON-FIREWALL Chain in DOCKER-USER) ---"
 
   # Dedicated chain L3MON-FIREWALL jumped to from DOCKER-USER at position 1
   if [[ "${MODE}" == "dry-run" ]]; then
@@ -260,41 +272,120 @@ configure_firewall() {
   fi
 }
 
-# 8. Verify Docker pool activation
+# 8. Systemd unit for reboot persistence (ordered after docker.service)
+configure_systemd_service() {
+  echo "--- [8/10] Installing Systemd Firewall Persistence Service ---"
+  local service_file="${L3MON_SYSTEMD_SERVICE:-/etc/systemd/system/l3mon-firewall.service}"
+  local script_path="${L3MON_BOOTSTRAP_SCRIPT:-/etc/l3mon/bootstrap.sh}"
+
+  if [[ "${MODE}" == "apply" ]] && [[ -f "$0" ]]; then
+    run_cmd cp -p "$0" "${script_path}"
+    run_cmd chmod 0755 "${script_path}"
+  elif [[ "${MODE}" == "dry-run" ]]; then
+    echo "[DRY-RUN] Would install ${script_path} (mode 0755)"
+  fi
+
+  local service_content
+  service_content=$(cat <<EOF
+[Unit]
+Description=L3m0nCTF Challenge Host Firewall Isolation
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/l3mon/challenge-host.env
+ExecStart=${script_path} --firewall-only
+
+[Install]
+WantedBy=multi-user.target
+EOF
+)
+  write_file "${service_file}" "${service_content}" "0644"
+
+  if [[ "${MODE}" == "apply" ]]; then
+    if command -v systemctl >/dev/null 2>&1; then
+      systemctl daemon-reload || true
+      systemctl enable l3mon-firewall.service || true
+    fi
+  else
+    echo "[DRY-RUN] systemctl daemon-reload && systemctl enable l3mon-firewall.service"
+  fi
+}
+
+# 9. Verify Docker pool activation
 verify_pool_activation() {
-  echo "--- [8/9] Verifying Docker Pool Activation ---"
-  if [[ "${MODE}" == "apply" ]] && command -v docker >/dev/null 2>&1; then
+  echo "--- [9/10] Verifying Docker Pool Activation ---"
+  if [[ "${MODE}" == "apply" ]]; then
+    if ! command -v docker >/dev/null 2>&1; then
+      echo "Notice: docker command not found. Skipping pool activation verification."
+      return 0
+    fi
     local test_net="l3mon_pool_verify_$$"
-    if docker network create "${test_net}" >/dev/null 2>&1; then
-      local subnet
-      subnet=$(docker network inspect "${test_net}" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || echo "")
-      docker network rm "${test_net}" >/dev/null 2>&1 || true
-      if [[ -n "${subnet}" ]]; then
-        echo "Successfully verified throwaway network allocated subnet: ${subnet}"
+    if ! docker network create "${test_net}" >/dev/null 2>&1; then
+      echo "Error: Failed to create verification network in Docker daemon" >&2
+      exit 1
+    fi
+    local subnet
+    subnet=$(docker network inspect "${test_net}" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || echo "")
+    docker network rm "${test_net}" >/dev/null 2>&1 || true
+    if [[ -z "${subnet}" ]]; then
+      echo "Error: Docker network was created but allocated subnet could not be inspected" >&2
+      exit 1
+    fi
+
+    local is_valid=0
+    if command -v python3 >/dev/null 2>&1; then
+      if python3 -c "import ipaddress, sys; sub=ipaddress.ip_network('${subnet}'); pool=ipaddress.ip_network('${INSTANCE_POOL}'); sys.exit(0 if sub.subnet_of(pool) else 1)" 2>/dev/null; then
+        is_valid=1
+      fi
+    elif command -v python >/dev/null 2>&1; then
+      if python -c "import ipaddress, sys; sub=ipaddress.ip_network('${subnet}'); pool=ipaddress.ip_network('${INSTANCE_POOL}'); sys.exit(0 if sub.subnet_of(pool) else 1)" 2>/dev/null; then
+        is_valid=1
       fi
     fi
+
+    if [[ ${is_valid} -ne 1 ]]; then
+      echo "Error: Verification failed! Allocated subnet ${subnet} is outside INSTANCE_POOL ${INSTANCE_POOL}" >&2
+      exit 1
+    fi
+    echo "Successfully verified throwaway network allocated subnet: ${subnet} (within ${INSTANCE_POOL})"
   else
     echo "[DRY-RUN] docker network create l3mon_pool_verify (verifies allocated subnet is within ${INSTANCE_POOL})"
   fi
 }
 
-# 9. Next Steps Output
+# 10. Next Steps Output
 print_next_steps() {
-  echo "--- [9/9] Bootstrap Complete ---"
+  echo "--- [10/10] Bootstrap Complete ---"
   echo "Next steps on challenge host:"
   echo "1. Place deployment tokens in /etc/l3mon/secrets (mode 0600, root-only)."
   echo "2. Populate /etc/l3mon/challenges.toml with challenge manifests."
-  echo "3. Run: docker compose -f deploy/compose/compose.challenge-host.yml up -d"
+  echo "3. Run: docker compose --env-file /etc/l3mon/challenge-host.env -f deploy/compose/compose.challenge-host.yml up -d"
   echo "4. Add host to platform hosts.json with public_tcp_host and router_url."
 }
 
 # Main flow
-check_os
-check_time_sync
-configure_sysctls
-configure_user_and_dirs
-configure_docker_daemon
-configure_env_file
-configure_firewall
-verify_pool_activation
-print_next_steps
+main() {
+  if [[ "${MODE}" == "firewall-only" ]]; then
+    configure_firewall
+    exit 0
+  fi
+
+  check_os
+  check_time_sync
+  configure_sysctls
+  configure_user_and_dirs
+  configure_docker_daemon
+  configure_env_file
+  configure_firewall
+  configure_systemd_service
+  verify_pool_activation
+  print_next_steps
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main
+fi
+
