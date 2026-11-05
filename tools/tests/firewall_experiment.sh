@@ -24,6 +24,17 @@ if ! command -v iptables >/dev/null 2>&1 || ! command -v ip >/dev/null 2>&1; the
   exit 0
 fi
 
+# The whole experiment runs inside a private network namespace (and mount namespace). It sets the FORWARD policy, adds rules and flushes chains, and it must
+# never do that to the machine it runs on: on a Docker host it would cut the containers off. Nothing of it survives the end of the script.
+if [[ -z "${L3MON_FW_EXPERIMENT_INNER:-}" ]]; then
+  if ! command -v unshare >/dev/null 2>&1; then
+    echo "Notice: unshare (util-linux) not installed. Skipping."
+    exit 0
+  fi
+  exec unshare --net --mount --propagation private env L3MON_FW_EXPERIMENT_INNER=1 bash "$0" "$@"
+fi
+ip link set lo up
+
 NC_PIDS=()
 
 cleanup() {
@@ -67,6 +78,18 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 iptables -N DOCKER-USER 2>/dev/null || iptables -F DOCKER-USER
 iptables -C FORWARD -j DOCKER-USER 2>/dev/null || iptables -I FORWARD 1 -j DOCKER-USER
 iptables -A DOCKER-USER -j RETURN 2>/dev/null || true
+
+# What Docker itself does on a real host, emulated for this experiment's bridges: the FORWARD policy is DROP and, behind DOCKER-USER, Docker accepts what leaves
+# a bridge, what stays on a bridge, the replies of established connections, and the published port of a container (here the agent's 8300).
+# L3MON-FIREWALL sits in DOCKER-USER, in front of all of it, so only what the firewall lets through can reach these accepts. (An earlier version of this
+# experiment relied on a permissive FORWARD policy and failed on every host that runs Docker, where the policy is DROP.)
+iptables -P FORWARD DROP
+for br in br_inst1 br_inst2 br_plat; do
+  iptables -A FORWARD -o "$br" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  iptables -A FORWARD -i "$br" ! -o "$br" -j ACCEPT
+  iptables -A FORWARD -i "$br" -o "$br" -j ACCEPT
+done
+iptables -A FORWARD -o veth_agent -j ACCEPT
 
 # Apply bootstrap firewall configuration
 export INSTANCER_INSTANCE_POOL="10.200.0.0/16"

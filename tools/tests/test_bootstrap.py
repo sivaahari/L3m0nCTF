@@ -334,9 +334,9 @@ def test_firewall_namespace_experiment():
 
     if os.name == "nt" or not hasattr(os, "geteuid") or os.geteuid() != 0:
         pytest.skip("firewall network namespace experiment requires root/sudo on Linux")
-    for tool in ("ip", "iptables", "nc"):
+    for tool in ("ip", "iptables", "nc", "unshare"):
         if shutil.which(tool) is None:
-            pytest.skip(f"firewall network namespace experiment needs '{tool}' (iproute2, iptables, netcat-openbsd)")
+            pytest.skip(f"firewall network namespace experiment needs '{tool}' (iproute2, iptables, netcat-openbsd, util-linux)")
     script = ROOT / "tools" / "tests" / "firewall_experiment.sh"
     assert script.is_file(), f"firewall_experiment.sh not found at {script}"
     res = subprocess.run([get_bash_cmd(), str(script)], cwd=str(ROOT), capture_output=True, text=True, timeout=60)
