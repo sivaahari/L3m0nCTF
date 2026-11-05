@@ -127,6 +127,27 @@ The platform VM distributes challenge starts across multiple challenge hosts usi
 ]
 ```
 
+### Compose Wiring for Multi-Host Fleet (`compose.instancer-production.yml`)
+To switch from single-host to multi-host mode, the production overlay mounts `hosts.json` read-only inside the platform containers and provisions per-host secret tokens:
+- **`ctfd` Container**:
+  - Mounts `${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro`
+  - Defines `L3MON_HOSTS_PATH: /etc/l3mon/hosts.json`
+  - Secrets: Mounts per-host agent credentials `INSTANCER_TOKEN_<NAME>` (e.g. `INSTANCER_TOKEN_H1`) from `/run/secrets/`.
+- **`router` Container**:
+  - Mounts `${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro`
+  - Defines `ROUTER_HOSTS_PATH: /etc/l3mon/hosts.json`
+  - Secrets: Mounts per-host route credentials `ROUTER_TOKEN_<NAME>` (e.g. `ROUTER_TOKEN_H1`) from `/run/secrets/`.
+- **Development Mount**:
+  For local testing or development, pass `L3MON_HOSTS_FILE=/path/to/hosts.json` when running `tools/compose.sh`.
+
+> [!IMPORTANT]
+> **Host Name Invariant:**
+> The host name `default` is strictly reserved for the implicit single-host fallback mode (when no `hosts.json` is provided). An entry named `"name": "default"` in `hosts.json` is rejected with `ValueError` on startup by both CTFd and the router to prevent ambiguity in credential resolution.
+
+> [!IMPORTANT]
+> **Domain Matching Invariant:**
+> The challenge host kit's `INSTANCE_DOMAIN` **must equal the central platform's `INSTANCE_DOMAIN`** (e.g. `inst.l3m0nctf.xyz`). If the domain values differ between Hop 1 and Hop 2, Hop 2 inspects the incoming `Host: <instance_id>.<central_domain>` header, fails suffix matching against its local domain, and answers HTTP 404 Not Found.
+
 ### Scheduling & Failover Invariants:
 1. **5-Second Capacity Cache:** `GET /v1/capacity` queries from each host are cached for 5 seconds to reduce inter-machine overhead.
 2. **Optimistic Local Counter:** When a host is selected for a start, its local in-memory `slots_used` is immediately incremented (`_optimistic_slots += 1`). This eliminates the "thundering herd" problem where rapid concurrent starts pile onto one host during the 5s cache window.

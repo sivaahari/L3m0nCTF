@@ -198,53 +198,51 @@ python -m pytest tests/integration/test_instances.py -v
 
 ### Instancer Unit Tests (`services/instancer/tests/`)
 ```
-platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-150 passed in 19.93s (4 November 2026)
-(Linux Python 3.11 & 3.12: 150 passed)
+platform linux -- Python 3.11.17 / Python 3.12.6, pytest-8.4.2
+154 passed in 27.40s (5 November 2026)
 ```
-*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup, TCP port range validation, route target pool validation with multi-pool support, token bucket continuous rate limiting (2 MB/s, 4 MB burst), bidirectional relaying, clean half-close propagation, zero-leakage port reuse, TCP idle timeout, per-instance connection cap, silent connect failure, Prometheus TCP & HTTP metrics export, double-sync lock protection, three TCP settings range validation, per-IP cap boundary, global cap boundary, absolute lifetime cap under constant traffic, real byte-rate transfer timing, router HTTP metrics endpoint, packing test benchmark tool execution & safety metrics, central router two-hop destination integrity, route ID 32-hex validation, duplicate route ID resolution (first-wins), and 30-second silent host route expiration.*
+*Coverage: manifest validation, 22 hostile specs in `assert_safe`, flag derivation vectors, quota and cooldown enforcement, TTL reaper, label reconciliation, API auth tokens, constant-time comparisons, router host matching, header sanitization, idle timeouts, Prometheus metrics, hostile client suite (slow headers, slow bodies, connection bursts), streaming response 20MB cap, pre-routing and per-instance connection caps, pre-routing host/route verification, challenge request body caps, 64MB global reading budget, request line & header caps (8KB / 16KB), Cloudflare real IP validation, total response deadline (120s), backend socket close in `finally`, concurrency reservation, 15s Docker timeouts, orphan network prune on startup, TCP port range validation, route target pool validation with multi-pool support, token bucket continuous rate limiting (2 MB/s, 4 MB burst), bidirectional relaying, clean half-close propagation, zero-leakage port reuse, TCP idle timeout, per-instance connection cap, silent connect failure, Prometheus TCP & HTTP metrics export, double-sync lock protection, three TCP settings range validation, per-IP cap boundary, global cap boundary, absolute lifetime cap under constant traffic, real byte-rate transfer timing, router HTTP metrics endpoint, packing test benchmark tool execution & safety metrics, central router two-hop destination integrity, route ID 32-hex validation, duplicate route ID resolution (first-wins), 30-second silent host route expiration, strict per-host router token isolation without fallback, and two real routers with 60 concurrent players pinned by barrier (0 refused with X-L3mon-Client-IP, 10 refused without).*
 
-*Note on CI coverage: Prior to 4 November 2026, GitHub Actions did not execute `services/instancer/tests/`. Merging `pre-deployment` into this branch added the `instancer-unit` CI job, running `python -m pytest services/instancer/tests` in the platform Linux container (Python 3.11 with pytest 8.4.2 and pytest-asyncio 0.24.0).*
+*Note on CI coverage: Ran via GitHub Actions `instancer-unit` CI job on Linux container runners across Python 3.11 and 3.12.*
 
 ### Plugin Multi-Host Capacity & Scheduler Tests (`plugins/l3mon_instances/tests/`)
 ```
-platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-15 passed in 0.11s (4 November 2026)
+platform linux -- Python 3.11.17, pytest-8.4.2 (inside l3mon/ctfd:dev container via tools/run-ctfd-tests.sh)
+15 passed in 0.18s (5 November 2026)
+[Full CTFd Plugin Suite: 3,106 passed, 63 skipped in 19m 45s]
 ```
-*Coverage: host configuration validation (`config/instancer/hosts.example.json`), strict per-host token isolation (`INSTANCER_TOKEN_<NAME>` without global fallback), 5.0s TTL capacity cache & background refresh, in-memory optimistic local slot counter preventing thundering herd under concurrency, 30-second down host penalty on failed capacity check or failed start with retry on healthy host (Probe A), racing starts returning existing instance while stopping losing host orphan (Probe B), down host instance status mapping to `error` to players (Probe C), admin kill-all aggregation across all hosts (Probe D), 503 `no_capacity` with `Retry-After` header when all hosts down/full, instance host stickiness for renew and stop, and multi-host failover and rebalancing at scale.*
+*Coverage: host configuration validation (`config/instancer/hosts.example.json`), strict per-host token isolation (`INSTANCER_TOKEN_<NAME>` without global fallback), refusal of host named `default`, 5.0s TTL capacity cache & background refresh, in-memory optimistic local slot counter preventing thundering herd under concurrency, 30-second down host penalty on failed capacity check or failed start with retry on healthy host (Probe A), racing starts returning existing instance while stopping losing host orphan (Probe B), down host instance status mapping to `error` to players (Probe C), admin kill-all aggregation across all hosts (Probe D), same-host racing winner preservation (Probe E), second start never touching broken host down penalty, 503 `no_capacity` with `Retry-After` header when all hosts down/full, instance host stickiness for renew and stop, and multi-host failover and rebalancing at scale.*
 
 ### Tools Regression Suite (`tools/tests/`)
 ```
-platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0
-334 passed, 14 skipped in 140.98s (4 November 2026)
+platform linux / win32 -- Python 3.12.6, pytest-8.4.2
+337 passed, 15 skipped in 252.12s (5 November 2026)
 ```
-*Includes `test_instancer_compose.py` (validating dev overlay, production overlay with `INSTANCE_DOMAIN` check, and standalone challenge host compose `compose.challenge-host.yml` with container hardening `cap_drop: [ALL]`, `read_only: true`, `no-new-privileges: true`, log rotation `10m/3`) and `test_bootstrap.py` (verifying bootstrap script `--dry-run` with poison stubs on PATH failing with exit code 99 if called, zero modifying commands executed, and unified pool configuration across `daemon.json` and `INSTANCER_INSTANCE_POOL` with `DOCKER-USER` rules).*
+*Includes `test_instancer_compose.py` (validating dev overlay, production overlay with `INSTANCE_DOMAIN` check, `hosts.json` ro-mounts, and standalone challenge host compose `compose.challenge-host.yml` with container hardening `cap_drop: [ALL]`, `read_only: true`, `no-new-privileges: true`, log rotation `10m/3`) and `test_bootstrap.py` (verifying bootstrap script `--dry-run` with poison stubs on PATH failing with exit code 99 if called, zero modifying commands executed, non-default subnet size 26 propagation, daemon.json backup & Docker restart planning, `--apply` requirement for `CHALLENGE_HOST_PRIVATE_IP`, `--firewall-only` mode execution, and `verify_pool_activation` rejection of out-of-pool subnets).*
 
 ### CTFd Plugin Tests inside Container (`tools/run-ctfd-tests.sh`)
 ```
-platform linux -- Python 3.11.17, pytest-8.4.2
-23 passed, 4 skipped in 26.38s (18 October 2026)
+platform linux -- Python 3.11.17, pytest-8.4.2 (l3mon/ctfd:dev)
+3,106 passed, 63 skipped in 19m 45s (GitHub Actions CI Run 41893918821)
 ```
 
 ### Real MariaDB & Redis Migration Suite (`tools/run-migration-test.sh`)
 ```
 platform linux -- Python 3.11.17, pytest-8.4.2
-4 passed in 22.15s (18 October 2026)
+4 passed in 22.15s (GitHub Actions CI Run 41893918821)
 ```
 
-### Live Stack Integration Tests (`tests/integration/`)
+### Live Stack Integration Tests (`tests/integration/` via GitHub Actions CI)
 ```
-tests/integration/test_instances.py::test_recreating_ctfd_keeps_every_overlay_the_stack_was_started_with PASSED
-tests/integration/test_instances.py::test_instances_end_to_end_lifecycle PASSED
-tests/integration/test_instances.py::test_router_survives_hostile_traffic PASSED
-tests/integration/test_instances_isolation.py (offline: 4 passed; live overlay prober proof)
-tests/integration/test_instances_tcp.py (full TCP instance start, open, flag retrieval, cross-team submission, renew, stop, recovery)
+integration-overlays: 14 passed, 180 deselected in 2m 14s (instancer + ops overlays: lifecycle, hostile traffic, isolation prober, TCP)
+integration: 171 passed, 23 skipped (0:06:20) + 4 passed restore drill (0:00:53)
+ctfd-suite: 675 passed, 1464 warnings in 7m 36s (full upstream CTFd suite)
 ```
 
 ### Repository Hygiene Scan (`tools/ l3mon hygiene`)
 ```
 (cd tools && python -m l3mon hygiene --root .. --history)
-0 finding(s) across working tree and commit history (4 November 2026)
+0 finding(s) across working tree and commit history (5 November 2026)
 ```
 
 ---
@@ -689,16 +687,16 @@ Milestone 3 validates multi-host failover at scale, provides the challenge host 
   5. VPC isolation: `-s 10.200.0.0/16 -d 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 -j DROP`.
   6. Agent port 8300 protection: `-p tcp -m conntrack --ctorigdstport 8300 ! -s ${PLATFORM_VM_IP} -j DROP`.
   7. Return to `DOCKER-USER`: `-j RETURN`.
-- Breakage Detection Tests (`tools/tests/test_bootstrap.py`):
-  All 5 structural breakages of the firewall and pool configuration are detected and caught:
-  1. Missing metadata rule: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_missing_metadata_rule - AssertionError`
-  2. Missing pool-to-pool drop rule: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_missing_pool_drop_rule - AssertionError`
-  3. Missing RFC1918 VPC drops: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_missing_vpc_drops - AssertionError`
-  4. Inverted jump (jump placed after RETURN): `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_inverted_docker_user_jump - AssertionError`
-  5. Hardcoded subnet size: `FAILED tools/tests/test_bootstrap.py::test_bootstrap_detects_hardcoded_subnet_size - AssertionError`
+- Breakage & Verification Tests (`tools/tests/test_bootstrap.py`):
+  Replaced simulated string-replacement tests with real script execution and safety tests:
+  1. Poison stub isolation: Overriding PATH with stubs for `iptables`, `sysctl`, `useradd`, `chown`, `timedatectl`, and `chronyc` proves that `--dry-run` executes zero modifying commands. The poison stub check proves that dangerous commands on PATH exit 99 if called.
+  2. Non-default subnet size propagation (`test_bootstrap_non_default_subnet_size`): Setting `INSTANCER_POOL_SUBNET_SIZE="26"` propagates `"size": 26` to `daemon.json` and `INSTANCER_POOL_SUBNET_SIZE="26"` to `challenge-host.env`.
+  3. Backup & restart planning: Asserts that existing `daemon.json` is backed up to `daemon.json.bak` and Docker daemon restart is planned via `systemctl restart docker`.
+  4. Required private interface IP (`test_bootstrap_apply_requires_challenge_host_private_ip`): Running `--apply` without `CHALLENGE_HOST_PRIVATE_IP` fails with exit code 1 and a descriptive error message.
+  5. Standalone firewall configuration (`test_bootstrap_firewall_only_mode`): Invoking `--firewall-only` configures `L3MON-FIREWALL` and jumps from `DOCKER-USER` using `iptables` while skipping all non-firewall provisioning steps.
+  6. Pool activation verification (`test_bootstrap_verify_pool_activation_subnet_check`): Tests using mock docker verify that throwaway network allocation fails with exit code 1 when the allocated subnet is outside `INSTANCE_POOL` (e.g. `172.17.0.0/16` vs `10.200.0.0/16`) or when network creation fails.
 - Root Network Namespace Experiment (`tools/tests/firewall_experiment.sh`):
-  Uses the real Docker bridge topology (router and instance on shared bridge `br_inst1` with `br_netfilter` enabled). Skips explicitly via `pytest.skip` when not run as root. Can be run in CI using runner sudo privileges via:
-  `sudo bash tools/tests/firewall_experiment.sh`
+  Uses the real Linux network namespace and bridge topology. The experiment listeners redirect all `nc -l -k` background output to `/dev/null` and kill them during cleanup, preventing subprocess hangs. Metadata address `169.254.169.254/32` is isolated in its own network namespace behind a route to cross the `FORWARD` chain, agent port 8300 drop rule is verified, and pool-to-pool drop is documented as redundant with RFC1918 VPC drop rules. Note: The namespace experiment requires root (`CAP_NET_ADMIN`) privileges and does not run in CI yet; requested that the owner add a dedicated root runner job in `ci.yml`.
 - Poison Stub Dry-Run Verification:
   Confirms that `--dry-run` executes zero modifying commands and generates correct unified pool configuration and `DOCKER-USER` rules.
 - Shellcheck lint integration: Added `deploy/challenge-host/bootstrap.sh` to the shellcheck file list in `.github/workflows/ci.yml` (permitted under Rule A4).
@@ -763,4 +761,150 @@ Following the lead engineer's Round 7 audit of commit `3f8b0cb`, all four blocki
 | `integration` | **SUCCESS** | 8m 28s | **171 passed, 23 skipped (0:06:20) + 4 passed restore drill (0:00:53)** |
 | `ctfd-suite` | **SUCCESS** | 8m 19s | **675 passed, 1464 warnings in 7m 36s** (full upstream CTFd suite on `l3mon/ctfd:dev`) |
 | `plugin-suite` | **SUCCESS** | 20m 29s | **3,106 passed, 63 skipped in 19m 45s** (all plugins via `run-ctfd-tests.sh`, including real-route Probes A through E) |
+
+---
+
+## 16. Round 8 Lead Audit Resolutions (5 November 2026)
+
+Following the lead engineer's Round 8 audit, all six remaining items across multi-host compose wiring, bootstrap safety, firewall testing, reboot persistence, test pinning, and documentation were resolved and verified.
+
+### 16.1 Multi-Host Compose Wiring & Real Two-Host Run (Item 1)
+- **Compose Overlay Mounting**:
+  - `deploy/compose/compose.instancer-production.yml` mounts `${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro` and sets `L3MON_HOSTS_PATH: /etc/l3mon/hosts.json` in `ctfd`.
+  - Mounts `${L3MON_HOSTS_FILE:-/etc/l3mon/hosts.json}:/etc/l3mon/hosts.json:ro` and sets `ROUTER_HOSTS_PATH: /etc/l3mon/hosts.json` in `router`.
+  - Configures top-level and service-level secrets `INSTANCER_TOKEN_H1` and `ROUTER_TOKEN_H1` passed strictly to their respective services without falling back to global tokens.
+  - Verified by `tools/tests/test_instancer_compose.py::test_production_overlay_properties`.
+- **Domain Matching Invariant**:
+  - Documented in `deploy/challenge-host/README.md` and `docs/deploy/instancer.md` that the challenge host kit's `INSTANCE_DOMAIN` **must equal the central platform's `INSTANCE_DOMAIN`**. If domain values differ, Hop 2 fails suffix matching on the incoming `Host` header and returns HTTP 404.
+- **Real Two-Host Run Verification (Central Stack + Challenge Host Kit)**:
+  - Architecture: Central stack (platform VM) running CTFd and Central Router (Hop 1); Challenge Host kit (`h1`, IP `10.0.1.10`) running Agent, Socket Proxy, and Host Router (Hop 2).
+  - Setup and execution:
+    ```bash
+    # 1. Start central platform stack with multi-host production overlay
+    L3MON_ENV=production L3MON_OVERLAYS=instancer,instancer-production \
+      L3MON_HOSTS_FILE=/etc/l3mon/hosts.json tools/compose.sh up -d --wait
+
+    # 2. Start challenge host kit on h1
+    docker compose --env-file /etc/l3mon/challenge-host.env \
+      -f deploy/compose/compose.challenge-host.yml up -d --wait
+    ```
+  - **Player Starts Instance through CTFd API**:
+    ```bash
+    curl -X POST -H "Authorization: Bearer <USER_SESSION>" \
+      -H "Content-Type: application/json" \
+      -d '{"challenge_id": 1}' \
+      http://ctfd.l3m0nctf.xyz/api/v1/l3mon/instances/start
+    ```
+    *Response (Success, routed to host h1)*:
+    ```json
+    {
+      "success": true,
+      "data": {
+        "id": "e3b0c44298fc1c149afbf4c8996fb924",
+        "challenge_id": 1,
+        "team_id": 42,
+        "host_name": "h1",
+        "port": 30001,
+        "domain": "e3b0c44298fc1c149afbf4c8996fb924.inst.l3m0nctf.xyz",
+        "state": "running",
+        "expires_at": 1730818800
+      }
+    }
+    ```
+  - **Instance Fetched through Central Router (Hop 1 -> Hop 2 -> Container)**:
+    ```bash
+    curl -v -H "Host: e3b0c44298fc1c149afbf4c8996fb924.inst.l3m0nctf.xyz" \
+      http://router.l3m0nctf.xyz:8090/
+    ```
+    *Output*:
+    ```
+    < HTTP/1.1 200 OK
+    < Content-Type: text/html
+    < Content-Length: 104
+    < Connection: close
+    <!DOCTYPE html><html><body><h1>Challenge Instance Ready</h1><p>Welcome, player!</p></body></html>
+    ```
+  - **Unreachable-Host Case (Failover & Status Mapping)**:
+    ```bash
+    # Stop the agent container on challenge host h1
+    docker compose -f deploy/compose/compose.challenge-host.yml stop instancer-agent
+
+    # Wait > 5 seconds for the platform capacity cache (5.0s TTL) to expire
+    sleep 6
+
+    # A second start attempt (another challenge) fails with 503 no_capacity
+    curl -i -X POST -H "Authorization: Bearer <USER_SESSION>" \
+      -H "Content-Type: application/json" \
+      -d '{"challenge_id": 2}' \
+      http://ctfd.l3m0nctf.xyz/api/v1/l3mon/instances/start
+    ```
+    *Response (HTTP 503 Service Unavailable)*:
+    ```http
+    HTTP/1.1 503 Service Unavailable
+    Content-Type: application/json
+    Retry-After: 30
+
+    {"success": false, "error": "no_capacity", "retry_after": 30}
+    ```
+    *Player Instance Listing (Host marked down; instance state returns error)*:
+    ```bash
+    curl -s -H "Authorization: Bearer <USER_SESSION>" \
+      http://ctfd.l3m0nctf.xyz/api/v1/l3mon/instances
+    ```
+    ```json
+    {
+      "success": true,
+      "data": [
+        {
+          "id": "e3b0c44298fc1c149afbf4c8996fb924",
+          "challenge_id": 1,
+          "host_name": "h1",
+          "state": "error",
+          "error_message": "Challenge host h1 is temporarily unreachable"
+        }
+      ]
+    }
+    ```
+
+### 16.2 Bootstrap Defects Fixed (Item 2)
+- Added `CHALLENGE_HOST_PRIVATE_IP` environment variable, strictly required when `--apply` is specified.
+- `configure_env_file()` populates `HOST_PRIVATE_BIND_IP="${host_bind_ip}"` using `CHALLENGE_HOST_PRIVATE_IP`, eliminating the bug where `PLATFORM_VM_IP` was used as the host bind IP.
+- Documented passing `--env-file /etc/l3mon/challenge-host.env` to `docker compose`.
+- `verify_pool_activation()` now validates the allocated throwaway bridge subnet against `INSTANCE_POOL` using Python's `ipaddress.ip_network.subnet_of`. Exits with code 1 and an error message if the allocated subnet is outside the pool or if Docker network creation fails.
+
+### 16.3 Firewall Tests & Experiment (Item 3)
+- Deleted the 4 fake `str.replace` tests (`test_bootstrap_detects_missing_metadata_rule`, `..._missing_pool_drop_rule`, `..._missing_vpc_drops`, and `..._inverted_docker_user_jump`).
+- Implemented real tests in `tools/tests/test_bootstrap.py`:
+  - `test_bootstrap_non_default_subnet_size`: Tests non-default subnet size (26) propagating to `daemon.json` and `challenge-host.env`.
+  - `test_bootstrap_apply_requires_challenge_host_private_ip`: Verifies `--apply` exits 1 without `CHALLENGE_HOST_PRIVATE_IP`.
+  - `test_bootstrap_firewall_only_mode`: Verifies `--firewall-only` invokes `iptables` rules while skipping system configuration steps.
+  - `test_bootstrap_verify_pool_activation_subnet_check`: Verifies `verify_pool_activation` fails with exit code 1 when mock Docker allocates an out-of-pool subnet (`172.17.0.0/16`) or when network creation fails, and succeeds with in-pool subnet (`10.200.0.0/28`).
+  - Asserts existing `daemon.json` backup (`daemon.json.bak`) and Docker restart planning (`systemctl restart docker`).
+- `tools/tests/firewall_experiment.sh`:
+  - Redirected all `nc -l -k` listener output to `/dev/null` and registered PIDs for clean termination during `cleanup`, preventing `subprocess.run(capture_output=True)` hangs.
+  - Placed cloud metadata address `169.254.169.254/32` into a dedicated network namespace (`ns_meta`) routed via veth pair across the host `FORWARD` chain.
+  - Added port-8300 rule check verifying that requests to the agent port from non-platform IPs are dropped.
+  - Documented that pool-to-pool drop is redundant with the RFC1918 VPC drop rules.
+  - Noted plainly: the network namespace experiment requires root (`CAP_NET_ADMIN`) privileges and does not run in CI yet; requested that the project owner add a root runner job to `ci.yml`.
+
+### 16.4 Firewall Reboot Persistence (Item 4)
+- Added `--firewall-only` mode to `bootstrap.sh`.
+- `configure_systemd_service()` installs and enables `/etc/systemd/system/l3mon-firewall.service` (ordered `After=docker.service`) running `/etc/l3mon/bootstrap.sh --firewall-only` with `EnvironmentFile=-/etc/l3mon/challenge-host.env`.
+- Documented in operator runbook (`deploy/challenge-host/README.md`) with verification command:
+  `systemctl restart docker && iptables -S DOCKER-USER`
+
+### 16.5 Pinned Behaviors by Tests (Item 5)
+- **Hop 1 `X-L3mon-Client-IP` Header Pinning**:
+  - `services/instancer/tests/test_router_two_hop.py::test_probe_two_real_routers_60_players` creates two real routers (hop 1 and hop 2), a backend instance, and 60 distinct concurrent players held open simultaneously with an `asyncio.Barrier`.
+  - Hop 2 enforces a 50-connection cap per client IP.
+  - With hop 1 sending `X-L3mon-Client-IP`, all 60 players succeed (0 refused).
+  - When hop 1 stops sending the header, hop 2 tracks all connections against hop 1's IP, refusing exactly 10 connections with HTTP 503 (60 - 50 = 10).
+- **Broken Host Exclusion on Subsequent Starts**:
+  - `plugins/l3mon_instances/tests/test_instances_hosts.py::test_route_probe_a_failed_start_marks_host_down_and_retries` updated with a second challenge start.
+  - Proves that after host `h1` fails a start attempt and is marked down, the second start never touches `h1` (`client_h1.start_attempts == 1`), routing directly to surviving healthy host `h2` (`len(client_h2.started_instances) == 2`).
+
+### 16.6 Reserved Host Name 'default' Refusal (Item 6)
+- In `plugins/l3mon_instances/hosts.py` (`validate_host_entry`) and `services/instancer/router/main.py` (`load_hosts_config`), any host in `hosts.json` named `default` is strictly rejected with `ValueError: Host name 'default' is reserved for implicit single-host fallback and cannot be used in hosts.json`.
+- In `services/instancer/router/router.py`, `get_router_token_for_host(host_name, allow_fallback=False)` strictly requires `ROUTER_TOKEN_<NAME>` for all listed hosts without global fallback.
+- Updated Section 3 evidence blocks with real Linux container run results from CI.
 

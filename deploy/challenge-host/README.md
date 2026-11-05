@@ -68,8 +68,37 @@ On the target Linux VM (as root):
 # 1. Preview changes (safe, dry-run mode)
 ./deploy/challenge-host/bootstrap.sh --dry-run
 
-# 2. Apply configuration
-INSTANCER_INSTANCE_POOL="10.200.0.0/16" PLATFORM_VM_IP="10.0.0.1" ./deploy/challenge-host/bootstrap.sh --apply
+# 2. Apply configuration (CHALLENGE_HOST_PRIVATE_IP is strictly required with --apply)
+INSTANCER_INSTANCE_POOL="10.200.0.0/16" \
+PLATFORM_VM_IP="10.0.0.1" \
+CHALLENGE_HOST_PRIVATE_IP="10.0.1.10" \
+./deploy/challenge-host/bootstrap.sh --apply
+```
+
+> [!NOTE]
+> `bootstrap.sh --apply` performs the following actions:
+> 1. Configures kernel sysctls (`vm.max_map_count`, `net.ipv4.ip_forward = 1`).
+> 2. Backs up `/etc/docker/daemon.json` to `daemon.json.bak` and sets `default-address-pools` with unified `INSTANCE_POOL` and subnet size.
+> 3. Restarts Docker daemon to activate the address pools and verifies throwaway network allocation within `INSTANCE_POOL`.
+> 4. Generates `/etc/l3mon/challenge-host.env` populated with `HOST_PRIVATE_BIND_IP`, `PLATFORM_VM_IP`, and `INSTANCER_TRUSTED_FORWARDERS`.
+> 5. Configures `L3MON-FIREWALL` isolation rules inserted at position 1 of `DOCKER-USER`.
+> 6. Installs and enables `/etc/systemd/system/l3mon-firewall.service` (ordered `After=docker.service`) executing `/etc/l3mon/bootstrap.sh --firewall-only` for reboot persistence.
+
+#### Firewall Reboot Persistence & Verification
+Because Docker recreates an empty `DOCKER-USER` chain on service restarts and system boots, the `l3mon-firewall.service` systemd unit guarantees that isolation rules are re-applied immediately after Docker starts.
+Verify that the persistence unit is active and re-applies rules after Docker restarts:
+```bash
+# Restart Docker daemon
+systemctl restart docker
+
+# Verify L3MON-FIREWALL jump remains at position 1 of DOCKER-USER
+iptables -S DOCKER-USER
+# Output must show:
+# -A DOCKER-USER -j L3MON-FIREWALL
+# -A DOCKER-USER -j RETURN
+
+# Inspect L3MON-FIREWALL rules:
+iptables -S L3MON-FIREWALL
 ```
 
 ### Step 2: Configure Deployment Secrets
@@ -86,18 +115,18 @@ chmod 0600 /etc/l3mon/secrets/*
 ```
 
 ### Step 3: Start Challenge Host Services
-Define `HOST_PRIVATE_BIND_IP` with the host's private cloud VPC IP address (e.g. `10.0.1.10`) so the platform VM can reach the agent (port 8300) and router (port 8090). Do not leave this at default `127.0.0.1` unless testing locally on the same host.
 
-Ensure `INSTANCER_TRUSTED_FORWARDERS` is configured in `/etc/l3mon/challenge-host.env` (or exported in environment) with the platform VM's private IP address (e.g. `10.0.0.1` or `10.0.1.1`). `bootstrap.sh` sets this automatically from `PLATFORM_VM_IP`. This allows the Hop 2 host router to trust `X-L3mon-Client-IP` forwarded by Hop 1, preserving per-player rate limits and connection tracking.
+> [!IMPORTANT]
+> **Domain Matching Invariant:**
+> The challenge host kit's `INSTANCE_DOMAIN` **must equal the central platform's `INSTANCE_DOMAIN`** (e.g. `inst.l3m0nctf.xyz`). If the domain values differ between Hop 1 and Hop 2, Hop 2 inspects the incoming `Host: <instance_id>.<central_domain>` header, fails suffix matching against its local domain, and answers HTTP 404 Not Found.
 
-Point secret file environment variables to the token locations:
+Point secret file environment variables to the token locations, ensure `INSTANCE_DOMAIN` matches central, and pass the generated environment file:
 ```bash
-export HOST_PRIVATE_BIND_IP="10.0.1.10"
-export INSTANCER_TRUSTED_FORWARDERS="10.0.0.1"
+export INSTANCE_DOMAIN="inst.l3m0nctf.xyz"
 export INSTANCER_TOKEN_FILE_HOST="/etc/l3mon/secrets/INSTANCER_TOKEN"
 export ROUTER_TOKEN_FILE_HOST="/etc/l3mon/secrets/ROUTER_TOKEN"
 
-docker compose -f deploy/compose/compose.challenge-host.yml up -d
+docker compose --env-file /etc/l3mon/challenge-host.env -f deploy/compose/compose.challenge-host.yml up -d
 ```
 
 Verify services are running and healthy:
