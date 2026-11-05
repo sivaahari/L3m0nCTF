@@ -69,6 +69,7 @@ class MockAgentClient:
         self.slots_used = slots_used
         self.should_fail = should_fail
         self.capacity_probe_count = 0
+        self.start_attempts = 0
         self.killed_count = 0
         self.stopped_instances: list[str] = []
         self.started_instances: list[dict] = []
@@ -91,6 +92,7 @@ class MockAgentClient:
         }
 
     def start_instance(self, team_id: int, challenge_id: int, slug: str, flag: str, ttl_seconds: int | None = None) -> dict:
+        self.start_attempts += 1
         if self.should_fail:
             raise InstancerClientError(500, "docker_broken", f"Host {self.host_name} Docker daemon broken")
         inst_id = f"inst_{self.host_name}_{self.next_id}"
@@ -200,6 +202,9 @@ def test_load_hosts_config_validation_errors():
 
     with pytest.raises(ValueError, match="Invalid host 'name'"):
         validate_host_entry({"name": "bad name!", "url": "http://10.0.0.1:8300", "router_url": "http://10.0.0.1:8090", "host": "h1.local"})
+
+    with pytest.raises(ValueError, match="Host name 'default' is reserved"):
+        validate_host_entry({"name": "default", "url": "http://10.0.0.1:8300", "router_url": "http://10.0.0.1:8090", "host": "h1.local"})
 
     with pytest.raises(ValueError, match="invalid 'url'"):
         validate_host_entry({"name": "h1", "url": "ftp://10.0.0.1:8300", "router_url": "http://10.0.0.1:8090", "host": "h1.local"})
@@ -399,20 +404,29 @@ def test_multihost_failover_and_rebalance_at_scale():
 # 3. Real Route-Level Probes A through E (Calling actual Flask routes)
 # ---------------------------------------------------------------------------
 
-def _setup_route_world(app):
-    """Set up contest, live challenge, and player team in CTFd database."""
+def _setup_route_world(app, num_challenges: int = 1):
+    """Set up contest, live challenge(s), and player team in CTFd database."""
     set_config("start", 1000)
     set_config("end", 5000000000)
     admin = login_as_user(app, "admin")
-    chal = gen_challenge(db, name="Live Chal Hosts", state="visible")
-    c_id = chal.id
+    c_ids = []
+    programmes = []
+    for i in range(num_challenges):
+        chal = gen_challenge(db, name=f"Live Chal Hosts {i+1}", state="visible")
+        c_ids.append(chal.id)
+        programmes.append({
+            "challenge_id": chal.id,
+            "channel": "web",
+            "cell": i,
+            "number": 101 + i,
+            "slug": f"chal-hosts-{i+1}",
+            "delivery": "live_single",
+        })
     db.session.commit()
 
     admin.put("/api/v1/l3mon/admin/programmes", json={
         "channels": [{"slug": "web", "name": "Web Channel", "position": 1}],
-        "programmes": [
-            {"challenge_id": c_id, "channel": "web", "cell": 0, "number": 101, "slug": "chal-hosts", "delivery": "live_single"},
-        ],
+        "programmes": programmes,
     })
     release = [{"kind": "channel", "id": Channel.query.one().id, "mode": "release"}] + [
         {"kind": "programme", "id": p.id, "mode": "release"} for p in Programme.query.all()
@@ -426,14 +440,19 @@ def _setup_route_world(app):
         nonce = s.get("nonce")
     alice.post("/teams/new", data={"name": "team_hosts", "password": "password", "nonce": nonce})
 
-    return c_id, alice, admin
+    if num_challenges == 1:
+        return c_ids[0], alice, admin
+    return c_ids, alice, admin
 
 
 def test_route_probe_a_failed_start_marks_host_down_and_retries():
-    """Probe A (Real Route): Failed start on h1 marks h1 down for 30s and retries on h2."""
+    """Probe A (Real Route): Failed start on h1 marks h1 down for 30s and retries on h2.
+
+    A second subsequent start (another challenge) must not touch the broken host.
+    """
     app = create_ctfd(user_mode="teams", enable_plugins=True)
     with app.app_context():
-        c_id, alice, _ = _setup_route_world(app)
+        (c_id1, c_id2), alice, _ = _setup_route_world(app, num_challenges=2)
 
         client_h1 = MockAgentClient("h1", slots_total=50, slots_used=5, should_fail=True)  # fails start
         client_h2 = MockAgentClient("h2", slots_total=50, slots_used=20, should_fail=False) # healthy
@@ -449,21 +468,25 @@ def test_route_probe_a_failed_start_marks_host_down_and_retries():
 
         try:
             # Player POSTs /api/v1/l3mon/instances: attempt 0 fails on h1, marks down, retries on h2!
-            r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id})
+            r = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id1})
             assert r.status_code == 201, f"Expected 201, got {r.status_code}: {r.get_data(as_text=True)}"
             data = r.get_json()["data"]
             assert "inst_h2_" in data["url"]
             assert tracker.is_host_down("h1") is True
             assert tracker.is_host_down("h2") is False
 
-            row = L3monInstance.query.filter_by(challenge_id=c_id).first()
+            row = L3monInstance.query.filter_by(challenge_id=c_id1).first()
             assert row is not None
             assert row.host_name == "h2"
             assert row.instance_id.startswith("inst_h2_")
 
-            # Subsequent start immediately selects h2 (h1 remains down)
-            chosen = tracker.select_host_for_start()
-            assert chosen["name"] == "h2"
+            # Second start (another challenge) via route: MUST NOT touch the broken host h1!
+            r2 = alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id2})
+            assert r2.status_code == 201, f"Expected 201 on second start, got {r2.status_code}: {r2.get_data(as_text=True)}"
+            data2 = r2.get_json()["data"]
+            assert "inst_h2_" in data2["url"]
+            assert client_h1.start_attempts == 1, f"Broken host was touched again: {client_h1.start_attempts} attempts"
+            assert len(client_h2.started_instances) == 2
         finally:
             set_host_tracker(None)
             destroy_ctfd(app)

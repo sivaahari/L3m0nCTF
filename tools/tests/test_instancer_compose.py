@@ -110,6 +110,24 @@ def test_production_overlay_properties():
     router_pool = router.get("environment", {}).get("INSTANCER_INSTANCE_POOL")
     assert inst_pool is not None and inst_pool == router_pool
 
+    # 7. Multi-host switchable configuration: hosts.json mounted into ctfd and router
+    ctfd = services.get("ctfd", {})
+    ctfd_volumes = ctfd.get("volumes", [])
+    ctfd_vol_sources = [v.get("source", "") for v in ctfd_volumes]
+    assert any("/etc/l3mon/hosts.json" in src for src in ctfd_vol_sources), f"Expected hosts.json mount in ctfd, got {ctfd_vol_sources}"
+    assert ctfd.get("environment", {}).get("L3MON_HOSTS_PATH") == "/etc/l3mon/hosts.json"
+
+    router_volumes = router.get("volumes", [])
+    router_vol_sources = [v.get("source", "") for v in router_volumes]
+    assert any("/etc/l3mon/hosts.json" in src for src in router_vol_sources), f"Expected hosts.json mount in router, got {router_vol_sources}"
+    assert router.get("environment", {}).get("ROUTER_HOSTS_PATH") == "/etc/l3mon/hosts.json"
+
+    # 8. Per-host token secrets (INSTANCER_TOKEN_H1 for ctfd, ROUTER_TOKEN_H1 for router)
+    ctfd_secrets = [s.get("source") if isinstance(s, dict) else s for s in ctfd.get("secrets", [])]
+    router_secrets = [s.get("source") if isinstance(s, dict) else s for s in router.get("secrets", [])]
+    assert "INSTANCER_TOKEN_H1" in ctfd_secrets, f"Expected INSTANCER_TOKEN_H1 secret in ctfd, got {ctfd_secrets}"
+    assert "ROUTER_TOKEN_H1" in router_secrets, f"Expected ROUTER_TOKEN_H1 secret in router, got {router_secrets}"
+
 
 
 def test_production_overlay_fails_without_instance_domain():

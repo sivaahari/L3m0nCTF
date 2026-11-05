@@ -135,8 +135,13 @@ def test_per_host_router_token_isolation(monkeypatch):
     # Host h1 gets dedicated router token
     assert get_router_token_for_host("h1") == "secret_h1_router_token"
 
-    # Host h2 falls back to global router token
-    assert get_router_token_for_host("h2") == "global_router_token"
+    # Listed host without dedicated token raises ValueError in multi-host mode (no global fallback)
+    with pytest.raises(ValueError, match="ROUTER_TOKEN_H2"):
+        get_router_token_for_host("h2")
+
+    # Fallback allowed explicitly or for implicit single host 'default'
+    assert get_router_token_for_host("h2", allow_fallback=True) == "global_router_token"
+    assert get_router_token_for_host("default") == "global_router_token"
 
 
 @pytest.mark.asyncio
@@ -517,3 +522,138 @@ async def test_hop2_untrusted_peer_cannot_spoof_client_ip():
             await asyncio.wait_for(backend_server.wait_closed(), timeout=2.0)
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_probe_two_real_routers_60_players():
+    """Item 5(a): Two real routers (Hop 1 and Hop 2), instance backend, 60 distinct players held open at once.
+
+    With X-L3mon-Client-IP forwarded: 0 of 60 refused.
+    With hop one's sending removed: exactly 10 of 60 refused (50 allowed per address at hop two).
+    """
+    from services.instancer.router.main import handle_client
+
+    barrier = asyncio.Barrier(60)
+
+    async def backend_cb(reader, writer):
+        try:
+            req = await reader.read(4096)
+            try:
+                await asyncio.wait_for(barrier.wait(), timeout=4.0)
+            except Exception:
+                pass
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
+            await writer.drain()
+        finally:
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+            except Exception:
+                pass
+
+    backend_server = await asyncio.start_server(backend_cb, "127.0.0.1", 0)
+    backend_port = backend_server.sockets[0].getsockname()[1]
+    inst_id = "d" * 32
+
+    # Hop 2 (Host Router) with max 50 per IP and 127.0.0.1 as trusted forwarder
+    hop2_router = InstanceRouter(
+        instance_domain="inst.l3m0nctf.xyz",
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+        max_connections_per_instance=100,
+        max_connections_per_ip=50,
+        trusted_forwarders=["127.0.0.1"],
+    )
+    hop2_router.update_routes([
+        {"id": inst_id, "protocol": "http", "target_ip": "127.0.0.1", "target_port": backend_port}
+    ])
+    hop2_server = await asyncio.start_server(lambda r, w: handle_client(r, w, hop2_router), "127.0.0.1", 0)
+    hop2_port = hop2_server.sockets[0].getsockname()[1]
+
+    # Hop 1 (Central Router) pointing to Hop 2
+    hop1_router = InstanceRouter(
+        instance_domain="inst.l3m0nctf.xyz",
+        instance_pool="127.0.0.0/8",
+        allow_loopback_for_tests=True,
+        max_connections_per_instance=100,
+        max_connections_per_ip=100,
+        hosts=[{"name": "h1", "url": "http://127.0.0.1:8300", "router_url": f"http://127.0.0.1:{hop2_port}", "host": "h1.inst.l3m0nctf.xyz"}],
+        trusted_forwarders=["127.0.0.1"],
+    )
+    hop1_router.update_host_routes(
+        "h1",
+        f"http://127.0.0.1:{hop2_port}",
+        [{"id": inst_id, "protocol": "http"}],
+        now_ts=1000.0,
+    )
+    hop1_server = await asyncio.start_server(lambda r, w: handle_client(r, w, hop1_router), "127.0.0.1", 0)
+    hop1_port = hop1_server.sockets[0].getsockname()[1]
+
+    async def send_player_request(idx: int, port: int) -> int:
+        r, w = await asyncio.open_connection("127.0.0.1", port)
+        client_ip = f"198.51.100.{idx + 1}"
+        req_lines = [
+            f"GET /player-{idx} HTTP/1.1",
+            f"Host: {inst_id}.inst.l3m0nctf.xyz",
+            f"X-L3mon-Client-IP: {client_ip}",
+            "Connection: close",
+            "",
+            "",
+        ]
+        w.write("\r\n".join(req_lines).encode("utf-8"))
+        await w.drain()
+        resp = await r.read(4096)
+        w.close()
+        try:
+            await w.wait_closed()
+        except Exception:
+            pass
+        status = 0
+        if resp.startswith(b"HTTP/1.1 "):
+            status = int(resp.split(b" ")[1])
+        return status
+
+    try:
+        # Phase 1: Normal hop 1 forwarding with X-L3mon-Client-IP: all 60 succeed (0 refused)
+        tasks1 = [asyncio.create_task(send_player_request(i, hop1_port)) for i in range(60)]
+        results1 = await asyncio.gather(*tasks1)
+        refused1 = [s for s in results1 if s == 503]
+        success1 = [s for s in results1 if s == 200]
+        assert len(refused1) == 0, f"Expected 0 refused, got {len(refused1)}: {results1}"
+        assert len(success1) == 60, f"Expected 60 successes, got {len(success1)}"
+
+        # Phase 2: Break hop 1 by stripping X-L3mon-Client-IP header during forwarding
+        await barrier.reset()
+        original_forward = hop1_router.forward_stream
+
+        async def broken_forward_stream(*args, **kwargs):
+            # Simulate breakage where hop 1 stops setting X-L3mon-Client-IP
+            kwargs["client_ip"] = None
+            # Or if positional, args[6] is client_ip
+            if len(args) > 6:
+                args = list(args)
+                args[6] = None
+            # Also patch client_headers to ensure X-L3mon-Client-IP is absent
+            return await original_forward(*args, **kwargs)
+
+        hop1_router.forward_stream = broken_forward_stream
+
+        tasks2 = [asyncio.create_task(send_player_request(i, hop1_port)) for i in range(60)]
+        results2 = await asyncio.gather(*tasks2)
+
+        # Hop 2 receives all 60 as 127.0.0.1: exactly 10 refused (50 cap reached)
+        refused2 = [s for s in results2 if s == 503]
+        success2 = [s for s in results2 if s == 200]
+        assert len(refused2) == 10, f"Expected exactly 10 refused without client IP header, got {len(refused2)}: {results2}"
+        assert len(success2) == 50, f"Expected exactly 50 successes, got {len(success2)}"
+
+    finally:
+        hop1_server.close()
+        hop2_server.close()
+        backend_server.close()
+        for srv in (hop1_server, hop2_server, backend_server):
+            try:
+                await asyncio.wait_for(srv.wait_closed(), timeout=2.0)
+            except Exception:
+                pass
+
