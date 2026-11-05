@@ -63,8 +63,9 @@ def set_default_test_host_tokens(monkeypatch):
 
 
 class MockAgentClient:
-    def __init__(self, host_name: str, slots_total: int = 50, slots_used: int = 0, should_fail: bool = False):
+    def __init__(self, host_name: str, slots_total: int = 50, slots_used: int = 0, should_fail: bool = False, fail_start: bool = False):
         self.host_name = host_name
+        self.fail_start = fail_start  # capacity answers, every START fails (a host whose Docker is broken)
         self.slots_total = slots_total
         self.slots_used = slots_used
         self.should_fail = should_fail
@@ -93,7 +94,7 @@ class MockAgentClient:
 
     def start_instance(self, team_id: int, challenge_id: int, slug: str, flag: str, ttl_seconds: int | None = None) -> dict:
         self.start_attempts += 1
-        if self.should_fail:
+        if self.should_fail or self.fail_start:
             raise InstancerClientError(500, "docker_broken", f"Host {self.host_name} Docker daemon broken")
         inst_id = f"inst_{self.host_name}_{self.next_id}"
         self.next_id += 1
@@ -454,7 +455,7 @@ def test_route_probe_a_failed_start_marks_host_down_and_retries():
     with app.app_context():
         (c_id1, c_id2), alice, _ = _setup_route_world(app, num_challenges=2)
 
-        client_h1 = MockAgentClient("h1", slots_total=50, slots_used=5, should_fail=True)  # fails start
+        client_h1 = MockAgentClient("h1", slots_total=50, slots_used=5, fail_start=True)  # most free slots, capacity answers, every start fails
         client_h2 = MockAgentClient("h2", slots_total=50, slots_used=20, should_fail=False) # healthy
         clients = {"h1": client_h1, "h2": client_h2}
         hosts = [
@@ -703,6 +704,168 @@ def test_route_probe_e_racing_starts_same_host_does_not_stop_winner():
             active = L3monInstance.query.filter_by(instance_id="inst_h1_winner").first()
             assert active is not None
             assert active.state == "running"
+        finally:
+            set_host_tracker(None)
+            destroy_ctfd(app)
+
+
+# ---------------------------------------------------------------------------
+# 8. Lead engineer's tests (5 November 2026): the host-down mark is shared between workers, tokens from a folder, a missing token
+# ---------------------------------------------------------------------------
+
+class _SharedStore:
+    """What CTFd's cache (Redis in production) is to the tracker: one place that every worker process reads and writes."""
+
+    def __init__(self):
+        self.d: dict[str, float] = {}
+
+    def get(self, name):
+        return self.d.get(name)
+
+    def set(self, name, until, ttl):
+        self.d[name] = until
+
+    def clear(self, name):
+        self.d.pop(name, None)
+
+
+class _NoStore:
+    """A tracker with no shared mark (the old behaviour): used to show that the shared mark is what the tests below depend on."""
+
+    def get(self, name):
+        return None
+
+    def set(self, name, until, ttl):
+        pass
+
+    def clear(self, name):
+        pass
+
+
+_ONE_HOST = [{"name": "h1", "url": "http://10.0.1.10:8300", "router_url": "http://10.0.1.10:8090", "host": "h1.xyz", "weight": 1.0, "max_slots": 50}]
+
+
+def test_a_host_marked_down_by_one_worker_is_down_for_the_other_workers():
+    store = _SharedStore()
+    t0 = 1000.0
+    worker1 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, time_provider=lambda: t0)
+    worker2 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, time_provider=lambda: t0)
+    assert worker2.is_host_down("h1") is False
+    worker1.mark_host_down("h1")
+    assert worker2.is_host_down("h1") is True, "worker 2 never failed a probe itself, but worker 1 did"
+    assert worker2.is_host_down("h1", now_ts=t0 + 31) is False, "the mark lasts 30 seconds"
+    worker1.mark_host_up("h1")
+    worker3 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, time_provider=lambda: t0)
+    assert worker3.is_host_down("h1") is False, "a host that answers again is up for everybody"
+
+
+def test_check_host_finds_a_dead_host_without_any_start_and_tells_every_worker():
+    store = _SharedStore()
+    dead = MockAgentClient("h1", should_fail=True)
+    worker1 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, cache_ttl=0.0, time_provider=lambda: 1000.0)
+    worker1.set_client_factory(lambda h, tok: dead)
+    worker2 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, time_provider=lambda: 1000.0)
+    worker2.set_client_factory(lambda h, tok: MockAgentClient("h1"))  # worker 2 would find it healthy if it asked
+    assert worker1.check_host("h1") is False
+    assert dead.capacity_probe_count == 1
+    assert worker2.check_host("h1") is False, "worker 2 reads the shared mark and does not even ask"
+
+
+def test_a_healthy_host_passes_check_host_through_the_capacity_cache():
+    client = MockAgentClient("h1")
+    tracker = HostCapacityTracker(hosts=_ONE_HOST, down_store=_SharedStore(), time_provider=lambda: 1000.0)
+    tracker.set_client_factory(lambda h, tok: client)
+    assert all(tracker.check_host("h1") for _ in range(10))
+    assert client.capacity_probe_count == 1, "ten list reads inside 5 seconds cost one probe"
+
+
+def test_player_list_says_error_for_a_dead_host_whichever_worker_answers():
+    """The list used to say 'running' about 40-70% of the time: the mark lived in one worker's memory. Two trackers play two workers."""
+    app = create_ctfd(user_mode="teams", enable_plugins=True)
+    with app.app_context():
+        c_id, alice, _ = _setup_route_world(app)
+        store = _SharedStore()
+        agent = MockAgentClient("h1", slots_total=50, slots_used=5)
+        worker1 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, cache_ttl=0.0)  # probes at every list
+        worker1.set_client_factory(lambda h, tok: agent)
+        worker2 = HostCapacityTracker(hosts=_ONE_HOST, down_store=store, cache_ttl=3600.0)  # believes its warm, healthy cache
+        worker2.set_client_factory(lambda h, tok: MockAgentClient("h1", slots_total=50, slots_used=5))
+        try:
+            set_host_tracker(worker2)
+            worker2.get_capacity("h1")  # warm and healthy
+            set_host_tracker(worker1)
+            assert alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id}).status_code == 201
+            assert alice.get("/api/v1/l3mon/instances").get_json()["data"]["instances"][0]["state"] == "running"
+
+            agent.should_fail = True  # the host dies; nobody starts anything
+            states = []
+            for worker in (worker1, worker2, worker1, worker2, worker2, worker1):
+                set_host_tracker(worker)
+                states.append(alice.get("/api/v1/l3mon/instances").get_json()["data"]["instances"][0]["state"])
+            assert states == ["error"] * 6, states
+        finally:
+            set_host_tracker(None)
+            destroy_ctfd(app)
+
+
+def test_without_the_shared_mark_the_second_worker_would_still_say_running():
+    """Control for the test above: the same steps with workers that share nothing show the old behaviour, so the test above proves the mark."""
+    app = create_ctfd(user_mode="teams", enable_plugins=True)
+    with app.app_context():
+        c_id, alice, _ = _setup_route_world(app)
+        agent = MockAgentClient("h1", slots_total=50, slots_used=5)
+        worker1 = HostCapacityTracker(hosts=_ONE_HOST, down_store=_NoStore(), cache_ttl=0.0)
+        worker1.set_client_factory(lambda h, tok: agent)
+        worker2 = HostCapacityTracker(hosts=_ONE_HOST, down_store=_NoStore(), cache_ttl=3600.0)
+        worker2.set_client_factory(lambda h, tok: MockAgentClient("h1", slots_total=50, slots_used=5))
+        try:
+            set_host_tracker(worker2)
+            worker2.get_capacity("h1")
+            set_host_tracker(worker1)
+            assert alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id}).status_code == 201
+            agent.should_fail = True
+            set_host_tracker(worker1)
+            assert alice.get("/api/v1/l3mon/instances").get_json()["data"]["instances"][0]["state"] == "error"
+            set_host_tracker(worker2)
+            assert alice.get("/api/v1/l3mon/instances").get_json()["data"]["instances"][0]["state"] == "running"
+        finally:
+            set_host_tracker(None)
+            destroy_ctfd(app)
+
+
+def test_tokens_come_from_the_host_secrets_folder(tmp_path, monkeypatch):
+    from CTFd.plugins.l3mon_instances.hosts import host_token_problems
+
+    monkeypatch.setenv("L3MON_HOST_SECRETS_DIR", str(tmp_path))
+    for h in ("H1", "H2", "H3", "H4"):
+        monkeypatch.delenv(f"INSTANCER_TOKEN_{h}", raising=False)
+    (tmp_path / "INSTANCER_TOKEN_H2").write_text("folder-token-h2\n", encoding="utf-8")
+    assert get_token_for_host("h2") == "folder-token-h2"
+    with pytest.raises(ValueError, match="INSTANCER_TOKEN_H3"):
+        get_token_for_host("h3")
+    hosts = [{"name": "h2"}, {"name": "h3"}]
+    problems = host_token_problems(hosts)
+    assert len(problems) == 1 and "INSTANCER_TOKEN_H3" in problems[0]
+    # any number of hosts: a new host is a new file, not an edit of a compose file
+    (tmp_path / "INSTANCER_TOKEN_H3").write_text("folder-token-h3", encoding="utf-8")
+    assert host_token_problems(hosts) == []
+
+
+def test_a_host_that_lost_its_token_gives_a_clear_503_on_renew_and_stop_not_a_crash(monkeypatch):
+    app = create_ctfd(user_mode="teams", enable_plugins=True)
+    with app.app_context():
+        c_id, alice, _ = _setup_route_world(app)
+        agent = MockAgentClient("h1", slots_total=50, slots_used=5)
+        tracker = HostCapacityTracker(hosts=_ONE_HOST, down_store=_SharedStore())
+        tracker.set_client_factory(lambda h, tok: agent)
+        set_host_tracker(tracker)
+        try:
+            assert alice.post("/api/v1/l3mon/instances", json={"challenge_id": c_id}).status_code == 201
+            monkeypatch.delenv("INSTANCER_TOKEN_H1")  # the secret file of this host disappears
+            r = alice.post(f"/api/v1/l3mon/instances/{c_id}/renew", json={})
+            assert r.status_code == 503, r.get_data(as_text=True)
+            assert r.get_json()["error"] == "busy"
+            assert alice.delete(f"/api/v1/l3mon/instances/{c_id}", json={}).status_code == 200
         finally:
             set_host_tracker(None)
             destroy_ctfd(app)

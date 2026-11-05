@@ -373,6 +373,19 @@ async def main():
             _log.warning("Failed to load hosts config from %s: %s", hosts_path, e)
             raise
 
+    if hosts:
+        from services.instancer.router.router import get_router_token_for_host
+
+        missing = []
+        for h in hosts:
+            try:
+                get_router_token_for_host(str(h.get("name", "")), allow_fallback=False)
+            except ValueError as e:
+                missing.append(str(e))
+        if missing:
+            # fail loud at start, instead of a router that runs but never learns the routes of that host
+            raise ValueError("Listed host(s) without a router token: " + "; ".join(missing))
+
     router = InstanceRouter(
         instance_domain=cfg["instance_domain"],
         instancer_url=cfg["instancer_url"],

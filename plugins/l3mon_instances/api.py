@@ -59,10 +59,14 @@ def get_instances():
 
     tracker = get_host_tracker()
     now_ts = now_dt.timestamp()
+    host_answers: dict[str, bool] = {}
     instances_out = []
     for i in instances:
         d = i.to_dict()
-        if tracker.is_host_down(i.host_name, now_ts=now_ts):
+        if i.host_name not in host_answers:
+            # asked once per host per request; the answer comes from the host-down mark shared by all workers or from the 5-second capacity cache
+            host_answers[i.host_name] = tracker.check_host(i.host_name, now_ts=now_ts)
+        if not host_answers[i.host_name]:
             d["state"] = "error"
         instances_out.append(d)
 
@@ -283,7 +287,11 @@ def renew_instance(challenge_id_param):
         return envelope.fail("not_found", 404, "Instance not found.")
 
     tracker = get_host_tracker()
-    client = tracker.get_client_for_host(instance_row.host_name)
+    try:
+        client = tracker.get_client_for_host(instance_row.host_name)
+    except ValueError as e:
+        _log.error("Cannot renew instance %s: %s", instance_row.instance_id, e)
+        return envelope.fail("busy", 503, "The challenge host of this instance is not set up correctly. Tell the crew.")
     try:
         renewed_data = client.renew_instance(instance_row.instance_id)
     except InstancerClientError as e:
@@ -322,10 +330,10 @@ def stop_instance(challenge_id_param):
         return envelope.ok({"message": "Stopped."}, status=200)
 
     tracker = get_host_tracker()
-    client = tracker.get_client_for_host(instance_row.host_name)
     try:
+        client = tracker.get_client_for_host(instance_row.host_name)
         client.stop_instance(instance_row.instance_id)
-    except Exception as e:
+    except Exception as e:  # includes a host without its token (ValueError): the host's own reaper removes the instance when its time is up
         _log.warning("Client error stopping instance %s: %s", instance_row.instance_id, e)
 
     instance_row.state = "stopping"

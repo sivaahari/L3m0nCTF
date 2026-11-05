@@ -28,23 +28,36 @@ _global_tracker: Optional[HostCapacityTracker] = None
 _tracker_lock = threading.RLock()
 
 
+def _host_secret_dir() -> str:
+    """The read-only folder that holds one file per listed host (INSTANCER_TOKEN_<NAME>), mounted by compose.instancer-multihost.yml."""
+    return os.getenv("L3MON_HOST_SECRETS_DIR", "/run/host-secrets")
+
+
+def _read_first_secret(paths: list[str]) -> str:
+    for path in paths:
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    val = f.read().strip()
+                    if val:
+                        return val
+            except Exception as e:
+                _log.warning("Could not read secret file %s: %s", path, e)
+    return ""
+
+
 def get_token_for_host(host_name: str, allow_fallback: bool = False) -> str:
     """Retrieve the authentication token for a specific instancer host.
 
-    In multi-host mode (allow_fallback=False), each host MUST have its own token
-    (INSTANCER_TOKEN_<NAME_UPPER>). Falling back to the global platform token is
-    refused to prevent token sharing across hosts.
+    A listed host MUST have its own token, INSTANCER_TOKEN_<NAME_UPPER>, found (in this order) in /run/secrets, in the host
+    secrets folder (L3MON_HOST_SECRETS_DIR, default /run/host-secrets: one file per host, so any number of hosts needs no edit of a
+    compose file) or in the environment. Falling back to the platform token is refused, to prevent token sharing across hosts.
+    The implicit single 'default' host (no hosts.json) uses the platform token.
     """
     clean_name = re.sub(r"[^A-Za-z0-9_]", "_", host_name.upper())
-    specific_secret = f"/run/secrets/INSTANCER_TOKEN_{clean_name}"
-    if os.path.exists(specific_secret):
-        try:
-            with open(specific_secret, "r", encoding="utf-8") as f:
-                val = f.read().strip()
-                if val:
-                    return val
-        except Exception as e:
-            _log.warning("Could not read secret file %s: %s", specific_secret, e)
+    file_val = _read_first_secret([f"/run/secrets/INSTANCER_TOKEN_{clean_name}", os.path.join(_host_secret_dir(), f"INSTANCER_TOKEN_{clean_name}")])
+    if file_val:
+        return file_val
 
     specific_env = os.getenv(f"INSTANCER_TOKEN_{clean_name}", "").strip()
     if specific_env:
@@ -58,6 +71,17 @@ def get_token_for_host(host_name: str, allow_fallback: bool = False) -> str:
     raise ValueError(
         f"Missing per-host token for host '{host_name}': INSTANCER_TOKEN_{clean_name} must be set"
     )
+
+
+def host_token_problems(hosts: list[dict]) -> list[str]:
+    """One message for every listed host that has no token of its own (an empty list when all is well)."""
+    problems = []
+    for h in hosts:
+        try:
+            get_token_for_host(h["name"])
+        except ValueError as e:
+            problems.append(str(e))
+    return problems
 
 
 def validate_host_entry(entry: dict) -> dict:
@@ -167,6 +191,55 @@ def load_hosts_config(path: Optional[str] = None) -> list[dict]:
     return validated
 
 
+_DOWN_KEY = "l3mon:instances:host_down:"
+
+
+class CtfdCacheDownStore:
+    """The 'host is down until T' marks, shared by every CTFd worker through CTFd's own cache (Redis in production).
+
+    The marks used to live in the memory of ONE worker process: after a failed start only that worker knew, so a player's list
+    said 'running' for an instance on a dead host whenever another worker answered. The store only acts inside a real
+    application context (every request has one). Outside it (a unit test of the tracker, with a made-up clock) it does nothing:
+    CTFd's cache object stays reachable after its application is gone, and a made-up 'down until 1030' must never leak into the next test."""
+
+    @staticmethod
+    def _cache():
+        try:
+            from flask import has_app_context
+            if not has_app_context():
+                return None
+            from CTFd.cache import cache
+            return cache
+        except Exception:
+            return None
+
+    def get(self, host_name: str) -> Optional[float]:
+        cache = self._cache()
+        if cache is None:
+            return None
+        try:
+            val = cache.get(_DOWN_KEY + host_name)
+            return float(val) if val is not None else None
+        except Exception:
+            return None
+
+    def set(self, host_name: str, until: float, ttl: float) -> None:
+        cache = self._cache()
+        if cache is not None:
+            try:
+                cache.set(_DOWN_KEY + host_name, float(until), timeout=max(1, int(ttl) + 5))
+            except Exception:
+                pass
+
+    def clear(self, host_name: str) -> None:
+        cache = self._cache()
+        if cache is not None:
+            try:
+                cache.delete(_DOWN_KEY + host_name)
+            except Exception:
+                pass
+
+
 class HostCapacityTracker:
     """Tracks capacity, caching, down status, and optimistic counters across challenge hosts."""
 
@@ -177,8 +250,10 @@ class HostCapacityTracker:
         cache_ttl: float = 5.0,
         down_duration: float = 30.0,
         time_provider: Optional[Callable[[], float]] = None,
+        down_store=None,
     ):
         self.config_path = config_path
+        self._down_store = down_store if down_store is not None else CtfdCacheDownStore()
         self._hosts = hosts if hosts is not None else load_hosts_config(config_path)
         self._hosts_by_name = {h["name"]: h for h in self._hosts}
         self.cache_ttl = cache_ttl
@@ -233,6 +308,12 @@ class HostCapacityTracker:
                     return True
                 # Penalty has expired
                 self._down_until.pop(host_name, None)
+        # another worker may have found the host dead
+        shared = self._down_store.get(host_name)
+        if shared is not None and ts < shared:
+            with self._lock:
+                self._down_until[host_name] = shared
+            return True
         return False
 
     def mark_host_down(self, host_name: str, now_ts: Optional[float] = None):
@@ -240,15 +321,33 @@ class HostCapacityTracker:
         with self._lock:
             self._down_until[host_name] = ts + self.down_duration
             _log.warning("Marking instancer host '%s' as DOWN until timestamp %.1f", host_name, ts + self.down_duration)
+        self._down_store.set(host_name, ts + self.down_duration, self.down_duration)
 
     def mark_host_up(self, host_name: str):
         with self._lock:
             self._down_until.pop(host_name, None)
+        self._down_store.clear(host_name)
+
+    def check_host(self, host_name: str, now_ts: Optional[float] = None) -> bool:
+        """True when the host answers. Used when a player's list is read, so a dead host is found without waiting for somebody to
+        start a new instance: it goes through the 5-second capacity cache, so a busy list costs at most one probe per host per 5 s,
+        and a host already marked down (by any worker) costs none."""
+        ts = now_ts if now_ts is not None else self.now()
+        if self.is_host_down(host_name, ts):
+            return False
+        try:
+            self.get_capacity(host_name, ts)
+        except Exception:
+            return False
+        return True
 
     def reset_cache(self):
         with self._lock:
             self._cache.clear()
+            names = list(self._down_until)
             self._down_until.clear()
+        for name in names:
+            self._down_store.clear(name)
 
     def get_capacity(self, host_name: str, now_ts: Optional[float] = None) -> dict:
         """Fetch capacity for a host, using 5s cache and tracking errors."""
@@ -271,6 +370,8 @@ class HostCapacityTracker:
         # Cache miss or expired: fetch from host client
         host = self.get_host(host_name)
         client = self.get_client_for_host(host_name)
+        if hasattr(client, "timeout"):
+            client.timeout = min(client.timeout, 3)  # a capacity probe is a health check: do not hold a player's request for 10 s
         try:
             resp = client.get_capacity()
         except Exception as e:

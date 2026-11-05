@@ -92,8 +92,8 @@ def kill_instances():
     tracker = get_host_tracker()
     stopped = 0
     for host in tracker.get_hosts():
-        client = tracker.get_client_for_host(host["name"])
         try:
+            client = tracker.get_client_for_host(host["name"])
             stopped += client.kill_instances(team_id=team_id, challenge_id=challenge_id)
         except Exception as e:
             _log.warning("Instancer client error during kill_instances on host %s: %s", host.get("name"), e)

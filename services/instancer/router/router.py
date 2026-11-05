@@ -225,15 +225,18 @@ def get_router_token_for_host(
     Falling back to the global platform token is refused to prevent token sharing across hosts.
     """
     clean_name = re.sub(r"[^A-Za-z0-9_]", "_", host_name.upper())
-    path = f"/run/secrets/ROUTER_TOKEN_{clean_name}"
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                val = f.read().strip()
-                if val:
-                    return val
-        except Exception:
-            pass
+    # /run/secrets first, then the host secrets folder (one file per listed host, mounted by compose.instancer-multihost.yml:
+    # any number of hosts needs no edit of a compose file), then the environment
+    host_dir = os.getenv("L3MON_HOST_SECRETS_DIR", "/run/host-secrets")
+    for path in (f"/run/secrets/ROUTER_TOKEN_{clean_name}", os.path.join(host_dir, f"ROUTER_TOKEN_{clean_name}")):
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    val = f.read().strip()
+                    if val:
+                        return val
+            except Exception:
+                pass
     env_val = os.getenv(f"ROUTER_TOKEN_{clean_name}", "").strip()
     if env_val:
         return env_val
@@ -379,6 +382,7 @@ class InstanceRouter:
         self.hosts = hosts or []
         self.is_central = bool(hosts)
         self._host_last_poll: dict[str, float] = {}
+        self._poll_failing: set[str] = set()  # hosts whose last poll failed (logged once per run of failures)
 
         self._routes: dict[str, dict] = {}  # instance_id -> route dict
         self._lock = asyncio.Lock()
@@ -652,7 +656,14 @@ class InstanceRouter:
                 hname = host["name"]
                 hurl = host["url"]
                 rurl = host["router_url"]
-                token = get_router_token_for_host(hname, allow_fallback=False)
+                try:
+                    token = get_router_token_for_host(hname, allow_fallback=False)
+                except ValueError as e:
+                    # a listed host without its token: say so (once), skip THIS host, keep polling the others
+                    if hname not in self._poll_failing:
+                        _log.error("Central router cannot poll host %s: %s", hname, e)
+                        self._poll_failing.add(hname)
+                    continue
                 try:
                     parsed = urllib.parse.urlparse(hurl)
                     h_host = parsed.hostname or "127.0.0.1"
@@ -684,8 +695,13 @@ class InstanceRouter:
                         routes = body.get("routes", [])
                         async with self._lock:
                             self.update_host_routes(hname, rurl, routes, now_ts=time.time())
+                        if hname in self._poll_failing:
+                            _log.info("Central router polls host %s again", hname)
+                            self._poll_failing.discard(hname)
                 except Exception as e:
-                    _log.debug("Central router poll failed for host %s: %s", hname, e)
+                    if hname not in self._poll_failing:  # the first failure of a run of failures is a warning, not a debug line
+                        _log.warning("Central router poll failed for host %s: %s", hname, e)
+                        self._poll_failing.add(hname)
                     async with self._lock:
                         self.purge_expired_host_routes(time.time())
 
