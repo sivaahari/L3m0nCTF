@@ -93,6 +93,20 @@ def _get_provider_for_user(user: Users) -> str | None:
     return None
 
 
+def _certificate(user):
+    """The viewer's own qualifier certificate card (plugins/l3mon_certificates), or None: not released, no code, or the plugin is absent.
+    A failure there never takes the studio page down."""
+    try:
+        from CTFd.plugins.l3mon_certificates.release import card_for
+    except ImportError:
+        return None
+    try:
+        return card_for(user)
+    except Exception:  # noqa: BLE001
+        _log.warning("l3mon: the certificate card could not be drawn", exc_info=True)
+        return None
+
+
 @value("studio_context", default={})
 def studio_context() -> dict:
     """Build the view-model `tm.*` for the studio page."""
@@ -250,6 +264,8 @@ def studio_context() -> dict:
             if field in err:
                 err[field] = str(msg)
 
+    certificate = _certificate(user)
+
     return {
         "name": team.name,
         "meta": meta_text,
@@ -271,6 +287,8 @@ def studio_context() -> dict:
         "solves_count": len(solves_data),
         "solvesCount": str(len(solves_data)),
         "hasSolves": len(solves_data) > 0,
+        "hasCertificate": certificate is not None,
+        "certificate": certificate or {},
         "hasNotice": bool(notice_text),
         "notice": notice_text,
         "hasSummary": len(summary) > 0,

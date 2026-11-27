@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+
+{% block stylesheets %}
+	<link rel="stylesheet" href="{{ request.script_root }}/plugins/l3mon_certificates/assets/certificates.css">
+{% endblock %}
+
+{% block content %}
+	<div class="jumbotron">
+		<div class="container">
+			<h1>Certificates</h1>
+			<p class="lead mb-0">The qualifier certificates on the players' studio pages: release them now or at a set time, or hide them again. Times are in India (IST).</p>
+		</div>
+	</div>
+	<div class="container">
+		<noscript><div class="alert alert-warning">This page needs JavaScript to read and change the release.</div></noscript>
+		<div id="certificates-app" data-api="{{ request.script_root }}/api/v1/l3mon/admin/certificates">
+			<p id="certificates-status" role="status" aria-live="polite">Loading…</p>
+		</div>
+	</div>
+{% endblock %}
+
+{% block scripts %}
+	<script defer src="{{ request.script_root }}/plugins/l3mon_certificates/assets/certificates.js"></script>
+{% endblock %}

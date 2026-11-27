@@ -1012,6 +1012,7 @@ renderNotifContent(c,raw);
 }
 function initNotif(){
 initNotifPage();
+if(!$('[data-notif]'))return;
 for(const bell of $$('[data-notif]')){
 bell.addEventListener('click',(e)=>{
 if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
@@ -1178,6 +1179,17 @@ let ended=false;
 on('net',(r)=>{if(!ended&&r.error&&r.error.code==='auth_required'){ended=true;sessionEnded();}});
 document.addEventListener('visibilitychange',()=>audioVisibility(document.hidden));
 }
+function initAccount(){
+const btn=$('[data-copy]');
+if(!btn)return;
+const code=$('[data-invite]');
+const out=$('[data-copy-msg]');
+btn.addEventListener('click',async()=>{
+const how=await copyText(code.textContent.trim(),code);
+out.textContent=how==='copied'?'Copied. Paste it to your teammate.':'Selected. Press Ctrl+C (or Cmd+C) to copy it.';
+sfx('tada');
+});
+}
 function run(name,fn){
 try{fn();}catch(err){console.error(`[l3m0n] ${name} failed`,err);}
 }
@@ -1185,4 +1197,5 @@ run('dialog',initDialog);
 run('prefs',initPrefs);
 run('shell',initShell);
 run('keys',initKeys);
+run('account',initAccount);
 })();

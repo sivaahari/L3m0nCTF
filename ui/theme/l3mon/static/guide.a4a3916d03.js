@@ -1012,6 +1012,7 @@ renderNotifContent(c,raw);
 }
 function initNotif(){
 initNotifPage();
+if(!$('[data-notif]'))return;
 for(const bell of $$('[data-notif]')){
 bell.addEventListener('click',(e)=>{
 if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;

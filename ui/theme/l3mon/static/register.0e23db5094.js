@@ -1012,6 +1012,7 @@ renderNotifContent(c,raw);
 }
 function initNotif(){
 initNotifPage();
+if(!$('[data-notif]'))return;
 for(const bell of $$('[data-notif]')){
 bell.addEventListener('click',(e)=>{
 if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
@@ -1178,16 +1179,425 @@ let ended=false;
 on('net',(r)=>{if(!ended&&r.error&&r.error.code==='auth_required'){ended=true;sessionEnded();}});
 document.addEventListener('visibilitychange',()=>audioVisibility(document.hidden));
 }
-function initAccount(){
+const V_LIMITS={userMin:3,userMax:24,passMin:12,passMax:128,emailMax:254,studioMin:2,studioMax:32,affMax:64,teamSize:4};
+const V_MSG={
+userEmpty:'Choose a username.',
+userShape:'Usernames are 3 to 24 characters: letters, numbers, dots, dashes and underscores.',
+userTaken:'That username is taken. Try another.',
+emailShape:'Enter an email address like name@example.com.',
+emailTaken:'That email already has an account. Sign in instead.',
+emailSame:'That is already the address we sent the link to.',
+passEmpty:'Choose a password.',
+passShort:'Use at least 12 characters.',
+passLong:'Use at most 128 characters.',
+passCommon:'That password is too common. Try a short sentence.',
+passUser:'Do not use your username in your password.',
+passEmail:'Do not use your email address in your password.',
+privacy:'Tick the box to confirm you have read the privacy notice.',
+studioEmpty:'Choose a studio name.',
+studioShape:'Studio names are 2 to 32 characters.',
+studioChars:'Use letters, numbers, spaces and punctuation only.',
+studioScripts:'Do not mix letters from different alphabets in one name.',
+studioTaken:'That studio name is taken.',
+studioRace:'That studio name was just taken.',
+country:'Choose a country.',
+affLong:'Affiliations are at most 64 characters.',
+ctftime:'That does not look like a CTFtime team page or number.',
+inviteEmpty:'Enter the invite code from your captain.',
+inviteShape:'Invite codes look like ABCD-1234.',
+inviteLinkEmpty:'Enter the invite link from your captain.',
+inviteLinkShape:'Paste the invite link your captain sent you.',
+inviteUnknown:'That invite code does not match any studio.',
+inviteFull:'That studio is full (4 of 4).',
+rules:'Tick the box to accept the rules.',
+};
+const RESERVED_NAMES=['admin','administrator','root','crew','staff','support','system','moderator','owner','security',
+'l3mon','l3m0n','lemon','l3monctf','l3m0nctf','lemonctf','ctfd','organiser','organizer','director','guest','anonymous','null','undefined'];
+const USER_RE=/^[A-Za-z0-9._-]{3,24}$/;
+const EMAIL_RE=/^[^\s@]{1,64}@[^\s@.]+(?:\.[^\s@.]+)+$/;
+const INVITE_RE=/^[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+const CTFTIME_RE=/^(?:https?:\/\/)?(?:www\.)?ctftime\.org\/team\/(\d{1,8})\/?(?:[?#].*)?$/i;
+const BAD_CHARS=/[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+const vCount=(s)=>[...s].length;
+function cleanText(v){
+return String(v??'').replace(/\s+/gu,' ').trim().normalize('NFC');
+}
+function vUsername(v){
+const value=String(v??'').trim();
+if(!value)return{value,error:V_MSG.userEmpty};
+if(!USER_RE.test(value))return{value,error:V_MSG.userShape};
+if(RESERVED_NAMES.includes(value.toLowerCase()))return{value,error:V_MSG.userTaken};
+return{value,error:null};
+}
+function vEmail(v){
+const raw=String(v??'').trim();
+const at=raw.lastIndexOf('@');
+const value=at>0?raw.slice(0,at)+raw.slice(at).toLowerCase():raw;
+if(!value||value.length>V_LIMITS.emailMax||!EMAIL_RE.test(value)||BAD_CHARS.test(value))return{value,error:V_MSG.emailShape};
+return{value,error:null};
+}
+const V_RUNS=['abcdefghijklmnopqrstuvwxyz','0123456789','qwertyuiop','asdfghjkl','zxcvbnm','qwertyuiopasdfghjklzxcvbnm',
+'1qaz2wsx3edc4rfv5tgb6yhn7ujm8ik9ol0p','qazwsxedcrfvtgbyhnujmikolp']
+.flatMap((r)=>[r+r,[...r].reverse().join('').repeat(2)]);
+function vWeakPattern(pw){
+const s=String(pw).toLowerCase().replace(/[\s\W_]+/g,'');
+if(s.length<6)return String(pw).length>0&&new Set(String(pw)).size<=3;
+if(new Set(s).size<=3)return true;
+for(let n=1;n<=6;n++)if(s.length>n&&s===s.slice(0,n).repeat(Math.ceil(s.length/n)).slice(0,s.length))return true;
+return s.length>=8&&V_RUNS.some((r)=>r.includes(s));
+}
+function vPassword(pw,{username='',email=''}={}){
+const p=String(pw??'');
+if(!p)return V_MSG.passEmpty;
+const n=vCount(p);
+if(n<V_LIMITS.passMin)return V_MSG.passShort;
+if(n>V_LIMITS.passMax)return V_MSG.passLong;
+const low=p.toLowerCase();
+const u=String(username).trim().toLowerCase();
+if(u.length>=3&&low.includes(u))return V_MSG.passUser;
+const local=String(email).split('@')[0].trim().toLowerCase();
+if(local.length>=3&&low.includes(local))return V_MSG.passEmail;
+if(vWeakPattern(p))return V_MSG.passCommon;
+return null;
+}
+const LOOKALIKES=new Map(Object.entries({
+'\u0430':'a','\u0432':'b','\u0435':'e','\u043a':'k','\u043c':'m','\u043d':'h','\u043e':'o','\u0440':'p','\u0441':'c','\u0442':'t','\u0443':'y','\u0445':'x','\u0456':'i','\u0458':'j','\u0455':'s','\u0501':'d','\u04cf':'l','\u051b':'q','\u051d':'w','\u03bf':'o','\u03b1':'a','\u03bd':'v','\u03c1':'p','\u03c4':'t','\u03c5':'u','\u03c7':'x','\u03b9':'i','\u03ba':'k','\u03b5':'e','\u03b2':'b','\u03b7':'n','\u03bc':'u','\u03b6':'z',
+}));
+const SCRIPTS=[['Latin',/\p{Script=Latin}/u],['Cyrillic',/\p{Script=Cyrillic}/u],['Greek',/\p{Script=Greek}/u]];
+function studioKey(name){
+const base=cleanText(name).normalize('NFKC').toLowerCase();
+return[...base].map((c)=>LOOKALIKES.get(c)||c).join('');
+}
+function mixedScripts(value){
+return SCRIPTS.filter(([,re])=>re.test(value)).length>1;
+}
+const EMOJI_JOINER=/(?<=\p{Extended_Pictographic}️?)‍(?=\p{Extended_Pictographic})/gu;
+function vStudioName(v){
+const value=cleanText(v);
+if(!value)return{value,error:V_MSG.studioEmpty};
+if(BAD_CHARS.test(value.replace(EMOJI_JOINER,'')))return{value,error:V_MSG.studioChars};
+if(mixedScripts(value))return{value,error:V_MSG.studioScripts};
+const n=vCount(value);
+if(n<V_LIMITS.studioMin||n>V_LIMITS.studioMax)return{value,error:V_MSG.studioShape};
+return{value,error:null};
+}
+function vAffiliation(v){
+const value=cleanText(v);
+if(BAD_CHARS.test(value))return{value,error:V_MSG.studioChars};
+if(vCount(value)>V_LIMITS.affMax)return{value,error:V_MSG.affLong};
+return{value,error:null};
+}
+function vCtftime(v){
+const value=String(v??'').trim();
+if(!value)return{value,id:null,error:null};
+if(value.length>128)return{value,id:null,error:V_MSG.ctftime};
+const m=/^\d{1,8}$/.test(value)?[value,value]:CTFTIME_RE.exec(value);
+const id=m?Number(m[1]):0;
+if(!(id>0))return{value,id:null,error:V_MSG.ctftime};
+return{value,id,error:null};
+}
+function vInvite(v,{linkMode=false}={}){
+const raw=String(v??'').trim();
+const emptyMsg=linkMode?V_MSG.inviteLinkEmpty:V_MSG.inviteEmpty;
+const shapeMsg=linkMode?V_MSG.inviteLinkShape:V_MSG.inviteShape;
+if(!raw)return{value:raw,error:emptyMsg};
+if(/\s/.test(raw))return{value:raw,error:shapeMsg};
+let token=raw;
+if(raw.includes('?')||raw.startsWith('http://')||raw.startsWith('https://')||raw.startsWith('/')){
+try{
+const url=new URL(raw,'http://localhost');
+if(url.pathname.replace(/\/+$/,'')!=='/teams/invite'){
+return{value:raw,error:shapeMsg};
+}
+const code=url.searchParams.get('code');
+if(!code){
+return{value:raw,error:shapeMsg};
+}
+token=code.trim();
+}catch{
+return{value:raw,error:shapeMsg};
+}
+}
+if(/\s/.test(token)||token.length<8||token.length>256){
+return{value:raw,error:shapeMsg};
+}
+return{value:token,error:null};
+}
+function fnv1a(str){
+let h=0x811c9dc5;
+for(let i=0;i<str.length;i++){
+h^=str.charCodeAt(i);
+h=Math.imul(h,0x01000193)>>>0;
+}
+return h>>>0;
+}
+function mascotPick(name,shuffle=0){
+const s=Math.abs(Math.trunc(Number(shuffle)||0))%56;
+const i=(fnv1a(studioKey(name))+s)%56;
+return{base:i%8,accent:i%7};
+}
+const msgHost=()=>$('[data-msgs]');
+const shown=(el)=>!!el&&!el.closest('[hidden]')&&el.getClientRects().length>0;
+function liveForm(form,rules,{pending,onSubmit}={}){
+const changed=new WeakSet();
+const btn=$('[data-submit]',form);
+for(const[input,check]of rules){
+if(!input)continue;
+const ev=input.type==='checkbox'||input.tagName==='SELECT'?'change':'input';
+input.addEventListener(ev,()=>{
+changed.add(input);
+if(ev==='change'){const m=check();if(m)fieldError(input,m);else clearFieldError(input);}else if(input.getAttribute('aria-invalid')==='true'&&!check())clearFieldError(input);
+});
+input.addEventListener('blur',()=>{
+if(!changed.has(input)||!shown(input))return;
+const m=check();
+if(m)fieldError(input,m);else clearFieldError(input);
+});
+}
+let sent=false;
+form.addEventListener('submit',(e)=>{
+if(sent||(btn&&(btn.disabled||btn.getAttribute('aria-disabled')==='true'))){e.preventDefault();return;}
+const problems=[];
+for(const[input,check]of rules){
+if(!input||!shown(input))continue;
+const m=check();
+if(m){fieldError(input,m);problems.push({id:input.id,text:m});}else clearFieldError(input);
+}
+if(problems.length){
+e.preventDefault();
+showSummary(msgHost(),problems);
+sfx('bonk');
+if(onSubmit)onSubmit(false);
+return;
+}
+sent=true;
+if(onSubmit)onSubmit(true);
+if(btn&&pending)setPending(btn,pending);
+const card=$('[data-card]');
+if(card&&!reduced())card.classList.add('flick');
+});
+addEventListener('pageshow',(e)=>{
+if(!e.persisted)return;
+sent=false;
+if(btn)clearPending(btn);
+const card=$('[data-card]');
+if(card)card.classList.remove('flick');
+});
+}
+function waitOut(form){
+const s=Number(form.dataset.retryAfter);
+const btn=$('[data-submit]',form);
+const line=$('[data-wait]',form);
+if(!(s>0)||!btn||!line)return;
+btn.disabled=true;
+line.hidden=false;
+countdown(s,(left)=>{line.textContent=left>90?`You can try again in about ${Math.ceil(left/60)} minutes.`:`You can try again in ${left} s.`;},
+()=>{btn.disabled=false;line.textContent='You can try again now.';});
+}
+function initShow(form){
+const btn=$('[data-show]',form);
+const input=$('#f-password',form);
+if(!btn||!input)return;
+btn.addEventListener('click',()=>{
+const show=input.type==='password';
+input.type=show?'text':'password';
+btn.setAttribute('aria-pressed',String(show));
+});
+form.addEventListener('submit',()=>{input.type='password';btn.setAttribute('aria-pressed','false');});
+}
+function initAccount(form){
+const user=$('#f-username',form);
+const email=$('#f-email',form);
+const pass=$('#f-password',form);
+const privacy=$('#f-privacy',form);
+const emailOf=()=>(email?email.value:'');
+initShow(form);
+waitOut(form);
+liveForm(form,[
+[user,()=>vUsername(user.value).error],
+[email,()=>vEmail(email.value).error],
+[pass,()=>vPassword(pass.value,{username:user.value,email:emailOf()})],
+[privacy,()=>(privacy.checked?null:V_MSG.privacy)],
+],{pending:'Saving…'});
+}
+function resendWait(btn,seconds){
+if(!(seconds>0))return;
+btn.disabled=true;
+countdown(seconds,(left)=>{btn.textContent=`Resend in ${left} s`;},()=>{btn.disabled=false;btn.textContent='Resend email';});
+}
+function initVerify(){
+const resend=$('[data-resend]');
+if(!resend)return;
+const btn=$('[data-resend-btn]',resend);
+resendWait(btn,Number(resend.dataset.retryAfter));
+resend.addEventListener('submit',async(e)=>{
+e.preventDefault();
+if(btn.disabled||btn.getAttribute('aria-busy')==='true')return;
+setPending(btn,'Sending…');
+const r=await resendVerification();
+clearPending(btn);
+if(r.ok){
+showAlert(msgHost(),{kind:'ok',lead:'SENT.',text:'A new link is on its way.'},{focus:false});
+announce('Sent. A new link is on its way.');
+resendWait(btn,(r.data&&r.data.cooldown)||60);
+return;
+}
+const code=r.error&&r.error.code;
+if(code==='conflict'){location.assign('/register/studio');return;}
+if(code==='cooldown'||code==='ratelimited'){
+showAlert(msgHost(),{kind:'warn',lead:'PLEASE STAND BY.',text:r.error.message||'You can resend once a minute.'});
+resendWait(btn,r.error.retryAfter||60);
+return;
+}
+if(code!=='auth_required'){const rep=replyFor(r);showAlert(msgHost(),{kind:'error',lead:rep.lead,text:rep.text});}
+});
+const check=$('[data-check]');
+if(check)check.addEventListener('submit',()=>setPending($('button',check),'Checking…'));
+const change=$('[data-reg="change"]');
+if(change){const em=$('#f-email',change);liveForm(change,[[em,()=>vEmail(em.value).error]],{pending:'Sending…'});}
+poll();
+}
+function poll(){
+const line=$('[data-poll]');
+let timer=0;
+let done=false;
+const tick=async()=>{
+timer=0;
+if(done||document.hidden)return;
+const r=await session({retries:1});
+const u=r.ok&&r.data?r.data.user:undefined;
+if(r.error&&r.error.code==='auth_required'){done=true;if(line)line.hidden=true;return;}
+if(u===null){done=true;if(line)line.hidden=true;return;}
+if(u&&u.verified){
+done=true;
+showAlert(msgHost(),{kind:'ok',lead:'VERIFIED.',text:'Thanks, your email is confirmed.'},{focus:false});
+announce('Verified. Thanks, your email is confirmed.');
+sfx('ding');
+setTimeout(()=>{const f=$('[data-check]');if(f)f.submit();else location.assign('/register/studio');},1600);
+return;
+}
+if(!document.hidden)timer=setTimeout(tick,10000);
+};
+document.addEventListener('visibilitychange',()=>{
+if(done)return;
+clearTimeout(timer);
+timer=0;
+if(!document.hidden)tick();
+});
+if(line)line.hidden=false;
+timer=setTimeout(tick,10000);
+}
+const MOODS=['idle','think','happy','sad','wow'];
+function moodOf(m){
+return{
+set(mood){if(m&&MOODS.includes(mood)&&m.dataset.mood!==mood)m.dataset.mood=mood;},
+play(cls){
+if(!m||reduced())return;
+m.classList.remove('hop','shake');
+void m.offsetWidth;
+m.classList.add(cls);
+},
+};
+}
+function initStudio(form){
+const name=$('#f-name',form);
+const country=$('#f-country',form);
+const aff=$('#f-affiliation',form);
+const ct=$('#f-ctftime',form);
+const invite=$('#f-invite',form);
+const shuffleIn=$('[data-shuffle-in]',form);
+const avail=$('[data-avail]',form);
+const ctPv=$('[data-ct-pv]',form);
+const m=$('[data-mascot]');
+const face=moodOf(m);
+const pvName=$('[data-pv-name]');
+const pvMeta=$('[data-pv-meta]');
+let shuffle=Number(shuffleIn.value)||0;
+const paint=()=>{
+if(!m)return;
+const p=mascotPick(name.value,shuffle);
+m.className=m.className.replace(/\bmk-b\d\b/,`mk-b${p.base}`).replace(/\bmk-k\d\b/,`mk-k${p.accent}`);
+};
+const meta=()=>{
+const c=country.selectedIndex>0?country.options[country.selectedIndex].text:'';
+pvMeta.textContent=[c,aff.value.trim()].filter(Boolean).join(' · ')||'Country and affiliation show here';
+};
+const status=(state,text)=>{avail.dataset.state=state;avail.textContent=text;};
+let seq=0;
+let wait=0;
+let last='';
+const check=()=>{
+const v=vStudioName(name.value);
+clearTimeout(wait);
+if(v.error){last='';status('','');face.set('idle');return;}
+if(v.value.toLowerCase()===last)return;
+face.set('think');
+const mine=++seq;
+wait=setTimeout(async()=>{
+const r=await teamAvailable(v.value);
+if(mine!==seq)return;
+last=v.value.toLowerCase();
+if(r.ok&&r.data&&r.data.available){status('ok','On air: that name is free.');face.set('happy');face.play('hop');}
+else if(r.ok&&r.data&&r.data.reason==='taken'){status('taken','Taken: try another name.');face.set('sad');face.play('shake');}
+else if(r.error&&r.error.code==='ratelimited'){last='';status('wait',`Checking paused. Try again in ${r.error.retryAfter||10} s.`);face.set('idle');}
+else{last='';status('','');face.set('idle');}
+},400);
+};
+name.addEventListener('input',()=>{
+pvName.textContent=name.value.trim()||'Your studio';
+paint();
+check();
+});
+const isLink=Boolean(form.querySelector('[data-invite-link]')||$('#f-invite-h',form)?.textContent.includes('invite link'));
+const checkInvite=()=>vInvite(invite.value,{linkMode:isLink}).error;
+country.addEventListener('change',meta);
+aff.addEventListener('input',meta);
+ct.addEventListener('input',()=>{const v=vCtftime(ct.value);ctPv.textContent=v.id?`Team ${v.id}`:'';});
+invite.addEventListener('blur',()=>{const v=vInvite(invite.value,{linkMode:isLink});if(!v.error)invite.value=v.value;});
+const shuffleBtn=$('[data-shuffle]');
+if(shuffleBtn)shuffleBtn.addEventListener('click',()=>{
+shuffle=(shuffle+1)%56;
+shuffleIn.value=String(shuffle);
+paint();
+face.play('hop');
+sfx('squeak');
+});
+for(const r of $$('input[name=mode]',form))r.addEventListener('change',()=>{if(r.checked&&r.value==='create')check();});
+if(name.value&&!name.getAttribute('aria-invalid'))check();
+liveForm(form,[
+[name,()=>vStudioName(name.value).error],
+[country,()=>(country.value?null:V_MSG.country)],
+[aff,()=>vAffiliation(aff.value).error],
+[ct,()=>vCtftime(ct.value).error],
+[invite,checkInvite],
+],{pending:'Saving…',onSubmit:(ok)=>{face.set(ok?'wow':'sad');if(!ok)face.play('shake');}});
+}
+function initGoLive(form){
+const rules=$('#f-rules',form);
+liveForm(form,[[rules,()=>(rules.checked?null:V_MSG.rules)]],{pending:'Going live…',onSubmit:(ok)=>{for(const m of $$('.mascot'))moodOf(m).set(ok?'wow':'sad');}});
+}
+function initDone(){
 const btn=$('[data-copy]');
 if(!btn)return;
 const code=$('[data-invite]');
 const out=$('[data-copy-msg]');
 btn.addEventListener('click',async()=>{
 const how=await copyText(code.textContent.trim(),code);
-out.textContent=how==='copied'?'Copied. Paste it to your teammate.':'Selected. Press Ctrl+C (or Cmd+C) to copy it.';
+out.textContent=how==='copied'?'Copied. Paste it to your teammates.':'Selected. Press Ctrl+C (or Cmd+C) to copy it.';
 sfx('tada');
+moodOf($('[data-mascot]')).play('hop');
 });
+}
+function initRegister(){
+const form=$('[data-reg]');
+const kind=form?form.dataset.reg:'';
+if(kind==='account')initAccount(form);
+else if(kind==='studio')initStudio(form);
+else if(kind==='golive')initGoLive(form);
+else if(kind==='reset'){const em=$('#f-email',form);waitOut(form);liveForm(form,[[em,()=>vEmail(em.value).error]],{pending:'Sending…'});}
+else if(kind==='reset-new'){const pw=$('#f-password',form);const u=$('[data-reset-user]',form);initShow(form);liveForm(form,[[pw,()=>vPassword(pw.value,{username:u.value})]],{pending:'Saving…'});}
+initVerify();
+initDone();
 }
 function run(name,fn){
 try{fn();}catch(err){console.error(`[l3m0n] ${name} failed`,err);}
@@ -1196,5 +1606,5 @@ run('dialog',initDialog);
 run('prefs',initPrefs);
 run('shell',initShell);
 run('keys',initKeys);
-run('account',initAccount);
+run('register',initRegister);
 })();

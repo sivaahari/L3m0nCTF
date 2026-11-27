@@ -1012,6 +1012,7 @@ renderNotifContent(c,raw);
 }
 function initNotif(){
 initNotifPage();
+if(!$('[data-notif]'))return;
 for(const bell of $$('[data-notif]')){
 bell.addEventListener('click',(e)=>{
 if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
@@ -1178,69 +1179,6 @@ let ended=false;
 on('net',(r)=>{if(!ended&&r.error&&r.error.code==='auth_required'){ended=true;sessionEnded();}});
 document.addEventListener('visibilitychange',()=>audioVisibility(document.hidden));
 }
-function initShow(form){
-const btn=$('[data-show]',form);
-const input=$('#f-password',form);
-if(!btn||!input)return;
-btn.addEventListener('click',()=>{
-const show=input.type==='password';
-input.type=show?'text':'password';
-btn.setAttribute('aria-pressed',String(show));
-});
-form.addEventListener('submit',()=>{input.type='password';btn.setAttribute('aria-pressed','false');});
-}
-function initRetry(form){
-const s=Number(form.dataset.retryAfter);
-if(!(s>0))return;
-const btn=$('[data-submit]',form);
-const wait=$('[data-wait]',form);
-btn.disabled=true;
-wait.hidden=false;
-countdown(s,(left)=>{
-const m=Math.ceil(left/60);
-wait.textContent=left>90?`You can try again in about ${m} minutes.`:`You can try again in ${left} s.`;
-},()=>{
-btn.disabled=false;
-wait.textContent='You can try again now.';
-});
-}
-function initLogin(){
-const form=$('[data-login]');
-if(!form)return;
-const name=$('#f-name',form);
-const pass=$('#f-password',form);
-const btn=$('[data-submit]',form);
-const host=form.parentElement;
-initShow(form);
-initRetry(form);
-for(const input of[name,pass])input.addEventListener('input',()=>{if(input.value)clearFieldError(input);});
-let sent=false;
-form.addEventListener('submit',(e)=>{
-if(sent||btn.getAttribute('aria-disabled')==='true'||btn.disabled){e.preventDefault();return;}
-const problems=[];
-for(const[input,msg]of[[name,'Enter your username or email.'],[pass,'Enter your password.']]){
-if(!input.value.trim()){fieldError(input,msg);problems.push({id:input.id,text:msg});}else clearFieldError(input);
-}
-if(problems.length){
-e.preventDefault();
-showSummary(host,problems);
-sfx('bonk');
-return;
-}
-sent=true;
-setPending(btn,'Tuning in…');
-sfx('click');
-const card=$('[data-card]');
-if(card&&!reduced())card.classList.add('flick');
-});
-addEventListener('pageshow',(e)=>{
-if(!e.persisted)return;
-sent=false;
-clearPending(btn);
-const card=$('[data-card]');
-if(card)card.classList.remove('flick');
-});
-}
 function run(name,fn){
 try{fn();}catch(err){console.error(`[l3m0n] ${name} failed`,err);}
 }
@@ -1248,5 +1186,4 @@ run('dialog',initDialog);
 run('prefs',initPrefs);
 run('shell',initShell);
 run('keys',initKeys);
-run('login',initLogin);
 })();
