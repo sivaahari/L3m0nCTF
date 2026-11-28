@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The default qualifier certificate (A4 landscape). A starting point: the organisers may replace it with their own design
+     (docs/runbooks/22-verify-portal.md, "PDF certificates"). Placeholders: {{USERNAME}} {{STUDIO}} {{EVENT}} {{ROLE}} {{DATE}} {{CODE}};
+     the rectangle with id="qr" is where the QR code goes. Only system fonts, so it prints the same on any machine with Chrome. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="297mm" height="210mm" viewBox="0 0 1123 794">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#1b2560"/>
+      <stop offset="1" stop-color="#070b1e"/>
+    </radialGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a0714a"/>
+      <stop offset="1" stop-color="#6b4222"/>
+    </linearGradient>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <rect width="4" height="2" fill="#ffffff" opacity="0.018"/>
+    </pattern>
+  </defs>
+
+  <!-- the set: a wooden frame around the screen -->
+  <rect width="1123" height="794" fill="#070b1e"/>
+  <rect x="22" y="22" width="1079" height="750" rx="34" fill="url(#wood)"/>
+  <rect x="42" y="42" width="1039" height="710" rx="24" fill="#0a0a0a"/>
+  <rect x="52" y="52" width="1019" height="690" rx="18" fill="url(#glow)"/>
+  <rect x="52" y="52" width="1019" height="690" rx="18" fill="url(#scan)"/>
+
+  <!-- the station mark -->
+  <g transform="translate(92 86) scale(0.42)">
+    <g transform="rotate(-10 64 60)">
+      <path d="M4 58c1-3 5-4 9-8C24 33 42 22 64 22s40 11 51 28c4 4 8 5 9 8-1 3-5 4-9 8-11 17-29 28-51 28S24 75 13 66c-4-4-8-5-9-8z" fill="#ffd23f" stroke="#2a1d00" stroke-width="4.5" stroke-linejoin="round"/>
+      <path d="M62 22c1-8 7-13 15-14" fill="none" stroke="#2a1d00" stroke-width="4.5" stroke-linecap="round"/>
+      <path d="M77 8c8-8 24-6 28 0-4 10-20 12-28 0z" fill="#5be37d" stroke="#0b3a1a" stroke-width="3.5" stroke-linejoin="round"/>
+    </g>
+    <ellipse cx="48" cy="58" rx="10.5" ry="12.5" fill="#fff" stroke="#2a1d00" stroke-width="3.2"/>
+    <circle cx="50" cy="60" r="5.2" fill="#2a1d00"/>
+    <ellipse cx="78" cy="55" rx="10.5" ry="12.5" fill="#fff" stroke="#2a1d00" stroke-width="3.2"/>
+    <circle cx="80" cy="57" r="5.2" fill="#2a1d00"/>
+    <path d="M46 79c9 10 24 9 34-1" fill="#7a1e00" stroke="#2a1d00" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="152" y="118" font-family="Consolas, 'DejaVu Sans Mono', 'Courier New', monospace" font-size="24" font-weight="700" fill="#f4ead4">L3m0n<tspan fill="#ffd23f">-TV</tspan></text>
+  <rect x="722" y="96" width="62" height="28" rx="5" fill="#e5383b"/>
+  <circle cx="736" cy="110" r="4.5" fill="#fff"/>
+  <text x="746" y="116" font-family="Consolas, 'DejaVu Sans Mono', monospace" font-size="15" font-weight="700" fill="#fff">LIVE</text>
+  <text x="1031" y="117" text-anchor="end" font-family="Consolas, 'DejaVu Sans Mono', monospace" font-size="15" letter-spacing="3" fill="#8f9bd6">QUALIFIERS · CH 26</text>
+
+  <!-- the programme -->
+  <text x="561.5" y="208" text-anchor="middle" font-family="Consolas, 'DejaVu Sans Mono', monospace" font-size="17" letter-spacing="7" fill="#ffd23f">L3M0N CTF 2026</text>
+  <text x="561.5" y="272" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="54" font-weight="800" fill="#f4ead4">Certificate of Participation</text>
+  <text x="561.5" y="330" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="20" fill="#b9c1ea">This certifies that</text>
+  <text x="561.5" y="408" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" data-max-width="900" font-size="62" font-weight="800" fill="#ffd23f">{{USERNAME}}</text>
+  <text x="561.5" y="458" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" data-max-width="900" font-size="22" fill="#f4ead4">of the studio <tspan font-weight="700" fill="#ffffff">{{STUDIO}}</tspan></text>
+  <text x="561.5" y="500" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="19" fill="#b9c1ea">went on air in the online qualifiers of L3m0n CTF 2026 and scored TRP on the board.</text>
+
+  <!-- the check: QR code, code and date -->
+  <line x1="92" y1="560" x2="1031" y2="560" stroke="#3a4380" stroke-width="1.5" stroke-dasharray="5 6"/>
+  <rect x="92" y="584" width="124" height="124" rx="10" fill="#f4ead4" stroke="#2c335f" stroke-width="2"/>
+  <rect id="qr" x="98" y="590" width="112" height="112"/>
+  <text x="238" y="620" font-family="Consolas, 'DejaVu Sans Mono', monospace" font-size="13" letter-spacing="3" fill="#8f9bd6">CHECK THIS CERTIFICATE AT</text>
+  <text x="238" y="648" font-family="Consolas, 'DejaVu Sans Mono', monospace" font-size="19" font-weight="700" fill="#f4ead4">verify.l3m0nctf.xyz/<tspan fill="#ffd23f">{{CODE}}</tspan></text>
+  <text x="238" y="680" font-family="Consolas, 'DejaVu Sans Mono', monospace" font-size="13" letter-spacing="3" fill="#8f9bd6">ISSUED <tspan fill="#f4ead4" letter-spacing="1">{{DATE}}</tspan></text>
+  <text x="1031" y="650" text-anchor="end" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="16" fill="#b9c1ea">TIFAC-CORE in Cyber Security</text>
+  <text x="1031" y="674" text-anchor="end" font-family="'Segoe UI', 'Helvetica Neue', Arial, 'DejaVu Sans', sans-serif" font-size="16" fill="#b9c1ea">Amrita Vishwa Vidyapeetham, Coimbatore</text>
+</svg>

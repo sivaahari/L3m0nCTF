@@ -123,6 +123,15 @@ def test_the_code_routes_accept_exactly_the_codes_the_tool_makes():
         assert not route.match(code) and not codes.CODE_RE.match(code), code
 
 
+def test_the_pdf_route_uses_the_same_code_rule_and_the_builds_address():
+    conf = text(VERIFY_CONF)
+    assert re.findall(r'"\^/\(\?<cert_code>(L3M0N26-[^"]+)\)/certificate\\.pdf\$"', conf) == [codes.ROUTE]
+    assert site.pdf_path("L3M0N26-PAR-BCDFG") == "/L3M0N26-PAR-BCDFG/certificate.pdf"
+    block = re.search(r'certificate\\.pdf\$" \{(.*?)\n  \}', conf, re.S).group(1)
+    assert "try_files /c/$cert_code.pdf =404;" in block and "default_type application/pdf;" in block and "types { }" in block
+    assert "$1" not in block, "a numbered capture is overwritten by the $hsts map before the headers are made"
+
+
 def test_every_location_sets_the_portal_headers():
     conf = text(VERIFY_CONF)
     for block in re.findall(r"location ([^{]+)\{(.*?)\n  \}", conf, re.S):
@@ -227,6 +236,8 @@ def served():
         valid = next(c for c in store.all_rows(conn) if c.category == "PAR").verify_code
         conn.close()
         site.build(db, tmp / "site", base_url="https://verify.example.test")
+        # a stand-in for a printed certificate (the browser is tested in test_verify_certificate.py): nginx only has to serve the file
+        (tmp / "site" / "c" / f"{valid}.pdf").write_bytes(b"%PDF-1.4 a stand-in certificate\n%%EOF\n")
         for p in [tmp / "site", *(tmp / "site").rglob("*")]:
             p.chmod(0o755 if p.is_dir() else 0o644)
         rendered = PROD_TEMPLATE.read_text(encoding="utf-8").replace("${PLATFORM_HOST}", "play.example.test").replace("${EXTRA_HOST}", "crew.example.test")
@@ -264,6 +275,18 @@ def test_a_certificate_page_is_served_with_the_strict_headers(served):
     assert "default-src 'none'" in h["content-security-policy"] and h["x-robots-tag"] == "noindex, nofollow"
     assert h["x-frame-options"] == "DENY" and h["x-content-type-options"] == "nosniff"
     assert h["content-type"].startswith("text/html")
+
+
+def test_a_certificates_pdf_is_served_as_a_pdf_with_the_strict_headers_and_only_for_its_code(served):
+    status, h, body = request(served["port"], f"/{served['valid']}/certificate.pdf", cert=served["cert"])
+    assert status == 200 and body.startswith(b"%PDF-1.4 a stand-in certificate")
+    assert h["content-type"] == "application/pdf" and h["x-content-type-options"] == "nosniff"
+    assert h["content-disposition"] == f'inline; filename="L3m0n-CTF-2026-{served["valid"]}.pdf"'
+    assert "default-src 'none'" in h["content-security-policy"] and h["x-robots-tag"] == "noindex, nofollow"
+    for path in (f"/{served['withdrawn']}/certificate.pdf", f"/{served['fixed']}/certificate.pdf", f"/c/{served['valid']}.pdf",
+                 f"/{served['valid'].lower()}/certificate.pdf", f"/{served['valid']}/certificate.pdf/", f"/{served['valid']}/../c/{served['valid']}.pdf"):
+        status, h, _ = request(served["port"], path, cert=served["cert"])
+        assert status == 404 and h["content-type"].startswith("text/html"), path
 
 
 def test_the_lookup_page_and_the_assets(served):

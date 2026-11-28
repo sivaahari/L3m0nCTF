@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import codes, issue, site, store
+from . import certificate, codes, issue, site, store
 
 
 def add_parser(sub) -> None:
@@ -37,6 +37,9 @@ def add_parser(sub) -> None:
     b.add_argument("out", help="the output folder (a previous build there is replaced as a whole)")
     b.add_argument("--sponsors", help="the sponsor folder: sponsors.json and the logo files")
     b.add_argument("--base-url", default=site.BASE_URL, help=f"the portal's address for the QR codes (default {site.BASE_URL})")
+    b.add_argument("--certificate", action="append", default=[], metavar="CAT[=DESIGN.svg]",
+                   help="also print a PDF certificate for every valid code of CAT from an SVG design with placeholders; PAR alone uses the "
+                        "bundled qualifier design (needs Chrome, Chromium or Edge; L3MON_CHROME names one). May be given once per category.")
 
 
 def _safe_output() -> None:
@@ -105,12 +108,25 @@ def run(args: argparse.Namespace) -> int:
             return 0
 
         if args.verify_cmd == "build":
-            summary = site.build(Path(args.db), Path(args.out), sponsors_dir=Path(args.sponsors) if args.sponsors else None, base_url=args.base_url)
+            designs = {}
+            for spec in args.certificate:
+                cat, _, path = spec.partition("=")
+                cat = cat.strip().upper()
+                if cat in designs:
+                    raise site.SiteError(f"--certificate {cat} is given twice")
+                if not path:
+                    if cat not in certificate.BUNDLED:
+                        raise site.SiteError(f"--certificate {cat} needs a design: {cat}=path/to/design.svg")
+                    path = str(certificate.BUNDLED[cat])
+                designs[cat] = certificate.load(Path(path))
+            summary = site.build(Path(args.db), Path(args.out), sponsors_dir=Path(args.sponsors) if args.sponsors else None, base_url=args.base_url,
+                                 certificates=designs, log=print)
             valid = summary["counts"]["valid"]
             print(f"Built {summary['pages']} pages into {args.out}: " + ", ".join(f"{k} {n}" for k, n in valid.items())
-                  + f", {summary['counts']['withdrawn']} withdrawn, {summary['counts']['replaced']} replaced.")
+                  + f", {summary['counts']['withdrawn']} withdrawn, {summary['counts']['replaced']} replaced"
+                  + (f", {summary['counts']['pdf']} PDF certificate(s)." if summary["counts"].get("pdf") else "."))
             return 0
-    except (store.StoreError, issue.IssueError, site.SiteError, OSError) as exc:
+    except (store.StoreError, issue.IssueError, site.SiteError, certificate.CertificateError, OSError) as exc:
         print(f"error: {exc}")
         return 1
     return 2

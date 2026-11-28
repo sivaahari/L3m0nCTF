@@ -115,6 +115,39 @@ tar -czf D:\l3m0nCTF\private-verify\verify-site.tgz -C D:\l3m0nCTF\private-verif
 `sponsors.json` is `[{"name": "CyberDefenders", "file": "cyberdefenders.png"}, ...]` in the order of the crawl; logos are PNG, SVG, WebP or JPEG
 (300 KB at most; an SVG must be a plain drawing). The build refuses anything else and says why.
 
+## 5b. PDF certificates (the qualifiers' downloadable certificate)
+
+With `--certificate`, the build also prints one PDF certificate per valid code of a category, filled in from the database: the holder's username,
+the studio, the code, the Issue Date and a QR code back to the code's page. The page then has a **Download PDF** button, and the file is at
+`https://verify.l3m0nctf.xyz/<CODE>/certificate.pdf`. Only valid codes get one: a withdrawn or replaced code has no PDF (404).
+
+```bash
+python -m l3mon verify build D:/l3m0nCTF/private-verify/credentials.sqlite D:/l3m0nCTF/private-verify/site --sponsors D:/l3m0nCTF/private-verify/sponsors --certificate PAR
+```
+
+`--certificate PAR` alone uses the design that ships with the tool (`tools/l3mon/verify/certificates/participant.svg`). For the organisers' own
+design: `--certificate PAR=D:/l3m0nCTF/private-verify/certificate-par.svg`. The same option works for ORG, ACH and APP with a design of their own.
+
+**Needs Chrome, Chromium or Edge on the machine that builds** (it prints the PDFs headless, with the network cut off; one that is not found by
+itself is named with `L3MON_CHROME=<path>`). About half a second per certificate, four at a time. A rebuild prints only the certificates whose
+design or details changed; the others are reused. The same input gives the same bytes.
+
+**Changing the design** (the organisers decide it; nothing in the code changes):
+
+1. Make it in Figma, Inkscape or Illustrator at the paper size (A4 landscape: 297 x 210 mm; in Figma a 1123 x 794 frame).
+2. Where a value goes, type its placeholder as text: `{{USERNAME}}`, `{{STUDIO}}`, `{{CODE}}`, `{{DATE}}` (28 November 2026), and if wanted
+   `{{EVENT}}`, `{{ROLE}}`, `{{RANK}}`, `{{NAME}}` (an organiser's full name, else the username), `{{URL}}`. `{{CODE}}` and the holder are required.
+3. Draw a rectangle where the QR code goes and name it **`qr`** (its fill does not matter; the QR code replaces it).
+4. **Alignment** of a value of another length: SVG's own `text-anchor` is followed. Figma fixes positions instead, so name the text layer with
+   **center** (or centre, middle) to keep it centred, or **right** to keep its right edge; otherwise it keeps its left edge. A long value shrinks to
+   fit the page (or the layer's `data-max-width`, in the design's units, when it has one).
+5. Export as **SVG with "Outline text" OFF** (outlined text has no placeholders left; the build says so). Fonts: either common system fonts, or
+   embedded in the SVG as a `data:` address; pictures (a background exported from Canva, a logo) also only as `data:` (Figma's "embed" export
+   does that). The build refuses scripts and anything loaded from the network, and names the reason.
+6. Build with `--certificate PAR=<the file>` and **open two or three PDFs** (a short and a long username) before publishing.
+
+Keep the design file with the private files (it is not personal data, but it belongs with the database and the sponsor folder).
+
 ## 6. Publish (the VM: ask the owner first)
 
 Once only, first: **deploy a release that contains the portal** (the usual release procedure, with its backup and fingerprint). The overlay file,
@@ -156,6 +189,9 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://verify.l3m0nctf
 curl -s -o /dev/null -w "%{http_code}\n" https://verify.l3m0nctf.xyz/L3M0N26-PAR-BBBBB  # 404 (no such code)
 curl -s -D - -o /dev/null https://verify.l3m0nctf.xyz/<a real code> | grep -i "content-security-policy\|x-robots-tag"
 ```
+
+With PDF certificates: `curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://verify.l3m0nctf.xyz/<a real PAR code>/certificate.pdf`
+gives `200 application/pdf`.
 
 Then open a real code in a browser and scan its QR code with a phone.
 
