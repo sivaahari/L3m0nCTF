@@ -1,0 +1,11 @@
+#certificates-app section { border: 1px solid rgba(128, 128, 128, .35); border-radius: .35rem; margin-bottom: 1.25rem; }
+#certificates-app section > h2 { font-size: 1.15rem; margin: 0; padding: .6rem .9rem; background: rgba(128, 128, 128, .12); }
+#certificates-app section > p, #certificates-app section > dl { margin: 0; padding: .6rem .9rem; }
+#certificates-app dl { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; }
+#certificates-app dt { font-weight: 600; }
+#certificates-app dd { margin: 0; word-break: break-word; }
+#certificates-app .ce-form { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: flex-end; padding: .9rem; }
+#certificates-app .ce-form label { display: flex; flex-direction: column; font-weight: 600; font-size: .9rem; gap: .2rem; }
+#certificates-app .ce-on { color: #1b7f3b; font-weight: 700; }
+#certificates-app .ce-off { font-weight: 700; }
+#certificates-app .ce-error { color: #b00020; font-weight: 600; }

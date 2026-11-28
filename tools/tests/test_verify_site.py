@@ -185,8 +185,11 @@ def test_every_certificate_carries_a_qr_code_an_independent_reader_decodes_to_it
         width, path = int(svg.group(1)), svg.group(2)
         n = width - 8
         grid = [["0"] * n for _ in range(n)]
-        for x, y in re.findall(r"M(\d+) (\d+)h1v1h-1z", path):
-            grid[int(y) - 4][int(x) - 4] = "1"
+        runs = re.findall(r"M(\d+),(\d+)h(\d+)v1h-\3z", path)  # one rectangle per run of dark modules in a row
+        assert "".join(f"M{x},{y}h{w}v1h-{w}z" for x, y, w in runs) == path, "the path is nothing but such runs"
+        for x, y, w in runs:
+            for i in range(int(w)):
+                grid[int(y) - 4][int(x) - 4 + i] = "1"
         res = qr_read(["".join(r) for r in grid])
         assert res["format_ok"] and res["rs_ok"] and not res["errors"], res["errors"]
         assert res["text"] == f"{BASE}/{c.verify_code}"

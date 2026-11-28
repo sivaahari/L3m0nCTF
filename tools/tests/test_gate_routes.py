@@ -56,6 +56,10 @@ DECISIONS = {
     "/api/v1/l3mon/admin/activity": "crew", "/api/v1/l3mon/admin/activity/verify": "crew",
     "/api/v1/l3mon/admin/scoring": "crew", "/api/v1/l3mon/admin/scoring/revoke": "crew", "/api/v1/l3mon/admin/scoring/restore": "crew",
     "/api/v1/l3mon/admin/scoring/bonus": "crew", "/api/v1/l3mon/admin/scoring/recalculate": "crew", "/api/v1/l3mon/admin/scoring/channel-bonus": "crew",
+    # the qualifier certificates (27 Nov 2026): the crew's release page and API; a player's own card is on /team (open)
+    "/admin/l3mon/certificates": "crew", "/plugins/l3mon_certificates/assets/<path:name>": "open",
+    "/api/v1/l3mon/admin/certificates": "crew", "/api/v1/l3mon/admin/certificates/release": "crew",
+    "/api/v1/l3mon/certificate/qr.svg": "open",  # the card's picture, the signed-in player's own only (like /team, which carries the card)
 }
 
 # Routes of CTFd itself (or of the theme replacing CTFd's page) that the plugins do not add as URL rules.

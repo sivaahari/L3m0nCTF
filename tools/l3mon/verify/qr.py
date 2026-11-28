@@ -229,7 +229,20 @@ def svg(text: str, dark: str = "#070b1e", light: str = "#f4ead4", label: str = "
     m = matrix(text)
     n, q = len(m), 4
     w = n + 2 * q
-    path = "".join(f"M{x + q} {y + q}h1v1h-1z" for y in range(n) for x in range(n) if m[y][x])
+    # one rectangle per run of dark modules in a row (not one per module): the same picture in about half the bytes, which matters because the
+    # studio page carries it inline (independent review of 27 Nov 2026: the per-module path put the page over its size budget)
+    runs = []
+    for y in range(n):
+        x = 0
+        while x < n:
+            if not m[y][x]:
+                x += 1
+                continue
+            start = x
+            while x < n and m[y][x]:
+                x += 1
+            runs.append(f"M{start + q},{y + q}h{x - start}v1h-{x - start}z")
+    path = "".join(runs)
     title = f"<title>{label}</title>" if label else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {w}" shape-rendering="crispEdges" role="img">{title}'
             f'<rect width="{w}" height="{w}" fill="{light}"/><path d="{path}" fill="{dark}"/></svg>')
