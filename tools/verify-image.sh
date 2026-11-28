@@ -28,6 +28,7 @@ check "the plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon
 check "the CTFtime feed plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_ctftime/__init__.py
 check "the release control plugin, its page and its script are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_release/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_release/templates/l3mon_release/release.html && test -f /opt/CTFd/CTFd/plugins/l3mon_release/assets/release.js'
 check "the scoring plugin, its page and its script are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_scoring/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_scoring/templates/l3mon_scoring/scoring.html && test -f /opt/CTFd/CTFd/plugins/l3mon_scoring/assets/scoring.js'
+check "the certificates plugin, its page, its script and its import are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_certificates/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_certificates/loader.py && test -f /opt/CTFd/CTFd/plugins/l3mon_certificates/templates/l3mon_certificates/certificates.html && test -f /opt/CTFd/CTFd/plugins/l3mon_certificates/assets/certificates.js'
 check "the board plugin is in place" run "$image" test -f /opt/CTFd/CTFd/plugins/l3mon_board/__init__.py
 check "the cold-open plugin, its page and its player are in place" run "$image" sh -c 'test -f /opt/CTFd/CTFd/plugins/l3mon_story/__init__.py && test -f /opt/CTFd/CTFd/plugins/l3mon_story/templates/l3mon_story/story.html && test -f /opt/CTFd/CTFd/plugins/l3mon_story/assets/comic.js && test -f /opt/CTFd/CTFd/plugins/l3mon_story/assets/timeline.js && test -f /opt/CTFd/CTFd/plugins/l3mon_story/assets/sounds.js'
 check "the image holds no story" run "$image" sh -c '! ls /opt/CTFd/CTFd/plugins/l3mon_story/*.json /var/story/*.json 2>/dev/null | grep -q .'
@@ -64,6 +65,7 @@ check "apt is at or above 2.6.2" run "$image" sh -c 'dpkg --compare-versions "$(
 check "libapt-pkg6.0 is at or above 2.6.2" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libapt-pkg6.0)" ge 2.6.2'
 check "libpam0g is at or above 1.5.2-6+deb12u3" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libpam0g)" ge 1.5.2-6+deb12u3'
 check "libpam-modules is at or above 1.5.2-6+deb12u3" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libpam-modules)" ge 1.5.2-6+deb12u3'
+check "libzstd1 is at or above 1.5.4+dfsg2-5+deb12u1" run "$image" sh -c 'dpkg --compare-versions "$(dpkg-query -W -f="\${Version}" libzstd1)" ge 1.5.4+dfsg2-5+deb12u1'
 check "no package lists left behind" run "$image" sh -c '[ -z "$(ls /var/lib/apt/lists 2>/dev/null | grep -v "^partial$")" ]'
 
 # no build tools, no package manager caches left behind

@@ -5,6 +5,8 @@ OUT receives (and nothing else; the same input gives the same bytes):
     index.html                 the lookup page: type a code, go to its certificate
     404.html                   "No signal": no certificate has that code (nginx serves it for any unknown address)
     c/<CODE>.html              one page per code: the certificate, or a short notice for a withdrawn or replaced code (no personal details)
+    c/<CODE>.pdf               with --certificate CAT=design.svg: the printable certificate of every valid code of CAT (certificate.py), served at
+                               /<CODE>/certificate.pdf and linked from its page
     assets/site.<hash>.css     the styles, assets/site.<hash>.js the one script, assets/favicon.svg, assets/sponsors/<hash>-<file> the logos
     robots.txt, build.json     no indexing of certificate pages; a summary of the build (counts and file checksums, no personal data)
 
@@ -29,7 +31,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
 
-from . import codes, qr, store
+from . import certificate, codes, qr, store
 
 HERE = Path(__file__).resolve().parent / "site"
 BASE_URL = "https://verify.l3m0nctf.xyz"
@@ -202,8 +204,11 @@ def words(title: str) -> str:
     return " ".join(f'<span class="w">{e(w)}</span>' for w in title.split())
 
 
-def panel(lcd: str, print_button: bool) -> str:
-    pb = '<button type="button" class="pbtn js-only" id="print" title="Save this certificate as a PDF, or print it">SAVE PDF</button>' if print_button else ""
+def panel(lcd: str, print_button: bool, pdf_url: str | None = None) -> str:
+    if pdf_url:  # the organisers' own certificate document: a plain link, so it works without the script too
+        pb = f'<a class="pbtn" href="{e(pdf_url)}" title="Download the certificate (PDF)">DOWNLOAD PDF</a>'
+    else:
+        pb = '<button type="button" class="pbtn js-only" id="print" title="Save this certificate as a PDF, or print it">SAVE PDF</button>' if print_button else ""
     return ('<aside class="panel" aria-label="TV controls">'
             f'<button type="button" class="pbtn pwr js-only" id="power" aria-label="Power: switch on again and replay">{POWER}</button>'
             '<div class="knobs" aria-hidden="true"><div class="knob-w"><div class="knob vol"><i></i></div><small>VOL</small></div>'
@@ -213,7 +218,8 @@ def panel(lcd: str, print_button: bool) -> str:
             '<div class="grill" aria-hidden="true"></div><span class="badge" aria-hidden="true">L3MON<small>ELECTRONICS</small></span></aside>')
 
 
-def page(*, title: str, description: str, body_class: str, screen: str, lcd: str, print_button: bool, assets: dict, index: bool, crawl_html: str) -> str:
+def page(*, title: str, description: str, body_class: str, screen: str, lcd: str, print_button: bool, assets: dict, index: bool, crawl_html: str,
+         pdf_url: str | None = None) -> str:
     robots = "" if index else '<meta name="robots" content="noindex, nofollow">\n'
     return (
         "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
@@ -228,13 +234,13 @@ def page(*, title: str, description: str, body_class: str, screen: str, lcd: str
         f'<div class="bez"><div class="screen"><main id="main" class="prog">{screen}</main>{crawl_html}'
         '<div class="fx scan"></div><div class="fx vignette"></div><div class="fx glass"></div><div class="fx static"></div>'
         '<div class="fx bars"><span>L3M0N-TV · TUNING</span></div><div class="fx power"></div></div></div>'
-        f'{panel(lcd, print_button)}<div class="legs" aria-hidden="true"></div></div></div>'
+        f'{panel(lcd, print_button, pdf_url)}<div class="legs" aria-hidden="true"></div></div></div>'
         '<p class="foot">L3m0n CTF 2026 · TIFAC-CORE in Cyber Security, Amrita Vishwa Vidyapeetham, Coimbatore</p></div>\n'
         "</body>\n</html>\n"
     )
 
 
-def cert_screen(c: store.Credential, base_url: str) -> str:
+def cert_screen(c: store.Credential, base_url: str, pdf_url: str | None = None) -> str:
     title, sub, round_name = CERT[c.category]
     if c.category == "ORG":
         hero_label, hero = "Name", c.name
@@ -260,7 +266,9 @@ def cert_screen(c: store.Credential, base_url: str) -> str:
         f'<p class="sub">{e(sub)}</p><p class="who"><small>{e(hero_label)}</small>{e(hero)}</p><dl class="rows">{rows_html}</dl></div>'
         f'<div class="side">{rank}<div class="stamp" role="img" aria-label="Signal verified: this certificate is genuine"><div>{TICK}Signal<br>verified<em>L3M0N · 26</em></div></div></div></div>'
         f'<footer class="verify"><div class="left"><div class="qr">{qr.svg(url, label="QR code for " + c.verify_code)}</div>'
-        f'<div class="code"><span>Check this certificate at</span>{e(base_url.split("://", 1)[-1])}/<b>{e(c.verify_code)}</b></div></div>'
+        f'<div class="code"><span>Check this certificate at</span>{e(base_url.split("://", 1)[-1])}/<b>{e(c.verify_code)}</b>'
+        + (f'<a class="dl" href="{e(pdf_url)}">Download the certificate (PDF)</a>' if pdf_url else "")
+        + '</div></div>'
         '<div class="org">TIFAC-CORE in Cyber Security<br>Amrita Vishwa Vidyapeetham, Coimbatore</div></footer>'
     )
 
@@ -300,7 +308,14 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def build(db_path: Path, out: Path, *, sponsors_dir: Path | None = None, base_url: str = BASE_URL) -> dict:
+def pdf_path(code: str) -> str:
+    """The address of a code's PDF certificate (deploy/nginx/verify/verify.conf serves c/<CODE>.pdf there)."""
+    return f"/{code}/certificate.pdf"
+
+
+def build(db_path: Path, out: Path, *, sponsors_dir: Path | None = None, base_url: str = BASE_URL,
+          certificates: dict | None = None, browser: str | None = None, log=None) -> dict:
+    """certificates: category -> certificate.Template; every valid code of those categories also gets c/<CODE>.pdf."""
     base_url = base_url.rstrip("/")
     if not re.fullmatch(r"https://[a-z0-9.-]+", base_url):
         raise SiteError(f"--base-url must be https://<host> with no path, got {base_url!r}")
@@ -313,6 +328,16 @@ def build(db_path: Path, out: Path, *, sponsors_dir: Path | None = None, base_ur
     finally:
         conn.close()
     sponsors = load_sponsors(sponsors_dir)
+    certificates = certificates or {}
+    for cat in certificates:
+        if cat not in codes.CATEGORIES:
+            raise SiteError(f"--certificate: unknown category {cat!r} (one of {', '.join(codes.CATEGORIES)})")
+    previous = {}
+    if (out / "build.json").is_file():
+        try:
+            previous = json.loads((out / "build.json").read_text(encoding="utf-8"))
+        except ValueError:
+            previous = {}
 
     files: dict[str, bytes] = {}
     css, js = (HERE / "site.css").read_bytes(), (HERE / "site.js").read_bytes()
@@ -345,16 +370,42 @@ def build(db_path: Path, out: Path, *, sponsors_dir: Path | None = None, base_ur
                                               stamp=None),
                          lcd="STAND BY", print_button=False, assets=assets, index=False, crawl_html=crawl_html))
     counts = {"valid": {c: 0 for c in codes.CATEGORIES}, "withdrawn": 0, "replaced": 0}
+    pdfs, pdf_keys, jobs = {}, {}, {}
+    for c in creds:
+        t = certificates.get(c.category)
+        if c.status != "valid" or t is None:
+            continue
+        values = certificate.fields(c, base_url, human_date)
+        k = pdf_keys[c.verify_code] = certificate.key(t, values)
+        rel = f"c/{c.verify_code}.pdf"
+        old = out / rel
+        # an unchanged certificate is not printed again: the previous build's PDF is reused when its input and its bytes are the ones recorded
+        if previous.get("certificates", {}).get(c.verify_code) == k and old.is_file():
+            data = old.read_bytes()
+            if previous.get("files", {}).get(rel) == _digest(data):
+                pdfs[c.verify_code] = data
+                continue
+        jobs[c.verify_code] = (certificate.print_page(t, certificate.fill(t, values), f"{CERT[c.category][0]} · L3m0n CTF 2026 · {c.verify_code}"),
+                                  c.issue_date)
+    if jobs and log:
+        log(f"Printing {len(jobs)} PDF certificate(s) ({len(pdfs)} unchanged ones reused)...")
+    try:
+        pdfs.update(certificate.render(jobs, browser=browser))
+    except certificate.CertificateError as exc:
+        raise SiteError(str(exc)) from None
+    for code, data in pdfs.items():
+        files[f"c/{code}.pdf"] = data
     for c in creds:
         if not codes.CODE_RE.match(c.verify_code):
             raise SiteError(f"not a valid code in the database: {c.verify_code!r}")
         if c.status == "valid":
             counts["valid"][c.category] += 1
             who = c.name if c.category == "ORG" else c.username
+            pdf = pdf_path(c.verify_code) if c.verify_code in pdfs else None
             put(f"c/{c.verify_code}.html", page(
                 title=f"{CERT[c.category][0]} · {who} · L3m0n CTF 2026", description=f"A genuine L3m0n CTF 2026 certificate ({c.role}).",
-                body_class=f"cat-{c.category.lower()}", screen=cert_screen(c, base_url),
-                lcd=c.category, print_button=True, assets=assets, index=False, crawl_html=crawl_html))
+                body_class=f"cat-{c.category.lower()}", screen=cert_screen(c, base_url, pdf),
+                lcd=c.category, print_button=True, assets=assets, index=False, crawl_html=crawl_html, pdf_url=pdf))
         elif c.status == "replaced":
             counts["replaced"] += 1
             put(f"c/{c.verify_code}.html", page(
@@ -377,6 +428,9 @@ def build(db_path: Path, out: Path, *, sponsors_dir: Path | None = None, base_ur
     put("robots.txt", "User-agent: *\nAllow: /$\nDisallow: /\n")
     summary = {"schema": 1, "base_url": base_url, "counts": counts, "pages": sum(1 for k in files if k.endswith(".html")),
                "files": {k: _digest(v) for k, v in sorted(files.items())}}
+    if pdfs:
+        summary["certificates"] = dict(sorted(pdf_keys.items()))
+        summary["counts"]["pdf"] = len(pdfs)
     files["build.json"] = (json.dumps(summary, indent=1, sort_keys=True) + "\n").encode("utf-8")
 
     # the new build is written into a fresh folder of our own next to OUT and swapped in; nothing that existed before is deleted except OUT itself

@@ -6,13 +6,13 @@ FROM ghcr.io/ctfd/ctfd@sha256:07cc9788d58b2a18ea4dc2103ff385c053ffc506f57d0c769a
 
 USER root
 
-# Operating-system fixes the upstream image does not have yet (Trivy, 2026-10-06, 2026-11-03, 2026-11-05 and 2026-11-27): libpcre2, perl-base, OpenSSL (libssl3, openssl), apt (apt, libapt-pkg6.0) and PAM (libpam0g, libpam-modules, libpam-modules-bin, libpam-runtime: CVE-2025-6020, fixed in 1.5.2-6+deb12u3).
+# Operating-system fixes the upstream image does not have yet (Trivy, 2026-10-06, 2026-11-03, 2026-11-05, 2026-11-27 and 2026-11-28): libpcre2, perl-base, OpenSSL (libssl3, openssl), apt (apt, libapt-pkg6.0), PAM (libpam0g, libpam-modules, libpam-modules-bin, libpam-runtime: CVE-2025-6020, fixed in 1.5.2-6+deb12u3) and zstd (libzstd1: CVE-2026-124851, fixed in 1.5.4+dfsg2-5+deb12u1).
 # Only these are upgraded; nothing else is installed, and the package lists are removed again. The versions are not
 # pinned on purpose: the point is to take whatever fixed version Debian's security archive has (verify-image.sh checks
 # the minimum).
 # hadolint ignore=DL3008
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base libssl3 openssl apt libapt-pkg6.0 libpam0g libpam-modules libpam-modules-bin libpam-runtime \
+    && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base libssl3 openssl apt libapt-pkg6.0 libpam0g libpam-modules libpam-modules-bin libpam-runtime libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY docker/ctfd/requirements.overrides.txt /tmp/overrides.txt

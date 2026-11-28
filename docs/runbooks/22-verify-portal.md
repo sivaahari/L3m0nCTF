@@ -15,7 +15,7 @@ unique across all categories. **Organiser codes are the exception:** the organis
 permanent, so an ORG code may hold any five capital letters or digits (section 2). PAR, ACH and APP codes are never written by hand: the tool
 draws them when the codes are issued, after the qualifiers (section 3) and after the finals (section 4).
 **One code per person:** a qualifier who reaches the finals ends with the finals code only (the qualifier code's page then says "replaced" and links to
-the new one). How codes reach people: qualifiers see theirs on the platform's studio page (a later platform release, switched on by the organiser);
+the new one). How codes reach people: qualifiers see theirs on the platform's studio page (step 7 below: loaded with one command, released by any crew account);
 finalists get printed certificates.
 
 ## How it works (and why it can run for years)
@@ -115,6 +115,43 @@ tar -czf D:\l3m0nCTF\private-verify\verify-site.tgz -C D:\l3m0nCTF\private-verif
 `sponsors.json` is `[{"name": "CyberDefenders", "file": "cyberdefenders.png"}, ...]` in the order of the crawl; logos are PNG, SVG, WebP or JPEG
 (300 KB at most; an SVG must be a plain drawing). The build refuses anything else and says why.
 
+## 5b. PDF certificates (the qualifiers' downloadable certificate)
+
+With `--certificate`, the build also prints one PDF certificate per valid code of a category, filled in from the database: the holder's username,
+the studio, the code, the Issue Date and a QR code back to the code's page. The page then has a **Download PDF** button, and the file is at
+`https://verify.l3m0nctf.xyz/<CODE>/certificate.pdf`. Only valid codes get one: a withdrawn or replaced code has no PDF (404).
+
+```bash
+python -m l3mon verify build D:/l3m0nCTF/private-verify/credentials.sqlite D:/l3m0nCTF/private-verify/site --sponsors D:/l3m0nCTF/private-verify/sponsors --certificate PAR
+```
+
+`--certificate PAR` alone uses the design that ships with the tool (`tools/l3mon/verify/certificates/participant.svg`). For the organisers' own
+design: `--certificate PAR=D:/l3m0nCTF/private-verify/certificate-par.svg`. The same option works for ORG, ACH and APP with a design of their own.
+
+**Needs Chrome, Chromium or Edge on the machine that builds** (it prints the PDFs headless, with the network cut off; one that is not found by
+itself is named with `L3MON_CHROME=<path>`). About half a second per certificate, four at a time. A rebuild prints only the certificates whose
+design or details changed; the others are reused. The same input gives the same bytes.
+
+**Changing the design** (the organisers decide it; nothing in the code changes):
+
+1. Make it in Figma, Inkscape or Illustrator at the paper size (A4 landscape: 297 x 210 mm; in Figma a 1123 x 794 frame).
+2. Where a value goes, type its placeholder as text: `{{USERNAME}}`, `{{STUDIO}}`, `{{CODE}}`, `{{DATE}}` (28 November 2026), and if wanted
+   `{{EVENT}}`, `{{ROLE}}`, `{{RANK}}`, `{{NAME}}` (an organiser's full name, else the username), `{{URL}}`. `{{CODE}}` and the holder are required.
+3. Draw a rectangle where the QR code goes and name it **`qr`** (its fill does not matter; the QR code replaces it). The code fills the whole
+   rectangle, including its own quiet margin, so make it the size of the white square the code should sit in. The code is navy on cream unless
+   the rectangle says otherwise: add the attributes `data-dark="#000000" data-light="#ffffff"` (six-digit hex colours, nothing else is accepted) for black on white.
+   A Canva design wraps every logo in a luminosity mask; some PDF viewers (Windows' own renderer) draw those as black boxes, so fold each mask into
+   its picture as a transparent channel before building (the qualifiers' design was prepared that way).
+4. **Alignment** of a value of another length: SVG's own `text-anchor` is followed. Figma fixes positions instead, so name the text layer with
+   **center** (or centre, middle) to keep it centred, or **right** to keep its right edge; otherwise it keeps its left edge. A long value shrinks to
+   fit the page (or the layer's `data-max-width`, in the design's units, when it has one).
+5. Export as **SVG with "Outline text" OFF** (outlined text has no placeholders left; the build says so). Fonts: either common system fonts, or
+   embedded in the SVG as a `data:` address; pictures (a background exported from Canva, a logo) also only as `data:` (Figma's "embed" export
+   does that). The build refuses scripts and anything loaded from the network, and names the reason.
+6. Build with `--certificate PAR=<the file>` and **open two or three PDFs** (a short and a long username) before publishing.
+
+Keep the design file with the private files (it is not personal data, but it belongs with the database and the sponsor folder).
+
 ## 6. Publish (the VM: ask the owner first)
 
 Once only, first: **deploy a release that contains the portal** (the usual release procedure, with its backup and fingerprint). The overlay file,
@@ -149,6 +186,50 @@ whole zone. **Access:** the portal must stay public. If the crew Access applicat
 set-up, docs/deploy/instancer.md), add a **Bypass** application for `verify.l3m0nctf.xyz`, exactly as for `play`: the most specific hostname wins.
 Optional: a Cloudflare rate-limit rule for `verify.l3m0nctf.xyz` (nginx already allows 60 requests a minute per address).
 
+## 7. The qualifiers' certificates on the platform (after step 6)
+
+Each qualifier participant sees a **"Your certificate"** card at the top of their own studio page (`/team`): their code, a QR code of the
+certificate's address and an "Open your certificate" button. Nobody sees anybody else's code. Nothing shows until a crew account releases
+the certificates, and every player then gets **one** notification, "Certificates are ready" (a short pop-up and the bell, never the
+blocking announcement). Plugin: `plugins/l3mon_certificates`.
+
+1. On the laptop, write the platform's list (the VALID qualifier codes, by platform player id; it is PRIVATE: usernames and codes):
+   ```bash
+   python -m l3mon verify export-platform D:/l3m0nCTF/private-verify/credentials.sqlite D:/l3m0nCTF/private-verify/certificates.json
+   ```
+2. Copy it up (same gcloud configuration as in step 3) and look first: without `--apply` nothing is written, it only says what would change
+   (how many new, changed, removed; player ids with no account; players who renamed themselves, who keep their code):
+   ```bash
+   gcloud compute scp D:\l3m0nCTF\private-verify\certificates.json <platform VM>:/tmp/certificates.json --zone=<zone> --tunnel-through-iap --quiet
+   # on the VM
+   cd ~/L3m0nCTF && set -a && . /etc/l3mon/production.env && set +a
+   docker exec -i "$(tools/compose.sh ps -q ctfd)" bash -c "source /usr/local/lib/l3mon-env.sh; cd /opt/CTFd; python -m CTFd.plugins.l3mon_certificates.loader" < /tmp/certificates.json
+   ```
+3. If it is right, the same command with `loader --apply`, then **delete the copy**: `rm /tmp/certificates.json`. The platform's table is
+   now exactly the list (one line in the audit trail, `certificates.import`). Importing releases nothing.
+4. Release: crew host, **Admin -> Certificates** (`/admin/l3mon/certificates`): **Release now**, or a day and time (IST) and **Release at
+   this time**. Any crew account can; every change is in the audit trail (`certificates.release`, with who did it). **Hide them** takes the
+   card off every studio page at once; the codes stay valid on the portal. The notification is sent once only, ever: releasing again after
+   hiding sends none.
+5. Check: sign in as a test player that has a code and open `/team`: the card shows that player's code, the QR code opens the portal's page.
+
+After a later `issue`, `withdraw` or the finals run, repeat 1-3: a withdrawn code, or a qualifier code replaced by a finals code, leaves the
+platform at the next import (the finalist then has no card: their certificate is printed).
+
+**Things to know (the independent review of 27 Nov 2026):**
+- **A player who is in no studio sees no card.** The card is on the studio page, and `/team` sends a player without a studio to the join page.
+  A qualifier who left or was removed from their studio still gets the notification, but has nowhere to see the code: give it to them by
+  hand from `verify list`, or they can find it on the portal only through the code itself.
+- **Import only into the platform the qualifiers ran on.** The list is matched by player id. On a rebuilt or restored database a player id
+  could belong to a different person, who would then see somebody else's code. In the dry run, a large "renamed since the export" count is
+  the warning sign: stop and ask.
+- **A release set for later sends its notification only when codes are loaded.** If the table is empty at that moment, nothing is sent and
+  the one notification is kept for when codes are imported. A notification that keeps failing is retried by each worker at most every 30 s.
+- The import names no code or username in any error: a database error shows only its kind (for example `IntegrityError`).
+- **The card's QR code is a picture of its own** (`/api/v1/l3mon/certificate/qr.svg`): it answers only the signed-in player's own code, only
+  while released (404 otherwise, never somebody else's), and is never cached. Drawn inside the page it put the studio page over its size
+  budget. A future Content-Security-Policy on the platform needs `img-src 'self'` for it (no `data:` images are needed).
+
 ## Check that it works
 
 ```bash
@@ -156,6 +237,9 @@ curl -s -o /dev/null -w "%{http_code} %{redirect_url}\n" https://verify.l3m0nctf
 curl -s -o /dev/null -w "%{http_code}\n" https://verify.l3m0nctf.xyz/L3M0N26-PAR-BBBBB  # 404 (no such code)
 curl -s -D - -o /dev/null https://verify.l3m0nctf.xyz/<a real code> | grep -i "content-security-policy\|x-robots-tag"
 ```
+
+With PDF certificates: `curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://verify.l3m0nctf.xyz/<a real PAR code>/certificate.pdf`
+gives `200 application/pdf`.
 
 Then open a real code in a browser and scan its QR code with a phone.
 
